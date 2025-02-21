@@ -187,6 +187,7 @@ UInt32 g_total_client_thread_cnt = g_client_thread_cnt + g_client_rem_thread_cnt
 UInt32 g_total_node_cnt = g_node_cnt + g_client_node_cnt + g_repl_cnt;
 UInt64 g_synth_table_size = SYNTH_TABLE_SIZE;
 UInt32 g_req_per_query = REQ_PER_QUERY;
+UInt32 g_req_per_short_query = REQ_PER_SHORT_QUERY;
 bool g_strict_ppt = STRICT_PPT == 1;
 UInt32 g_field_per_tuple = FIELD_PER_TUPLE;
 UInt32 g_init_parallelism = INIT_PARALLELISM;

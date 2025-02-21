@@ -56,7 +56,7 @@ RC YCSBTxnManager::acquire_locks() {
   locking_done = false;
   RC rc = RCOK;
   incr_lr();
-  assert(ycsb_query->requests.size() == g_req_per_query);
+  assert(ycsb_query->requests.size() == g_req_per_query || ycsb_query->requests.size() == g_req_per_short_query);
   assert(phase == CALVIN_RW_ANALYSIS);
 	for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
 		ycsb_request * req = ycsb_query->requests[rid];
@@ -93,7 +93,7 @@ RC YCSBTxnManager::acquire_locks() {
 void YCSBTxnManager::get_read_write_set() {
   uint64_t starttime = get_sys_clock();
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
-  assert(ycsb_query->requests.size() == g_req_per_query);
+  assert(ycsb_query->requests.size() == g_req_per_query || ycsb_query->requests.size() == g_req_per_short_query);
   assert(phase == CALVIN_RW_ANALYSIS);
 	for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
 		ycsb_request * req = ycsb_query->requests[rid];
@@ -490,7 +490,7 @@ RC YCSBTxnManager::run_aria_txn() {
   {
   case ARIA_READ:
     //analyze read/write set, do local read if key is equal to g_node_id or send remote read to remote node
-    assert(ycsb_query->requests.size() == g_req_per_query);
+    assert(ycsb_query->requests.size() == g_req_per_query || ycsb_query->requests.size() == g_req_per_short_query);
     for (uint64_t i = 0; i < ycsb_query->requests.size(); i++) {
       ycsb_request * request = ycsb_query->requests[i];
       uint64_t target_node = GET_NODE_ID(_wl->key_to_part(request->key));

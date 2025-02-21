@@ -360,8 +360,14 @@ BaseQuery * YCSBQueryGenerator::gen_requests_zipf(uint64_t home_partition_id, Wo
 
 	double r_twr = (double)(mrand->next() % 10000) / 10000;
 
+#if LONG_TXN_WORKLOAD
+	uint64_t req_size = ((double)(mrand->next() % 10000) / 10000) < LONG_QUERY_PERC ? g_req_per_query : g_req_per_short_query;
+#else
+	uint64_t req_size = g_req_per_query;
+#endif
+
 	int rid = 0;
-	for (UInt32 i = 0; i < g_req_per_query; i ++) {
+	for (UInt32 i = 0; i < req_size; i ++) {
 		double r = (double)(mrand->next() % 10000) / 10000;
 		uint64_t partition_id;
 #ifdef LESS_DIS
@@ -440,7 +446,7 @@ BaseQuery * YCSBQueryGenerator::gen_requests_zipf(uint64_t home_partition_id, Wo
 
 		query->requests.add(req);
 	}
-	assert(query->requests.size() == g_req_per_query);
+	assert(query->requests.size() == g_req_per_query || query->requests.size() == g_req_per_short_query);
 	// Sort the requests in key order.
 	if (g_key_order) {
 		for(uint64_t i = 0; i < query->requests.size(); i++) {
