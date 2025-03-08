@@ -56,7 +56,9 @@ RC YCSBTxnManager::acquire_locks() {
   locking_done = false;
   RC rc = RCOK;
   incr_lr();
+#if !LONG_TXN_SPLIT
   assert(ycsb_query->requests.size() == g_req_per_query || ycsb_query->requests.size() == g_req_per_short_query);
+#endif
   assert(phase == CALVIN_RW_ANALYSIS);
 	for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
 		ycsb_request * req = ycsb_query->requests[rid];

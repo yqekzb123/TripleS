@@ -355,6 +355,9 @@ public:
 	int last_batch_id;
 	int last_txn_id;
 	Message* last_msg;
+#if LONG_TXN_WORKLOAD
+	uint64_t original_txn_id;
+#endif
 
 #if CC_ALG == DLI_MVCC || CC_ALG == DLI_MVCC_OCC || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3 || \
 	CC_ALG == DLI_OCC

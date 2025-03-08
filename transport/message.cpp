@@ -248,6 +248,9 @@ uint64_t Message::mget_size() {
   size += sizeof(uint64_t);
   size += sizeof(int);
 #endif
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+  size += sizeof(uint64_t);
+#endif
   // for stats, send message queue time
   size += sizeof(uint64_t);
 
@@ -269,12 +272,18 @@ void Message::mcopy_from_txn(TxnManager * txn) {
   batch_id = txn->get_batch_id();
   algo = txn->algo;
 #endif
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+  original_txn_id = txn->original_txn_id;
+#endif
 }
 
 void Message::mcopy_to_txn(TxnManager* txn) {
   txn->return_id = return_node_id;
 #if CC_ALG == HDCC
   txn->original_return_id = original_return_node_id;
+#endif
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+  txn->original_txn_id = original_txn_id;
 #endif
 }
 
@@ -291,6 +300,9 @@ void Message::mcopy_from_buf(char * buf) {
 #elif CC_ALG == SNAPPER
   COPY_VAL(batch_id,buf,ptr);
   COPY_VAL(algo,buf,ptr);
+#endif
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+  COPY_VAL(original_txn_id,buf,ptr);
 #endif
   COPY_VAL(mq_time,buf,ptr);
 
@@ -323,6 +335,9 @@ void Message::mcopy_to_buf(char * buf) {
 #elif CC_ALG == SNAPPER
   COPY_BUF(buf,batch_id,ptr);
   COPY_BUF(buf,algo,ptr);
+#endif
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+  COPY_BUF(buf,original_txn_id,ptr);
 #endif
   COPY_BUF(buf,mq_time,ptr);
 

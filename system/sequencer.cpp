@@ -63,7 +63,16 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 #if CC_ALG == HDCC || CC_ALG == SNAPPER
 	uint64_t id = (msg->get_txn_id() - en->start_txn_id) / g_node_cnt;
 #else
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+	uint64_t id = 0;
+	if (msg->original_txn_id != UINT64_MAX) {
+		id = msg->original_txn_id / g_node_cnt;
+	} else {
+		id = msg->get_txn_id() / g_node_cnt;
+	}
+#else
 	uint64_t id = msg->get_txn_id() / g_node_cnt;
+#endif
 #endif
 
 	uint64_t prof_stat = get_sys_clock();
@@ -316,6 +325,13 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 		msg->txn_id = txn_id;
 		assert(txn_id != UINT64_MAX);
 
+#if LONG_TXN_WORKLOAD
+		if (id >= en->max_size) {
+			en->max_size *= 2;
+			en->list = (qlite *) mem_allocator.realloc(en->list,sizeof(qlite) * en->max_size);
+		}
+#endif
+
 #if CC_ALG == HDCC
 		if (cc_selector.get_best_cc(msg) == SILO) {
 			msg->algo = SILO;
@@ -353,7 +369,26 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 #elif WORKLOAD == DA
 		std::set<uint64_t> participants = DAQuery::participants(msg,_wl);
 #endif
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+		uint32_t server_ack_cnt = 0;
+#if WORKLOAD == YCSB
+		YCSBClientQueryMessage * cl_msg = (YCSBClientQueryMessage *) msg;
+		if (cl_msg->steps.empty()) {
+			server_ack_cnt = participants.size();
+		} else {
+			for (uint64_t i = 0; i < cl_msg->steps.size(); i++) {
+				if (cl_msg->sub_reqs[i].size() > 0) {
+					server_ack_cnt ++;
+				}
+			}
+		}
+#elif WORKLOAD == TPCC
+
+#else
+#endif
+#else
 		uint32_t server_ack_cnt = participants.size();
+#endif
 		assert(server_ack_cnt > 0);
 		assert(ISCLIENTN(msg->get_return_id()));
 		en->list[id].client_id = msg->get_return_id();
@@ -398,6 +433,50 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 		assert(en->size == en->txns_left);
 		assert(en->size <= ((uint64_t)g_inflight_max * g_node_cnt));
 
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+		cl_msg->original_txn_id = UINT64_MAX;
+#endif
+
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+#if WORKLOAD == YCSB
+		if (cl_msg->steps.empty()) {
+			for(auto participant = participants.begin(); participant != participants.end(); participant++) {
+				while (!fill_queue[*participant].push(msg) && !simulation->is_done()) {
+				}
+			}
+		} else {
+			cl_msg->original_txn_id = cl_msg->txn_id;
+			for (uint64_t i = 0; i < cl_msg->steps.size(); i++) {
+				if (cl_msg->sub_reqs[i].size() == 0) continue;
+				YCSBClientQueryMessage * new_msg = (YCSBClientQueryMessage *)Message::create_message(CL_QRY);
+				new_msg->original_txn_id = cl_msg->txn_id;
+				new_msg->batch_id = cl_msg->batch_id;
+
+				txnid_t txn_id = g_node_id + g_node_cnt * next_txn_id;
+				next_txn_id++;
+				new_msg->txn_id = txn_id;
+
+				new_msg->return_node_id = g_node_id;
+				new_msg->lat_network_time = 0;
+				new_msg->lat_other_time = 0;
+				new_msg->requests.init(cl_msg->sub_reqs[i].size());
+				new_msg->requests.init(g_req_per_query);
+				for (uint64_t j = 0; j < cl_msg->sub_reqs[i].size(); j++) {
+					new_msg->requests.add(cl_msg->sub_reqs[i][j]);
+				}
+				std::set<uint64_t> participants = YCSBQuery::participants(new_msg, _wl);
+				for(auto participant = participants.begin(); participant != participants.end(); participant++) {
+					while (!fill_queue[*participant].push(new_msg) && !simulation->is_done()) {
+					}
+				}
+			}
+		}
+#elif WORKLOAD == TPCC
+
+#else
+
+#endif
+#else
 		// Add new txn to fill queue
 		for(auto participant = participants.begin(); participant != participants.end(); participant++) {
 			DEBUG("SEQ adding (%ld,%ld) to fill queue (recon: %d)\n", msg->get_txn_id(),
@@ -405,6 +484,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 			while (!fill_queue[*participant].push(msg) && !simulation->is_done()) {
 			}
 		}
+#endif
 #if LOGGING
 		char * data = (char *)malloc(sizeof(char) * 10);
 		logger.writeToBuffer(thd_id, data, sizeof(data));

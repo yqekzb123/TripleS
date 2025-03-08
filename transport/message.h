@@ -48,6 +48,10 @@ public:
   uint64_t orig_txn_id, orig_batch_id;
 #endif
 
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+  uint64_t original_txn_id;
+#endif
+
   uint64_t wq_time;
   uint64_t mq_time;
   uint64_t ntwk_time;
@@ -314,10 +318,6 @@ public:
 
   uint64_t pid;
   uint64_t ts;
-#if CC_ALG == CALVIN
-  uint64_t batch_id;
-  uint64_t txn_id;
-#endif
   uint64_t client_startts;
   uint64_t first_startts;
   Array<uint64_t> partitions;
@@ -336,6 +336,9 @@ public:
   void release();
 
   Array<ycsb_request*> requests;
+
+  vector<vector<ycsb_request*>> sub_reqs;
+  vector<uint64_t> steps;
 
 };
 

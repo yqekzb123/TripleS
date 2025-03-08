@@ -82,6 +82,7 @@ class Sequencer {
 	qlite_ll * wl_head;		// list of txns in batch being executed
 	qlite_ll * wl_tail;		// list of txns in batch being executed
 	volatile uint32_t next_txn_id;
+	volatile uint32_t next_sub_txn_id;
 	Workload * _wl;
 #if CC_ALG == HDCC || CC_ALG == SNAPPER
 	uint64_t last_epoch_max_id;

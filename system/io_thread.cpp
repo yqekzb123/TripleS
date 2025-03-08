@@ -240,6 +240,13 @@ RC InputThread::server_recv_loop() {
 			}
 			if(msg->rtype == CALVIN_ACK ||(msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id())) ||
 			(msg->rtype == CL_QRY_O && ISCLIENTN(msg->get_return_id()))) {
+#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+#if WORKLOAD == YCSB
+				if (msg->rtype == CL_QRY && ((YCSBClientQueryMessage*)msg)->requests.size() == g_req_per_query) {
+					split_long_transaction(msg);
+				}
+#endif
+#endif
 				work_queue.sequencer_enqueue(get_thd_id(),msg);
 				msgs->erase(msgs->begin());
 				continue;
@@ -265,6 +272,30 @@ RC InputThread::server_recv_loop() {
 	fflush(stdout);
 	return FINISH;
 }
+#if WORKLOAD == YCSB
+void InputThread::split_long_transaction(Message * msg) {
+	YCSBClientQueryMessage * ycsb_msg = (YCSBClientQueryMessage *) msg;
+
+	uint64_t step_num = ycsb_msg->requests.size() / g_req_per_short_query;
+	if (step_num % g_node_cnt != 0) step_num += (g_node_cnt - step_num % g_node_cnt);
+	ycsb_msg->sub_reqs = vector<vector<ycsb_request*>> (step_num);
+
+	for (uint64_t i = 0; i < step_num; i++) {
+		ycsb_msg->sub_reqs[i] = vector<ycsb_request*>();
+    }
+
+	for (uint64_t i = 0; i < ycsb_msg->requests.size(); i++) {
+		ycsb_msg->sub_reqs[ycsb_msg->requests[i]->key % step_num].push_back(ycsb_msg->requests[i]);
+	}
+	ycsb_msg->steps = vector<uint64_t>(step_num, 1);
+}
+#elif WORKLOAD == TPCC
+void InputThread::split_long_transaction(Message * msg) {
+}
+#else
+void InputThread::split_long_transaction(Message * msg) {
+}
+#endif
 
 void OutputThread::setup() {
 	DEBUG_M("OutputThread::setup MessageThread alloc\n");

@@ -459,6 +459,10 @@ void TxnManager::reset() {
 	twopl_wait_start = 0;
 	log_flushed = false;
 
+#if LONG_TXN_WORKLOAD
+	original_txn_id = UINT64_MAX;
+#endif
+
 	//ready = true;
 
 	// MaaT & DTA & WKDB
