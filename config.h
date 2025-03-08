@@ -249,6 +249,11 @@
 #define FIRST_PART_LOCAL      true
 #define MAX_TUPLE_SIZE        1024 // in bytes
 #define GEN_BY_MPR false
+
+#define LONG_TXN_WORKLOAD true
+#define LONG_TXN_SPLIT false
+#define LONG_TXN_SORT false
+#define LONG_TXN_SCHEDULE false
 // ==== [YCSB] ====
 // SKEW_METHOD:
 //    ZIPF: use ZIPF_THETA distribution
@@ -265,7 +270,15 @@
 #define SCAN_LEN          20
 #define PART_PER_TXN 2
 #define PERC_MULTI_PART     MPR
-#define REQ_PER_QUERY 10
+#if LONG_TXN_WORKLOAD
+// DO NOT LET PEQ_PER_QUERY <= REQ_PER_SHORT_QUERY
+#define REQ_PER_QUERY 50
+#define REQ_PER_SHORT_QUERY 10
+#define LONG_QUERY_PERC 0.2
+#else
+#define REQ_PER_QUERY 30
+#define REQ_PER_SHORT_QUERY 10
+#endif
 #define FIELD_PER_TUPLE       10
 #define CREATE_TXN_FILE false
 #define STRICT_PPT 0
