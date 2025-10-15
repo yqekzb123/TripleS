@@ -197,6 +197,12 @@ extern UInt32 g_logger_thread_cnt;
 extern UInt32 g_tcp_thread_cnt;
 extern UInt32 g_send_thread_cnt;
 extern UInt32 g_rem_thread_cnt;
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+extern UInt32 g_scheduler_thread_cnt;
+extern uint64_t the_first_scheduler_id;
+extern uint64_t minSid;
+extern uint64_t * sids;
+#endif
 extern ts_t g_abort_penalty;
 extern ts_t g_abort_penalty_max;
 extern bool g_central_man;

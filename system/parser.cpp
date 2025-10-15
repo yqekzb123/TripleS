@@ -189,10 +189,16 @@ void parser(int argc, char * argv[]) {
   g_total_thread_cnt += g_logger_thread_cnt; // logger thread
 #endif
 #if CC_ALG == CALVIN
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+  g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
+  g_abort_thread_cnt = 0;
+  g_total_thread_cnt -= 1;
+#else
     g_total_thread_cnt += 2; // sequencer + scheduler thread
   // Remove abort thread
   g_abort_thread_cnt = 0;
   g_total_thread_cnt -= 1;
+#endif
 #elif CC_ALG == HDCC
   g_total_thread_cnt += 3; // sequencer + scheduler thread + confilict stat thread
 #elif CC_ALG == SNAPPER
@@ -226,6 +232,7 @@ void parser(int argc, char * argv[]) {
       printf("CC Alg %d\n",CC_ALG);
       printf("g_done_timer %ld\n",g_done_timer);
 			printf("g_thread_cnt %d\n",g_thread_cnt );
+      printf("g_scheduler_thread_cnt %d\n",g_scheduler_thread_cnt );
 			printf("g_abort_penalty %ld\n",g_abort_penalty);
 			printf("g_zipf_theta %f\n",g_zipf_theta );
 			printf("g_node_id %d\n",g_node_id );

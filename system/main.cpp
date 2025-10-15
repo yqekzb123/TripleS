@@ -68,6 +68,7 @@ InputThread * input_thds;
 OutputThread * output_thds;
 AbortThread * abort_thds;
 LogThread * log_thds;
+WorkerNumThread * worker_num_thds;
 #if CC_ALG == CALVIN
 CalvinLockThread * calvin_lock_thds;
 CalvinSequencerThread * calvin_seq_thds;
@@ -153,6 +154,13 @@ int main(int argc, char *argv[]) {
 		network_test_recv();
 
 	return 0;
+#endif
+
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+	sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_scheduler_thread_cnt);
+	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
+		sids[i] = 0;
+	}
 #endif
 
 
@@ -311,7 +319,11 @@ int main(int argc, char *argv[]) {
 		all_thd_cnt += g_logger_thread_cnt;
 #endif
 #if CC_ALG == CALVIN
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+		all_thd_cnt += (g_scheduler_thread_cnt + 1);
+#else
 		all_thd_cnt += 2; // sequencer + scheduler thread
+#endif
 #endif
 #if CC_ALG == SNAPPER
 	all_thd_cnt += 3;	// sequencer + scheduler thread + sanpper_check_thread
@@ -335,6 +347,7 @@ int main(int argc, char *argv[]) {
 	pthread_attr_init(&attr);
 
 	worker_thds = new WorkerThread[wthd_cnt];
+
 	input_thds = new InputThread[rthd_cnt];
 	output_thds = new OutputThread[sthd_cnt];
 	abort_thds = new AbortThread[1];
@@ -344,8 +357,13 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if CC_ALG == CALVIN
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+	calvin_lock_thds = new CalvinLockThread[g_scheduler_thread_cnt];
+	calvin_seq_thds = new CalvinSequencerThread[1];
+#else
 	calvin_lock_thds = new CalvinLockThread[1];
 	calvin_seq_thds = new CalvinSequencerThread[1];
+#endif
 #endif
 #if CC_ALG == SNAPPER
 	calvin_lock_thds = new CalvinLockThread[1];
@@ -414,6 +432,7 @@ int main(int argc, char *argv[]) {
 	simulation->last_da_query_time = starttime;
 
 	uint64_t id = 0;
+	
 	for (uint64_t i = 0; i < wthd_cnt; i++) {
 #if SET_AFFINITY
 		CPU_ZERO(&cpus);
@@ -456,6 +475,20 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if CC_ALG == CALVIN
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+	the_first_scheduler_id = id; 
+	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
+#if SET_AFFINITY
+		CPU_ZERO(&cpus);
+		CPU_SET(cpu_cnt, &cpus);
+		pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+		cpu_cnt++;
+#endif
+
+		calvin_lock_thds[i].init(id,g_node_id,m_wl);
+		pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_lock_thds[i]);
+}
+#else
 #if SET_AFFINITY
 	CPU_ZERO(&cpus);
 	CPU_SET(cpu_cnt, &cpus);
@@ -465,6 +498,7 @@ int main(int argc, char *argv[]) {
 
 	calvin_lock_thds[0].init(id,g_node_id,m_wl);
 	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_lock_thds[0]);
+#endif
 #if SET_AFFINITY
 	CPU_ZERO(&cpus);
 	CPU_SET(cpu_cnt, &cpus);

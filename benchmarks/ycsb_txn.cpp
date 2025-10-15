@@ -63,8 +63,8 @@ RC YCSBTxnManager::acquire_locks() {
 	for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
 		ycsb_request * req = ycsb_query->requests[rid];
 		uint64_t part_id = _wl->key_to_part( req->key );
-    DEBUG("LK Acquire (%ld,%ld) %d,%ld -> %ld\n", get_txn_id(), get_batch_id(), req->acctype,
-          req->key, GET_NODE_ID(part_id));
+    DEBUG("[%ld] LK Acquire (%ld,%ld) %d,%ld -> %ld\n", get_thd_id(), get_txn_id(), get_batch_id(), req->acctype,
+      req->key, GET_NODE_ID(part_id));
     if (GET_NODE_ID(part_id) != g_node_id) continue;
 		INDEX * index = _wl->the_index;
 		itemid_t * item;
@@ -100,8 +100,8 @@ void YCSBTxnManager::get_read_write_set() {
 	for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
 		ycsb_request * req = ycsb_query->requests[rid];
 		uint64_t part_id = _wl->key_to_part( req->key );
-    DEBUG("LK Acquire (%ld,%ld) %d,%ld -> %ld\n", get_txn_id(), get_batch_id(), req->acctype,
-          req->key, GET_NODE_ID(part_id));
+    DEBUG("[%ld] LK Acquire (%ld,%ld) %d,%ld -> %ld\n", get_thd_id(), get_txn_id(), get_batch_id(), req->acctype,
+      req->key, GET_NODE_ID(part_id));
     if (GET_NODE_ID(part_id) != g_node_id) continue;
 		INDEX * index = _wl->the_index;
 		itemid_t * item;
@@ -133,7 +133,7 @@ RC YCSBTxnManager::run_txn() {
   assert(CC_ALG != CALVIN);
 
   if(IS_LOCAL(txn->txn_id) && state == YCSB_0 && next_record_id == 0) {
-    DEBUG("Running txn %ld\n",txn->txn_id);
+  DEBUG("[%ld] Running txn %ld\n", get_thd_id(), txn->txn_id);
     //query->print();
     query->partitions_touched.add_unique(GET_PART_ID(0,g_node_id));
   }
@@ -210,7 +210,7 @@ RC YCSBTxnManager::send_remote_request() {
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
   uint64_t dest_node_id = GET_NODE_ID(ycsb_query->requests[next_record_id]->key);
   ycsb_query->partitions_touched.add_unique(GET_PART_ID(0,dest_node_id));
-  DEBUG("ycsb send remote request %ld, %ld\n",txn->txn_id,txn->batch_id);
+  DEBUG("[%ld] ycsb send remote request %ld, %ld\n",get_thd_id(),txn->txn_id,txn->batch_id);
   msg_queue.enqueue(get_thd_id(),Message::create_message(this,RQRY),dest_node_id);
   txn_stats.trans_process_network_start_time = get_sys_clock();
   return WAIT_REM;
@@ -412,9 +412,9 @@ RC YCSBTxnManager::run_calvin_txn() {
   RC rc = RCOK;
   uint64_t starttime = get_sys_clock();
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
-  DEBUG("(%ld,%ld) Run calvin txn\n",txn->txn_id,txn->batch_id);
+  DEBUG("[%ld] (%ld,%ld) Run calvin txn\n",get_thd_id(),txn->txn_id,txn->batch_id);
   while(!calvin_exec_phase_done() && rc == RCOK) {
-    DEBUG("(%ld,%ld) phase %d\n",txn->txn_id,txn->batch_id,this->phase);
+  DEBUG("[%ld] (%ld,%ld) phase %d\n",get_thd_id(),txn->txn_id,txn->batch_id,this->phase);
     switch(this->phase) {
       case CALVIN_RW_ANALYSIS:
 
@@ -427,14 +427,14 @@ RC YCSBTxnManager::run_calvin_txn() {
 #else
         calvin_expected_rsp_cnt = 0;
 #endif
-        DEBUG("(%ld,%ld) expects %d responses;\n", txn->txn_id, txn->batch_id,
-              calvin_expected_rsp_cnt);
+    DEBUG("[%ld] (%ld,%ld) expects %d responses;\n", get_thd_id(), txn->txn_id, txn->batch_id,
+      calvin_expected_rsp_cnt);
 
         this->phase = CALVIN_LOC_RD;
         break;
       case CALVIN_LOC_RD:
         // Phase 2: Perform local reads
-        DEBUG("(%ld,%ld) local reads\n",txn->txn_id,txn->batch_id);
+  DEBUG("[%ld] (%ld,%ld) local reads\n",get_thd_id(),txn->txn_id,txn->batch_id);
         rc = run_ycsb();
         //release_read_locks(query);
 
@@ -451,8 +451,8 @@ RC YCSBTxnManager::run_calvin_txn() {
           if(calvin_collect_phase_done()) {
             rc = RCOK;
           } else {
-            DEBUG("(%ld,%ld) wait in collect phase; %d / %d rfwds received\n", txn->txn_id,
-                  txn->batch_id, rsp_cnt, calvin_expected_rsp_cnt);
+        DEBUG("[%ld] (%ld,%ld) wait in collect phase; %d / %d rfwds received\n", get_thd_id(), txn->txn_id,
+          txn->batch_id, rsp_cnt, calvin_expected_rsp_cnt);
             rc = WAIT;
           }
         } else { // Done
@@ -467,7 +467,7 @@ RC YCSBTxnManager::run_calvin_txn() {
         break;
       case CALVIN_EXEC_WR:
         // Phase 5: Execute transaction / perform local writes
-        DEBUG("(%ld,%ld) execute writes\n",txn->txn_id,txn->batch_id);
+  DEBUG("[%ld] (%ld,%ld) execute writes\n",get_thd_id(),txn->txn_id,txn->batch_id);
         rc = run_ycsb();
         this->phase = CALVIN_DONE;
         break;
@@ -487,7 +487,7 @@ RC YCSBTxnManager::run_aria_txn() {
   RC rc = RCOK;
   uint64_t starttime = get_sys_clock();
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
-  DEBUG("(%ld,%ld) Run aria txn\n",txn->txn_id,txn->batch_id);
+  DEBUG("[%ld] (%ld,%ld) Run aria txn\n",get_thd_id(),txn->txn_id,txn->batch_id);
   switch (simulation->aria_phase)
   {
   case ARIA_READ:

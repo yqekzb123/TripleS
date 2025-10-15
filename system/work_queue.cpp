@@ -19,6 +19,8 @@
 #include "query.h"
 #include "message.h"
 #include "client_query.h"
+#include <functional>
+#include "txn.h"
 #include <boost/lockfree/queue.hpp>
 
 void QWorkQueue::init() {
@@ -62,6 +64,14 @@ void QWorkQueue::init() {
 	calvin_work_enqueue_size = 0;
 	calvin_work_dequeue_size = 0;
 	sem_init(&_calvin_semaphore, 0, 1);
+#endif
+
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+	// calvin_scheduled_list = new LockFreeLinkedList<TxnManager *>();
+	calvin_scheduled_list = new LockFreeLinkedList();
+	sched_ready = true;
+
+	calvin_scheduled_list_lockfree = new LockFreeList<list_node_entry *>();
 #endif
 
 	sem_init(&_semaphore, 0, 1);
@@ -305,6 +315,45 @@ Message * QWorkQueue::sched_dequeue(uint64_t thd_id) {
 	Message * msg = NULL;
 	work_queue_entry * entry = NULL;
 
+	// 暂时先通过封锁来做吧，之后考虑把sched_queue合成一个，在IOThread中处理顺序问题。
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+	while (!ATOM_CAS(sched_ready, true, false)) {
+	}
+	bool valid = sched_queue[sched_ptr]->pop(entry);
+
+	if(valid) {
+		msg = entry->msg;
+		DEBUG("Sched Dequeue (%ld,%ld)\n",entry->txn_id,entry->batch_id);
+
+		if(msg->rtype == RDONE) {
+			// Advance to next queue or next epoch
+			DEBUG("Sched RDONE %ld %ld\n",sched_ptr,simulation->get_worker_epoch());
+			assert(msg->get_batch_id() == simulation->get_worker_epoch());
+			if(sched_ptr == g_node_cnt - 1) {
+				INC_STATS(thd_id,sched_epoch_cnt,1);
+				INC_STATS(thd_id,sched_epoch_diff,get_sys_clock()-simulation->last_worker_epoch_time);
+				simulation->next_worker_epoch();
+			}
+			sched_ptr = (sched_ptr + 1) % g_node_cnt;
+			ATOM_CAS(sched_ready, false, true);
+			msg->release();
+			msg = NULL;
+		} else {
+			assert(msg->batch_id == simulation->get_worker_epoch());
+			ATOM_CAS(sched_ready, false, true);
+		}
+
+		uint64_t queue_time = get_sys_clock() - entry->starttime;
+		INC_STATS(thd_id,sched_queue_wait_time,queue_time);
+		INC_STATS(thd_id,sched_queue_cnt,1);
+
+		DEBUG_M("QWorkQueue::sched_enqueue work_queue_entry free\n");
+		mem_allocator.free(entry,sizeof(work_queue_entry));
+		INC_STATS(thd_id,sched_queue_dequeue_time,get_sys_clock() - starttime);
+	} else {
+		ATOM_CAS(sched_ready, false, true);
+	}
+#else
 	bool valid = sched_queue[sched_ptr]->pop(entry);
 
 	if(valid) {
@@ -343,6 +392,7 @@ Message * QWorkQueue::sched_dequeue(uint64_t thd_id) {
 
 		INC_STATS(thd_id,sched_queue_dequeue_time,get_sys_clock() - starttime);
 	}
+#endif
 
 	return msg;
 }
@@ -789,6 +839,111 @@ Message * QWorkQueue::dequeue(uint64_t thd_id) {
 	return msg;
 }
 
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+void QWorkQueue::insert_calvin_list(uint64_t thd_id, TxnManager * txn) {
+	uint64_t key = (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
+	// Node<TxnManager *> * node = calvin_scheduled_list->insert(key, txn);
+	Node * node = calvin_scheduled_list->insert(key, txn);
+	assert(node != NULL);
+	// int result = calvin_scheduled_list->insert(key, calvin_scheduled_list->head, txn);
+	// assert(result != -1);
+}
+
+TxnManager * QWorkQueue::get_from_calvin_list(uint64_t thd_id) {
+	Node * currNode = calvin_scheduled_list->get_head();
+	Node * nextNode = currNode->succ.get_right();
+
+	while (nextNode->key < minSid) {
+		while (nextNode->succ.get_mark() == 1 && (currNode->succ.get_mark() == 0 || currNode->succ.get_right() != nextNode)) {
+            if (currNode->succ.get_right() == nextNode) {
+                calvin_scheduled_list->HelpMarked(currNode, nextNode);
+            }
+            nextNode = currNode->succ.get_right();
+        }
+        if (nextNode->key < minSid) {
+			if (((TxnManager *) nextNode->element)->lock_ready_cnt == 0) {
+				Node * delNode = calvin_scheduled_list->remove(nextNode->key);
+				if (delNode != NULL) {
+					return (TxnManager *) delNode->element;
+				} else {
+					currNode = calvin_scheduled_list->get_head();
+					nextNode = currNode->succ.get_right();
+				}
+			} else {
+				currNode = nextNode;
+            	nextNode = currNode->succ.get_right();
+			}
+        }
+	}
+	return NULL;
+	
+	// Node<TxnManager *> * currNode = calvin_scheduled_list->get_head();
+	// Node<TxnManager *> * nextNode = (Node<TxnManager*>*) currNode->succ.get_right();
+
+	// while (nextNode->key < minSid) {
+	// 	while (nextNode->succ.get_mark() == 1 && (currNode->succ.get_mark() == 0 || currNode->succ.get_right() != nextNode)) {
+    //         if (currNode->succ.get_right() == nextNode) {
+    //             calvin_scheduled_list->HelpMarked(currNode, nextNode);
+    //         }
+    //         nextNode = (Node<TxnManager*>*) currNode->succ.get_right();
+    //     }
+    //     if (nextNode->key < minSid) {
+	// 		if (nextNode->element->lock_ready_cnt == 0) {
+	// 			Node<TxnManager *> * delNode = calvin_scheduled_list->remove(nextNode->key);
+	// 			if (delNode != NULL) {
+	// 				return delNode->element;
+	// 			} else {
+	// 				currNode = calvin_scheduled_list->get_head();
+	// 				nextNode = (Node<TxnManager*>*) currNode->succ.get_right();
+	// 			}
+	// 		} else {
+	// 			currNode = nextNode;
+    //         	nextNode = (Node<TxnManager*>*) currNode->succ.get_right();
+	// 		}
+    //     }
+	// }
+	// return NULL;
+}
+
+void QWorkQueue::insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn) {
+	uint64_t key = (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
+	list_node_entry * entry = (list_node_entry*)mem_allocator.align_alloc(sizeof(list_node_entry));
+	entry->key = key;
+	entry->txn = txn;
+	//
+	calvin_scheduled_list_lockfree->insert(entry, thd_id);
+}
+
+TxnManager * QWorkQueue::get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t &key) {
+
+	// 下面用calvin_scheduled_list_lockfree的find_and_remove_if，来获取对应数据
+	// 所以这里要先写一个 判断是否可以出链表的函数，然后作为参数传进去.
+	// 要求具体来说是，key < minSid && lock_ready_cnt == 0
+	// 这个函数是传进去的参数是list_node_entry *，返回值是bool
+
+	std::function<bool(list_node_entry*)> func = [](list_node_entry * arg) -> bool {
+		list_node_entry * entry = arg;
+		if (entry->key <= minSid && entry->txn->lock_ready_cnt == 0) {
+			return true;
+		} else {
+			return false;
+		}
+	};
+	list_node_entry * entry = NULL;
+	key = 0;
+
+	bool succ = calvin_scheduled_list_lockfree->try_take(func, entry, thd_id);
+
+	if (succ) {
+		// DEBUG("[LockFreeList] thd %ld get_from_calvin_list_lockfree key=%lu txn=%p\n", thd_id, entry->key, entry->txn);
+		TxnManager * txn = entry->txn;
+		mem_allocator.free(entry, sizeof(list_node_entry));
+		return txn;
+	} else {
+		return NULL;
+	}
+}
+#endif
 
 //elioyan TODO
 Message * QWorkQueue::queuetop(uint64_t thd_id)

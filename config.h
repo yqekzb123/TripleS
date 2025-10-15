@@ -46,6 +46,8 @@
 #define SECOND 130 // Set the queue monitoring time.
 // #define THD_ID_QUEUE
 #define ONE_NODE_RECIEVE 0 // only node 0 will receive the txn query
+
+#define USE_WORKERNUMTHREAD 1
 #if 0
 // #define LESS_DIS // Reduce the number of yCSB remote data to 1
 // #define LESS_DIS_NUM 10 // Reduce the number of yCSB remote data to 1
@@ -65,7 +67,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 16
+#define NODE_CNT 1
 #define THREAD_CNT 4
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -136,7 +138,7 @@
 // Message Passing
 /***********************************************/
 #define TPORT_TYPE tcp
-#define TPORT_PORT 7000
+#define TPORT_PORT 18000
 #define SET_AFFINITY true
 
 #define MAX_TPORT_NAME 128
@@ -160,13 +162,13 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG HDCC
+#define CC_ALG CALVIN
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
 #define KEY_ORDER         false
 // transaction roll back changes after abort
-#define ROLL_BACK         false
+#define ROLL_BACK         true
 // per-row lock/ts management or central lock/ts management
 #define CENTRAL_MAN         false
 #define BUCKET_CNT          31
@@ -253,7 +255,8 @@
 #define LONG_TXN_WORKLOAD true
 #define LONG_TXN_SPLIT false
 #define LONG_TXN_SORT false
-#define LONG_TXN_SCHEDULE false
+#define LONG_TXN_SCHEDULE true
+#define SCHEDULER_CNT 2
 // ==== [YCSB] ====
 // SKEW_METHOD:
 //    ZIPF: use ZIPF_THETA distribution
@@ -263,9 +266,9 @@
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
 #define SYNTH_TABLE_SIZE 8388608
-#define ZIPF_THETA 0.6
-#define TXN_WRITE_PERC 1
-#define TUP_WRITE_PERC 0.5
+#define ZIPF_THETA 0.3
+#define TXN_WRITE_PERC 1.0
+#define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
 #define SCAN_LEN          20
 #define PART_PER_TXN 2
@@ -274,9 +277,9 @@
 // DO NOT LET PEQ_PER_QUERY <= REQ_PER_SHORT_QUERY
 #define REQ_PER_QUERY 50
 #define REQ_PER_SHORT_QUERY 10
-#define LONG_QUERY_PERC 0.2
+#define LONG_QUERY_PERC 0.4
 #else
-#define REQ_PER_QUERY 30
+#define REQ_PER_QUERY 50
 #define REQ_PER_SHORT_QUERY 10
 #endif
 #define FIELD_PER_TUPLE       10
@@ -296,11 +299,11 @@
 // are not modeled.
 #define TPCC_ACCESS_ALL       false
 #define WH_UPDATE         false
-#define NUM_WH PART_CNT
+#define NUM_WH 32
 // % of transactions that access multiple partitions
-#define MPR 1.0
+#define MPR 0.2
 #define MPIR 0.01
-#define MPR_NEWORDER      20 // In %
+#define MPR_NEWORDER MPR
 #if NODE_CNT == 1
 #define NO_REMOTE
 #endif
@@ -334,7 +337,7 @@ enum DATxnType {
 #define MAX_DA_TABLE_SIZE 10000
 
 
-#define TXN_TYPE          TPCC_ALL
+#define TXN_TYPE          TPCC_DIST
 #define PERC_PAYMENT 0.489
 #define FIRSTNAME_MINLEN      8
 #define FIRSTNAME_LEN         16
@@ -393,6 +396,7 @@ enum PPSTxnType {
 #define IDX_VERB          false
 #define VERB_ALLOC          true
 
+#define DEBUG_LOCKFREE_LIST true
 #define DEBUG_LOCK          false
 #define DEBUG_TIMESTAMP       false
 #define DEBUG_SYNTH         false
@@ -506,8 +510,8 @@ enum PPSTxnType {
 #define PROG_TIMER 10 * BILLION // in s
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
-#define DONE_TIMER 1 * 60 * BILLION // ~1 minutes
-#define WARMUP_TIMER 1 * 60 * BILLION // ~1 minutes
+#define DONE_TIMER 1 * 30 * BILLION // ~1 minutes
+#define WARMUP_TIMER 1 * 20 * BILLION // ~1 minutes
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define SNAPPER_TXN_TIMEOUT 0.1 * BILLION

@@ -272,6 +272,10 @@ RC InputThread::server_recv_loop() {
 	fflush(stdout);
 	return FINISH;
 }
+
+
+// 先分析事务内操作的依赖，横向拆分子事务；
+// 随后对操作数仍然很多的子事务进行纵向拆分，原则上，先按访问节点拆分，随后按节点分析一批事务的读写集，并均匀划分临时分区。实现时用HASH来快速代替。
 #if WORKLOAD == YCSB
 void InputThread::split_long_transaction(Message * msg) {
 	YCSBClientQueryMessage * ycsb_msg = (YCSBClientQueryMessage *) msg;

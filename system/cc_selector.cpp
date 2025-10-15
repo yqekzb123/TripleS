@@ -43,6 +43,8 @@ int CCSelector::get_best_cc(Message *msg){
     for(uint64_t i = 0; i < req.size(); i++){
         uint64_t shard = key_to_shard(req[i]->key);
         if((shard % g_node_cnt != g_node_id) || is_high_conflict[shard]){
+        // if((shard % g_node_cnt != g_node_id)){
+        // if (is_high_conflict[shard]) {
             // txn that accesses multi partition or high conflict shard, use CALVIN
             return CALVIN;
         }

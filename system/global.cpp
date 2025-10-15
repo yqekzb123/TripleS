@@ -159,6 +159,12 @@ UInt32 g_core_cnt = CORE_CNT;
 
 #if CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC
 UInt32 g_thread_cnt = PART_CNT/NODE_CNT;
+#elif LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+UInt32 g_scheduler_thread_cnt = SCHEDULER_CNT;
+UInt32 g_thread_cnt = THREAD_CNT + 1 - g_scheduler_thread_cnt;
+uint64_t the_first_scheduler_id = 0;
+uint64_t * sids;
+uint64_t minSid = 0;
 #else
 UInt32 g_thread_cnt = THREAD_CNT;
 #endif
@@ -171,9 +177,14 @@ UInt32 g_logger_thread_cnt = 0;
 #endif
 UInt32 g_stats_per_interval_thread_cnt = STATS_EVERY_INTERVAL;
 UInt32 g_send_thread_cnt = SEND_THREAD_CNT;
+
 #if CC_ALG == CALVIN
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+UInt32 g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
+#else
 // sequencer + scheduler thread
 UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2;
+#endif
 #elif CC_ALG == SNAPPER
 // sequencer + scheduler thread + snapper_check_thread
 UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 3;

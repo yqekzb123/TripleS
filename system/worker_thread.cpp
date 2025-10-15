@@ -40,6 +40,7 @@
 #include "ssi.h"
 #include "focc.h"
 #include "bocc.h"
+#include "lock_free_list.h"
 #if CC_ALG == HDCC
 #include "cc_selector.h"
 #endif
@@ -399,7 +400,68 @@ char type2char(DATxnType txn_type)
       return 'U';
   }
 }
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+RC WorkerThread::run() {
+  tsetup();
+  printf("Running WorkerThread %ld\n",_thd_id);
 
+  uint64_t ready_starttime;
+  uint64_t idle_starttime = 0;
+
+	while(!simulation->is_done()) {
+    txn_man = NULL;
+    heartbeat();
+
+    progress_stats();
+    Message* msg;
+    uint64_t key = 0;
+    txn_man = work_queue.get_from_calvin_list_lockfree(_thd_id, key);
+    if (txn_man == NULL) {
+      msg = work_queue.dequeue(get_thd_id());
+
+      if(!msg) {
+        if (idle_starttime == 0) idle_starttime = get_sys_clock();
+        continue;
+      }
+      simulation->last_da_query_time = get_sys_clock();
+      if(idle_starttime > 0) {
+        INC_STATS(_thd_id,worker_idle_time,get_sys_clock() - idle_starttime);
+        idle_starttime = 0;
+      }
+      txn_man = get_transaction_manager(msg);
+    }
+
+    txn_man->txn_stats.clear_short();
+    txn_man->txn_stats.work_queue_cnt += 1;
+
+    if (!msg) {
+      msg = txn_man->last_msg;
+    }
+
+    ready_starttime = get_sys_clock();
+    bool ready = txn_man->unset_ready();
+    INC_STATS(get_thd_id(),worker_activate_txn_time,get_sys_clock() - ready_starttime);
+    if(!ready) {
+      // Return to work queue, end processing
+      work_queue.enqueue(get_thd_id(),msg,true);
+      continue;
+    }
+    txn_man->register_thread(this);
+
+    process(msg);
+
+    ready_starttime = get_sys_clock();
+    if(txn_man) {
+      bool ready = txn_man->set_ready();
+      assert(ready);
+    }
+    INC_STATS(get_thd_id(),worker_deactivate_txn_time,get_sys_clock() - ready_starttime);
+  }
+  printf("FINISH %ld:%ld\n",_node_id,_thd_id);
+  fflush(stdout);
+  return FINISH;
+}
+#else
 RC WorkerThread::run() {
   tsetup();
   printf("Running WorkerThread %ld\n",_thd_id);
@@ -635,6 +697,7 @@ RC WorkerThread::run() {
   fflush(stdout);
   return FINISH;
 }
+#endif
 
 RC WorkerThread::process_rfin(Message * msg) {
   DEBUG("RFIN %ld\n",msg->get_txn_id());
@@ -1500,6 +1563,9 @@ RC WorkerNumThread::run() {
     INC_STATS(_thd_id,work_queue_dtx_cnt[i],dtx_size);
     i++;
     sleep(1);
+    // 就是帮我打印一下现在测试了多少秒
+    DEBUG("WorkerNumThread %ld: %d seconds\n",_thd_id,i);
+
     // if(idle_starttime ==0)
     //   idle_starttime = get_sys_clock();
 
@@ -1556,7 +1622,11 @@ RC StatsPerIntervalThread::run(){
       silo_cnt_this_time = 0;
       calvin_cnt_this_time = 0;
       last_time = now_time;
+      DEBUG("------StatsPerIntervalThread %ld seconds--------\n",loop);
       loop++;
+
+      // 增加清理无锁链表的操作
+      work_queue.calvin_scheduled_list_lockfree->remove_consumed();
     }
   }
   printf("FINISH %ld:%ld\n",_node_id,_thd_id);

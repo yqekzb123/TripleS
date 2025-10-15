@@ -34,6 +34,13 @@
   if(DEBUG_DISTR) { \
     fflush(stdout); \
   }
+
+#define DEBUG_LOCKFREE(...) \
+  if(DEBUG_LOCKFREE_LIST) { \
+    fprintf(stdout,__VA_ARGS__); \
+    fflush(stdout); \
+  }
+
     //fprintf(stdout,"[alloc] ");
 #define DEBUG_M(...) \
   if(DEBUG_ALLOC && warmup_done) { \

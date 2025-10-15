@@ -1269,7 +1269,7 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 	Access * access = NULL;
 	this->last_row = row;
 	this->last_type = type;
-  uint64_t get_access_end_time = 0;
+  	uint64_t get_access_end_time = 0;
 #if CC_ALG == TICTOC
 	bool isexist = false;
 	uint64_t size = get_write_set_size();
@@ -1315,17 +1315,17 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 	}
 #else
 	access_pool.get(get_thd_id(),access);
-  get_access_end_time = get_sys_clock();
-  INC_STATS(get_thd_id(), trans_get_access_time, get_access_end_time - starttime);
-  INC_STATS(get_thd_id(), trans_get_access_count, 1);
+	get_access_end_time = get_sys_clock();
+	INC_STATS(get_thd_id(), trans_get_access_time, get_access_end_time - starttime);
+	INC_STATS(get_thd_id(), trans_get_access_count, 1);
 #endif
 	//uint64_t row_cnt = txn->row_cnt;
 	//assert(txn->accesses.get_count() - 1 == row_cnt);
 #if CC_ALG != TICTOC
   // uint64_t start_time = get_sys_clock();
 	rc = row->get_row(type, this, access);
-  INC_STATS(get_thd_id(), trans_get_row_time, get_sys_clock() - get_access_end_time);
-  INC_STATS(get_thd_id(), trans_get_row_count, 1);
+	INC_STATS(get_thd_id(), trans_get_row_time, get_sys_clock() - get_access_end_time);
+	INC_STATS(get_thd_id(), trans_get_row_count, 1);
 #endif
 #if CC_ALG == FOCC
 	focc_man.active_storage(type, this, access);
@@ -1341,8 +1341,8 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 		DEBUG_M("TxnManager::get_row(abort) access free\n");
 		access_pool.put(get_thd_id(),access);
 		timespan = get_sys_clock() - starttime;
-    INC_STATS(get_thd_id(), trans_store_access_time, timespan + starttime - middle_time);
-    INC_STATS(get_thd_id(), trans_store_access_count, 1);
+		INC_STATS(get_thd_id(), trans_store_access_time, timespan + starttime - middle_time);
+		INC_STATS(get_thd_id(), trans_store_access_count, 1);
 		INC_STATS(get_thd_id(), txn_manager_time, timespan);
 		INC_STATS(get_thd_id(), txn_conflict_cnt, 1);
 		//cflt = true;
@@ -1384,25 +1384,25 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 #if ROLL_BACK && (CC_ALG == DL_DETECT || CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE || \
 									CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC)
 	if (type == WR) {
-	//printf("alloc 10 %ld\n",get_txn_id());
-	uint64_t part_id = row->get_part_id();
-	DEBUG_M("TxnManager::get_row row_t alloc\n")
-	row_pool.get(get_thd_id(),access->orig_data);
-	access->orig_data->init(row->get_table(), part_id, 0);
-	access->orig_data->copy(row);
-	assert(access->orig_data->get_schema() == row->get_schema());
+		//printf("alloc 10 %ld\n",get_txn_id());
+		uint64_t part_id = row->get_part_id();
+		DEBUG_M("TxnManager::get_row row_t alloc\n")
+		row_pool.get(get_thd_id(),access->orig_data);
+		access->orig_data->init(row->get_table(), part_id, 0);
+		access->orig_data->copy(row);
+		assert(access->orig_data->get_schema() == row->get_schema());
 
-	// ARIES-style physiological logging
+		// ARIES-style physiological logging
 #if LOGGING
 		// LogRecord * record =
 		// logger.createRecord(LRT_UPDATE,L_UPDATE,get_txn_id(),part_id,row->get_table()->get_table_id(),row->get_primary_key());
 		LogRecord *record = logger.createRecord(
 				get_txn_id(), L_UPDATE, row->get_table()->get_table_id(), row->get_primary_key());
-	if(g_repl_cnt > 0) {
+		if(g_repl_cnt > 0) {
 			msg_queue.enqueue(get_thd_id(), Message::create_message(record, LOG_MSG),
 												g_node_id + g_node_cnt + g_client_node_cnt);
-	}
-	logger.enqueueRecord(record);
+		}
+		logger.enqueueRecord(record);
 #endif
 	}
 #endif
@@ -1452,8 +1452,8 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 #endif
 
 	timespan = get_sys_clock() - starttime;
-  INC_STATS(get_thd_id(), trans_store_access_time, timespan + starttime - middle_time);
-  INC_STATS(get_thd_id(), trans_store_access_count, 1);
+	INC_STATS(get_thd_id(), trans_store_access_time, timespan + starttime - middle_time);
+	INC_STATS(get_thd_id(), trans_store_access_count, 1);
 	INC_STATS(get_thd_id(), txn_manager_time, timespan);
 	row_rtn  = access->data;
 

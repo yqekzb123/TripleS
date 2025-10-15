@@ -9,6 +9,9 @@ from run_config import *
 import time
 import signal
 
+import os
+os.environ['LD_LIBRARY_PATH'] = '/home/zhy/.local/lib:' + os.environ.get('LD_LIBRARY_PATH', '')
+
 def custom_signal_handler(signum, frame):
     print('Signal handler called with signal', signum)
     print('Exiting...')
@@ -37,7 +40,7 @@ perfTime = 60
 fromtimelist=[]
 totimelist=[]
 
-keywords = ['tput', 'local_txn_abort_cnt', 'hdcc_calvin_cnt', 'hdcc_calvin_local_cnt', 'hdcc_silo_cnt', 'hdcc_silo_local_cnt']
+keywords = ['tput', 'seq_idle_time', 'sched_idle_time', 'worker_idle_time', 'fscl50', 'fscl99']
 keywords_cal_type = ['sum', 'sum', 'sum', 'sum', 'sum', 'sum']
 draw_keywords = ['tput']
 
@@ -85,7 +88,7 @@ for exp in exps:
     for e in experiments:
         cfgs = get_cfgs(fmt,e)
         if remote:
-            cfgs["TPORT_TYPE"], cfgs["TPORT_PORT"] = "tcp", 7000
+            cfgs["TPORT_TYPE"], cfgs["TPORT_PORT"] = "tcp", 18000
         output_f = get_outfile_name(cfgs, fmt)
         output_dir = output_f + "/"
         output_f += strnow
@@ -152,7 +155,7 @@ for exp in exps:
 
             print("Deploying: {}".format(output_f))
             os.chdir('./scripts')
-            cmd = './vcloud_deploy.sh \'{}\' /{}/ {} {} {}'.format(' '.join(machines), location, cfgs["NODE_CNT"], uname, perfTime, deploy_location)
+            cmd = './vcloud_deploy.sh \'{}\' /{}/ {} {} {} {} /home/zhy/.local/lib'.format(' '.join(machines), location, cfgs["NODE_CNT"], uname, perfTime, deploy_location)
             print(cmd)
             fromtimelist.append(str(int(time.time())) + "000")
             os.system(cmd)
@@ -179,6 +182,8 @@ for exp in exps:
             nclnodes = cfgs["NODE_CNT"]
             pids = []
             print("Deploying: {}".format(output_f))
+            env = os.environ.copy()
+            env['LD_LIBRARY_PATH'] = '/home/zhy/.local/lib:' + env.get('LD_LIBRARY_PATH', '')
             for n in range(nnodes+nclnodes):
                 if n < nnodes:
                     cmd = "./rundb -nid{}".format(n)
@@ -188,7 +193,7 @@ for exp in exps:
                 cmd = shlex.split(cmd)
                 ofile_n = "{}{}_{}.out".format(experiment_dir,n,output_f)
                 ofile = open(ofile_n,'w')
-                p = subprocess.Popen(cmd,stdout=ofile,stderr=ofile)
+                p = subprocess.Popen(cmd,stdout=ofile,stderr=ofile,env=env)
                 pids.insert(0,p)
             for n in range(nnodes + nclnodes):
                 pids[n].wait()

@@ -51,6 +51,10 @@ RC CalvinLockThread::run() {
 	uint64_t prof_starttime = get_sys_clock();
 	uint64_t idle_starttime = 0;
 
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+	uint64_t id = _thd_id % g_scheduler_thread_cnt;
+#endif
+
 	while(!simulation->is_done()) {
 		txn_man = NULL;
 
@@ -87,6 +91,26 @@ RC CalvinLockThread::run() {
 		txn_man->register_thread(this);
 		assert(ISSERVERN(txn_man->return_id));
 
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+		uint64_t old_sid = sids[id];
+		sids[id] = (txn_man->get_batch_id() << 32) + (txn_man->return_id << 24) + txn_man->get_txn_id() + 1;
+		// printf("[CalvinThread] %ld set sid from %ld to %ld, now minSid %ld\n", _thd_id, old_sid, sids[id], minSid);
+		//Update minSid
+		if (_thd_id == the_first_scheduler_id) {
+		// if (old_sid == minSid) {
+			uint64_t min = UINT64_MAX;
+			// std::string sid_log = "[CalvinThread] " + std::to_string(_thd_id) + " minSid update: sids = ";
+			for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
+				// sid_log += std::to_string(sids[i]) + " ";
+				if (sids[i] < min) min = sids[i];
+			}
+			assert(min >= minSid);
+			minSid = min;
+			// sid_log += "| new minSid = " + std::to_string(minSid);
+			// std::cout << sid_log << std::endl;
+		}
+#endif
+
 		INC_STATS(get_thd_id(),sched_txn_table_time,get_sys_clock() - prof_starttime);
 		prof_starttime = get_sys_clock();
 
@@ -96,9 +120,14 @@ RC CalvinLockThread::run() {
 				rc = txn_man->acquire_locks();
 		}
 
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+		txn_man->last_msg = msg;
+		work_queue.insert_calvin_list_lockfree(_thd_id, txn_man);
+#else
 		if(rc == RCOK) {
 				work_queue.enqueue(_thd_id,msg,false);
 		}
+#endif
 		txn_man->set_ready();
 
 		INC_STATS(_thd_id,mtx[33],get_sys_clock() - prof_starttime);

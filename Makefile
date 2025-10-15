@@ -1,6 +1,7 @@
 CC=/usr/bin/g++
-CFLAGS=-Wall -Werror -std=c++11 -g3 -ggdb -O0 -fno-strict-aliasing -fno-omit-frame-pointer -D_GLIBCXX_USE_CXX11_ABI=0
-#CFLAGS += -fsanitize=address -fno-stack-protector -fno-omit-frame-pointer
+# CFLAGS=-Wall -Werror -std=c++11 -g3 -ggdb -O0 -fno-strict-aliasing -fno-omit-frame-pointer -D_GLIBCXX_USE_CXX11_ABI=0
+CFLAGS=-Werror -std=c++11 -g3 -ggdb -O0 -fno-strict-aliasing -fno-omit-frame-pointer -D_GLIBCXX_USE_CXX11_ABI=0
+# CFLAGS += -fsanitize=address -fno-stack-protector -fno-omit-frame-pointer
 
 .SUFFIXES: .o .cpp .h .cc
 
@@ -9,6 +10,8 @@ DEPS = -I. -I./benchmarks -I./client/ -I./concurrency_control -I./storage -I./tr
 
 CFLAGS += $(DEPS) -D NOGRAPHITE=1 -Wno-sizeof-pointer-memaccess -Wno-error=class-memaccess 
 LDFLAGS = -L. -Wl,-rpath -pthread -lrt -lnanomsg -lanl -lcurl
+CFLAGS += -I$(HOME)/.local/include
+LDFLAGS += -L$(HOME)/.local/lib -lnanomsg
 #LDFLAGS = -Wall -L. -L$(NNMSG) -L$(JEMALLOC)/lib -Wl,-rpath,$(JEMALLOC)/lib -pthread -gdwarf-3 -lrt -std=c++11
 LDFLAGS += $(CFLAGS)
 LIBS =

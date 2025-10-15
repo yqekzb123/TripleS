@@ -45,16 +45,16 @@ RC YCSBWorkload::init() {
 		path += "YCSB_schema.txt";
 		//path += "/tests/apps/dbms/YCSB_schema.txt";
 	}
-  printf("Initializing schema... ");
-  fflush(stdout);
+	printf("Initializing schema... ");
+	fflush(stdout);
 	init_schema( path.c_str() );
-  printf("Done\n");
+	printf("Done\n");
 
-  printf("Initializing table... ");
-  fflush(stdout);
+	printf("Initializing table... ");
+	fflush(stdout);
 	init_table_parallel();
-  printf("Done\n");
-  fflush(stdout);
+	printf("Done\n");
+	fflush(stdout);
 //	init_table();
 	return RCOK;
 }
