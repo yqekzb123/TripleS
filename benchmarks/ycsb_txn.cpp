@@ -36,6 +36,8 @@
 #if CC_ALG == HDCC
 #include "row_hdcc.h"
 #endif
+#include "message.h"
+#include "lock_free_list.h"
 
 void YCSBTxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	TxnManager::init(thd_id, h_wl);
@@ -412,34 +414,62 @@ RC YCSBTxnManager::run_calvin_txn() {
   RC rc = RCOK;
   uint64_t starttime = get_sys_clock();
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
+  #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+  YCSBClientQueryMessage* sub_txn_msg = NULL;
+  #endif
   DEBUG("[%ld] (%ld,%ld) Run calvin txn\n",get_thd_id(),txn->txn_id,txn->batch_id);
   while(!calvin_exec_phase_done() && rc == RCOK) {
-  DEBUG("[%ld] (%ld,%ld) phase %d\n",get_thd_id(),txn->txn_id,txn->batch_id,this->phase);
+    DEBUG("[%ld] (%ld,%ld) phase %d\n",get_thd_id(),txn->txn_id,txn->batch_id,this->phase);
     switch(this->phase) {
       case CALVIN_RW_ANALYSIS:
-
         // Phase 1: Read/write set analysis
         calvin_expected_rsp_cnt = ycsb_query->get_participants(_wl);
-#if YCSB_ABORT_MODE
-        if(query->participant_nodes[g_node_id] == 1) {
-          calvin_expected_rsp_cnt--;
-        }
-#else
-        calvin_expected_rsp_cnt = 0;
-#endif
-    DEBUG("[%ld] (%ld,%ld) expects %d responses;\n", get_thd_id(), txn->txn_id, txn->batch_id,
-      calvin_expected_rsp_cnt);
+        #if YCSB_ABORT_MODE || OPEN_YCSB_DEPENDENCY
+          if(query->participant_nodes[g_node_id] == 1) {
+            calvin_expected_rsp_cnt--;
+          }
+        #else
+          calvin_expected_rsp_cnt = 0;
+        #endif
+        DEBUG("[%ld] (%ld,%ld) expects %d responses;\n", get_thd_id(), txn->txn_id, txn->batch_id,
+        calvin_expected_rsp_cnt);
 
         this->phase = CALVIN_LOC_RD;
         break;
-      case CALVIN_LOC_RD:
+      case CALVIN_LOC_RD: {
         // Phase 2: Perform local reads
-  DEBUG("[%ld] (%ld,%ld) local reads\n",get_thd_id(),txn->txn_id,txn->batch_id);
+        DEBUG("[%ld] (%ld,%ld) local reads\n",get_thd_id(),txn->txn_id,txn->batch_id);
         rc = run_ycsb();
         //release_read_locks(query);
+        #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+          sub_txn_msg = (YCSBClientQueryMessage*) last_msg;
+          assert(sub_txn_msg != NULL);
+          sub_txn_msg->isDone = true;
+          // Notify dependents: for each dependent child txn id, decrement its deps_left.
+          {
+            pthread_mutex_lock(&sub_txn_msg->dependents_lock);
+            for (size_t di = 0; di < sub_txn_msg->dependents_ids.size(); di++) {
+              uint64_t dep_id = sub_txn_msg->dependents_ids[di];
+              std::vector<uint64_t> dep_txn_ids = split_calvin_key(dep_id);
 
+              // Try message registry first to avoid races where TxnManager isn't created yet
+              Message * maybe_msg = Manager::lookup_txn_message(dep_id);
+              if (maybe_msg) {
+                YCSBClientQueryMessage * dep_msg = (YCSBClientQueryMessage*) maybe_msg;
+                int prev = dep_msg->deps_left.fetch_sub(1);
+
+                
+                DEBUG_SEQ("[%ld] (%ld,%ld) decrementing deps_left of dependent txn %ld(%ld,%ld) from %d to %d\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2], prev, prev - 1);
+              } else {
+                DEBUG_SEQ("[%ld] (%ld,%ld) dependent txn %ld(%ld,%ld) not found\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2]);
+              }
+            }
+            pthread_mutex_unlock(&sub_txn_msg->dependents_lock);
+          }
+        #endif
         this->phase = CALVIN_SERVE_RD;
         break;
+      }
       case CALVIN_SERVE_RD:
         // Phase 3: Serve remote reads
         // If there is any abort logic, relevant reads need to be sent to all active nodes...
@@ -451,8 +481,8 @@ RC YCSBTxnManager::run_calvin_txn() {
           if(calvin_collect_phase_done()) {
             rc = RCOK;
           } else {
-        DEBUG("[%ld] (%ld,%ld) wait in collect phase; %d / %d rfwds received\n", get_thd_id(), txn->txn_id,
-          txn->batch_id, rsp_cnt, calvin_expected_rsp_cnt);
+            DEBUG("[%ld] (%ld,%ld) wait in collect phase; %d / %d rfwds received\n", get_thd_id(), txn->txn_id,
+              txn->batch_id, rsp_cnt, calvin_expected_rsp_cnt);
             rc = WAIT;
           }
         } else { // Done
@@ -467,7 +497,7 @@ RC YCSBTxnManager::run_calvin_txn() {
         break;
       case CALVIN_EXEC_WR:
         // Phase 5: Execute transaction / perform local writes
-  DEBUG("[%ld] (%ld,%ld) execute writes\n",get_thd_id(),txn->txn_id,txn->batch_id);
+        DEBUG("[%ld] (%ld,%ld) execute writes\n",get_thd_id(),txn->txn_id,txn->batch_id);
         rc = run_ycsb();
         this->phase = CALVIN_DONE;
         break;

@@ -253,10 +253,14 @@
 #define GEN_BY_MPR false
 
 #define LONG_TXN_WORKLOAD true
-#define LONG_TXN_SPLIT false
-#define LONG_TXN_SORT false
 #define LONG_TXN_SCHEDULE true
+#define LONG_TXN_SPLIT true
+#define LONG_TXN_SORT false
 #define SCHEDULER_CNT 2
+// ==== LONG_TXN_SORT ====
+// 冲突衰减因子lambda
+#define LAMBDA_FACTOR 0.1
+
 // ==== [YCSB] ====
 // SKEW_METHOD:
 //    ZIPF: use ZIPF_THETA distribution
@@ -285,6 +289,8 @@
 #define FIELD_PER_TUPLE       10
 #define CREATE_TXN_FILE false
 #define STRICT_PPT 0
+// 打开随机依赖
+#define OPEN_YCSB_DEPENDENCY true
 // ==== [TPCC] ====
 // For large warehouse count, the tables do not fit in memory
 // small tpcc schemas shrink the table size.
@@ -337,7 +343,7 @@ enum DATxnType {
 #define MAX_DA_TABLE_SIZE 10000
 
 
-#define TXN_TYPE          TPCC_DIST
+#define TXN_TYPE          TPCC_ALL
 #define PERC_PAYMENT 0.489
 #define FIRSTNAME_MINLEN      8
 #define FIRSTNAME_LEN         16
@@ -397,6 +403,7 @@ enum PPSTxnType {
 #define VERB_ALLOC          true
 
 #define DEBUG_LOCKFREE_LIST true
+#define DEBUG_SEQUENCER     true
 #define DEBUG_LOCK          false
 #define DEBUG_TIMESTAMP       false
 #define DEBUG_SYNTH         false

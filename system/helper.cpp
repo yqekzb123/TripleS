@@ -103,6 +103,19 @@ uint64_t merge_idx_key(uint64_t key1, uint64_t key2, uint64_t key3) {
 	return key1 << 42 | key2 << 21 | key3;
 }
 
+uint64_t get_calvin_key(uint64_t batch_id, uint64_t return_id, uint64_t txn_id) {
+	uint64_t key = (batch_id << 32) + (return_id << 24) + txn_id + 1;
+	return key;
+}
+
+std::vector<uint64_t> split_calvin_key(uint64_t calvin_key) {
+	std::vector<uint64_t> parts(3);
+	parts[0] = (calvin_key >> 32); // batch_id
+	parts[1] = (calvin_key >> 24) & 0xFF; // return_id
+	parts[2] = (calvin_key & 0xFFFFFF) - 1; // txn_id
+	return parts;
+}
+
 void init_globals() {
   g_max_read_req = g_node_cnt * g_inflight_max;
   g_max_pre_req = g_node_cnt * g_inflight_max;

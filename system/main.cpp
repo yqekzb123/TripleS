@@ -81,8 +81,12 @@ SnapperCheckThread * snapper_check_thd;
 #if CC_ALG == HDCC
 CalvinLockThread * calvin_lock_thds;
 CalvinSequencerThread * calvin_seq_thds;
-ConflictThread * conflict_thds;
 #endif
+
+#if CC_ALG == HDCC || LONG_TXN_SCHEDULE
+ConflictThread * conflict_thd;
+#endif
+
 #if CC_ALG == ARIA
 AriaSequencerThread * aria_seq_thds;
 #endif
@@ -373,7 +377,10 @@ int main(int argc, char *argv[]) {
 #if CC_ALG == HDCC
 	calvin_lock_thds = new CalvinLockThread[1];
 	calvin_seq_thds = new CalvinSequencerThread[1];
-	conflict_thds=new ConflictThread[1];
+	// conflict_thds=new ConflictThread[1];
+#endif
+#if CC_ALG == HDCC || LONG_TXN_SCHEDULE
+	conflict_thd=new ConflictThread[1];
 #endif
 #if CC_ALG == ARIA
 	aria_seq_thds = new AriaSequencerThread[1];

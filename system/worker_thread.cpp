@@ -413,10 +413,12 @@ RC WorkerThread::run() {
     heartbeat();
 
     progress_stats();
-    Message* msg;
+    Message* msg = NULL;
     uint64_t key = 0;
+    int msg_orig = -1;
     txn_man = work_queue.get_from_calvin_list_lockfree(_thd_id, key);
     if (txn_man == NULL) {
+      msg_orig = 2;
       msg = work_queue.dequeue(get_thd_id());
 
       if(!msg) {
@@ -434,7 +436,8 @@ RC WorkerThread::run() {
     txn_man->txn_stats.clear_short();
     txn_man->txn_stats.work_queue_cnt += 1;
 
-    if (!msg) {
+    if (msg == NULL) {
+      msg_orig = 1;
       msg = txn_man->last_msg;
     }
 

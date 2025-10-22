@@ -279,19 +279,59 @@ RC InputThread::server_recv_loop() {
 #if WORKLOAD == YCSB
 void InputThread::split_long_transaction(Message * msg) {
 	YCSBClientQueryMessage * ycsb_msg = (YCSBClientQueryMessage *) msg;
-
-	uint64_t step_num = ycsb_msg->requests.size() / g_req_per_short_query;
-	if (step_num % g_node_cnt != 0) step_num += (g_node_cnt - step_num % g_node_cnt);
-	ycsb_msg->sub_reqs = vector<vector<ycsb_request*>> (step_num);
-
-	for (uint64_t i = 0; i < step_num; i++) {
-		ycsb_msg->sub_reqs[i] = vector<ycsb_request*>();
-    }
-
+	// 1. 横向切分：分为读请求和写请求
+	std::vector<ycsb_request*> read_reqs;
+	std::vector<ycsb_request*> write_reqs;
 	for (uint64_t i = 0; i < ycsb_msg->requests.size(); i++) {
-		ycsb_msg->sub_reqs[ycsb_msg->requests[i]->key % step_num].push_back(ycsb_msg->requests[i]);
+		ycsb_request * req = ycsb_msg->requests[i];
+		if (req->acctype == RD) {
+			read_reqs.push_back(req);
+		} else if (req->acctype == WR) {
+			write_reqs.push_back(req);
+		}
 	}
-	ycsb_msg->steps = vector<uint64_t>(step_num, 1);
+
+	// 2. 纵向切分：分别对读和写请求按照g_req_per_short_query拆分
+	std::vector<std::vector<ycsb_request*>> sub_reqs;
+	std::vector<int> sub_types; // 0:读, 1:写
+	// 读请求拆分
+	uint64_t read_steps = (read_reqs.size() + g_req_per_short_query - 1) / g_req_per_short_query;
+	for (uint64_t i = 0; i < read_steps; i++) {
+		std::vector<ycsb_request*> sub;
+		uint64_t start = i * g_req_per_short_query;
+		uint64_t end = std::min(start + g_req_per_short_query, (uint64_t)read_reqs.size());
+		for (uint64_t j = start; j < end; j++) {
+			sub.push_back(read_reqs[j]);
+		}
+		sub_reqs.push_back(sub);
+		sub_types.push_back(0); // 读
+	}
+	// 写请求拆分
+	uint64_t write_steps = (write_reqs.size() + g_req_per_short_query - 1) / g_req_per_short_query;
+	for (uint64_t i = 0; i < write_steps; i++) {
+		std::vector<ycsb_request*> sub;
+		uint64_t start = i * g_req_per_short_query;
+		uint64_t end = std::min(start + g_req_per_short_query, (uint64_t)write_reqs.size());
+		for (uint64_t j = start; j < end; j++) {
+			sub.push_back(write_reqs[j]);
+		}
+		sub_reqs.push_back(sub);
+		sub_types.push_back(1); // 写
+	}
+
+	// 3. 更新ycsb_msg->sub_reqs和steps，并设置依赖关系
+	ycsb_msg->sub_reqs = sub_reqs;
+	// steps: 数字表示，子事务在整个事务里被执行的顺序，1代表第一波执行，2代表第二波执行，依此类推
+	// 这里的实现是：所有读子事务都是第一波执行，所有写子事务都是第二波执行
+	// 这样做的好处是，读子事务可以并行执行，写子事务也可以并行执行
+	ycsb_msg->steps = std::vector<uint64_t>(sub_reqs.size(), 1);
+	// 先激活所有读子事务
+	for (size_t i = 0; i < sub_types.size(); i++) {
+		if (sub_types[i] == 1) {
+			ycsb_msg->steps[i] = 2;
+		}
+	}
+	// 写子事务依赖于所有读子事务，后续调度时需判断读子事务全部完成后再激活写子事务
 }
 #elif WORKLOAD == TPCC
 void InputThread::split_long_transaction(Message * msg) {

@@ -41,7 +41,7 @@ public:
     this->key = req->key;
     this->value = req->value;
   }
-//	char table_name[80];
+  //	char table_name[80];
 	access_t acctype;
 	uint64_t key;
 	char value;

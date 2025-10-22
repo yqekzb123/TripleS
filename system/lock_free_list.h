@@ -16,7 +16,10 @@ public:
     /* data */
     uint64_t key; // 这里的key是事务号 (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
     TxnManager * txn;
-    list_node_entry(uint64_t k, TxnManager * t) : key(k), txn(t) {}
+    // snapshot fields for scheduler predicate (do not dereference txn in predicate)
+    std::atomic<int> snapshot_lock_ready_cnt;
+    std::atomic<int> snapshot_dep_count;
+    list_node_entry(uint64_t k, TxnManager * t) : key(k), txn(t), snapshot_lock_ready_cnt(0), snapshot_dep_count(0) {}
     ~list_node_entry() {}
 };
 
@@ -76,7 +79,7 @@ public:
         #if DEBUG_LOCKFREE_LIST
             extern uint64_t minSid;
             list_node_entry * value_cast = static_cast<list_node_entry *>(value);
-            DEBUG_LOCKFREE("[LockFreeList] thd %ld insert_tail key=%lu txn=[%ld,%ld] size=%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_txn_id(), value_cast->txn->get_batch_id(), size(), minSid);
+            DEBUG_LOCKFREE("[LockFreeList] thd %ld insert_tail key=%lu txn=[%ld,%ld] size=%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(), minSid);
         #endif
     }
 
@@ -114,7 +117,7 @@ public:
                     #endif
                     #if DEBUG_LOCKFREE_LIST
                         extern uint64_t minSid;
-                        DEBUG_LOCKFREE("[LockFreeList] thd %ld try_take key=%lu txn=[%ld,%ld] size=%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_txn_id(), value_cast->txn->get_batch_id(), size(), minSid);
+                        DEBUG_LOCKFREE("[LockFreeList] thd %ld try_take key=%lu txn=[%ld,%ld] size=%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(), minSid);
                     #endif
                     
                     // 处理完后，调用者应将status设为NODE_REMOVED

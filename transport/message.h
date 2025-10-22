@@ -21,6 +21,9 @@
 #include "helper.h"
 #include "logger.h"
 #include "array.h"
+#include <pthread.h>
+#include <vector>
+#include <atomic>
 
 class ycsb_request;
 class LogRecord;
@@ -48,7 +51,7 @@ public:
   uint64_t orig_txn_id, orig_batch_id;
 #endif
 
-#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+#if LONG_TXN_WORKLOAD
   uint64_t original_txn_id;
 #endif
 
@@ -322,6 +325,21 @@ public:
   uint64_t first_startts;
   Array<uint64_t> partitions;
   bool isDeterministicAbort;
+
+  bool isDone; // 代表当前子消息是否执行完毕
+
+  // !!For long transactions
+  vector<vector<ycsb_request * > > sub_reqs;
+
+  vector<uint64_t> steps;
+  // // 子事务依赖信息：当当前子事务依赖于原始事务中某些步骤时，记录于message
+  // vector<Message*> depends_on_messages;
+  // 新增：依赖计数（还有多少父依赖未完成）
+  std::atomic<int> deps_left;
+  // 新增：记录依赖于本子事务的子事务 key 列表（父完成时会通知这些依赖者）
+  std::vector<uint64_t> dependents_ids;
+  // 保护 dependents_ids 的锁（写入远少于读取/通知）
+  pthread_mutex_t dependents_lock;
 };
 
 class YCSBClientQueryMessage : public ClientQueryMessage {
@@ -336,10 +354,6 @@ public:
   void release();
 
   Array<ycsb_request*> requests;
-
-  vector<vector<ycsb_request*>> sub_reqs;
-  vector<uint64_t> steps;
-
 };
 
 class TPCCClientQueryMessage : public ClientQueryMessage {

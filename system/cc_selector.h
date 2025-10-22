@@ -52,8 +52,8 @@ public:
     void process_conflict_msg(ConflictStaticsMessage *msg);
     uint64_t get_total_conflict();
     uint64_t get_highest_conflict();
-private:
     uint64_t *pstats;
+private:
     bool *is_high_conflict;
 };
 

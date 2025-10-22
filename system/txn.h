@@ -23,6 +23,7 @@
 #include "array.h"
 #include "transport/message.h"
 #include "index_btree.h"
+// #include "lock_free_list.h"
 //#include "wl.h"
 #if CC_ALG == SNAPPER
 #include <utility>
@@ -39,6 +40,7 @@ class TxnQEntry;
 class YCSBQuery;
 class TPCCQuery;
 //class r_query;
+struct list_node_entry;
 
 enum TxnState {START,INIT,EXEC,PREP,FIN,DONE};
 
@@ -358,6 +360,10 @@ public:
 #if LONG_TXN_WORKLOAD
 	uint64_t original_txn_id;
 #endif
+
+    // 如果此事务被插入到 calvin_scheduled_list_lockfree 中，
+    // scheduled_entry 指向其对应的 list_node_entry（用于更新 snapshot）
+    struct list_node_entry* scheduled_entry = nullptr;
 
 #if CC_ALG == DLI_MVCC || CC_ALG == DLI_MVCC_OCC || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3 || \
 	CC_ALG == DLI_OCC

@@ -529,6 +529,9 @@ void TxnManager::release() {
 	INC_STATS(get_thd_id(),mtx[1],get_sys_clock()-prof_starttime);
 	txn = NULL;
 
+	// // Unregister from global registry
+	// Manager::unregister_txn_manager(get_txn_id());
+
 #if CC_ALG == MAAT
 	delete uncommitted_writes;
 	delete uncommitted_writes_y;
@@ -1000,7 +1003,11 @@ void TxnManager::register_thread(Thread * h_thd) {
 #endif
 }
 
-void TxnManager::set_txn_id(txnid_t txn_id) { txn->txn_id = txn_id; }
+void TxnManager::set_txn_id(txnid_t txn_id) {
+	txn->txn_id = txn_id;
+	// register into global lookup so dependents can find this TxnManager*
+	// Manager::register_txn_manager(txn_id, this);
+}
 
 txnid_t TxnManager::get_txn_id() { return txn->txn_id; }
 
@@ -1762,7 +1769,7 @@ RC TxnManager::validate() {
 
 RC TxnManager::send_remote_reads() {
 	assert(CC_ALG == CALVIN || CC_ALG == HDCC || CC_ALG == SNAPPER);
-#if !YCSB_ABORT_MODE && WORKLOAD == YCSB
+#if !YCSB_ABORT_MODE && !OPEN_YCSB_DEPENDENCY && WORKLOAD == YCSB
 	return RCOK;
 #endif
 	assert(query->active_nodes.size() == g_node_cnt);
@@ -1788,7 +1795,7 @@ bool TxnManager::calvin_exec_phase_done() {
 bool TxnManager::calvin_collect_phase_done() {
 	bool ready =  (phase == CALVIN_COLLECT_RD) && (get_rsp_cnt() == calvin_expected_rsp_cnt);
 	if(ready) {
-	DEBUG("(%ld,%ld) calvin collect phase done!\n",txn->txn_id,txn->batch_id);
+		DEBUG("(%ld,%ld) calvin collect phase done!\n",txn->txn_id,txn->batch_id);
 	}
 	return ready;
 }

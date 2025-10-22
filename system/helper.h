@@ -41,6 +41,12 @@
     fflush(stdout); \
   }
 
+#define DEBUG_SEQ(...) \
+  if(DEBUG_SEQUENCER) { \
+    fprintf(stdout,__VA_ARGS__); \
+    fflush(stdout); \
+  }
+
     //fprintf(stdout,"[alloc] ");
 #define DEBUG_M(...) \
   if(DEBUG_ALLOC && warmup_done) { \
@@ -301,6 +307,9 @@ uint64_t get_part_id(void * addr);
 uint64_t merge_idx_key(uint64_t key_cnt, uint64_t * keys);
 uint64_t merge_idx_key(uint64_t key1, uint64_t key2);
 uint64_t merge_idx_key(uint64_t key1, uint64_t key2, uint64_t key3);
+
+uint64_t get_calvin_key(uint64_t batch_id, uint64_t return_id, uint64_t txn_id);
+std::vector<uint64_t> split_calvin_key(uint64_t calvin_key);
 
 void init_client_globals();
 void init_globals();

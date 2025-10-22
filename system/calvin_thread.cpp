@@ -94,20 +94,20 @@ RC CalvinLockThread::run() {
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
 		uint64_t old_sid = sids[id];
 		sids[id] = (txn_man->get_batch_id() << 32) + (txn_man->return_id << 24) + txn_man->get_txn_id() + 1;
-		// printf("[CalvinThread] %ld set sid from %ld to %ld, now minSid %ld\n", _thd_id, old_sid, sids[id], minSid);
+		printf("[CalvinThread] %ld set sid from %ld to %ld, now minSid %ld\n", _thd_id, old_sid, sids[id], minSid);
 		//Update minSid
 		if (_thd_id == the_first_scheduler_id) {
 		// if (old_sid == minSid) {
 			uint64_t min = UINT64_MAX;
-			// std::string sid_log = "[CalvinThread] " + std::to_string(_thd_id) + " minSid update: sids = ";
+			std::string sid_log = "[CalvinThread] " + std::to_string(_thd_id) + " minSid update: sids = ";
 			for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
 				// sid_log += std::to_string(sids[i]) + " ";
 				if (sids[i] < min) min = sids[i];
 			}
 			assert(min >= minSid);
 			minSid = min;
-			// sid_log += "| new minSid = " + std::to_string(minSid);
-			// std::cout << sid_log << std::endl;
+			sid_log += "| new minSid = " + std::to_string(minSid);
+			std::cout << sid_log << std::endl;
 		}
 #endif
 
@@ -254,6 +254,8 @@ RC CalvinSequencerThread::run() {
 		if(is_batch_ready()) {
 			simulation->advance_seq_epoch();
 			//last_batchtime = get_wall_clock();
+			// 在这里对batch内的事务进行排序
+			seq_man.reorder_batch();
 			seq_man.send_next_batch(_thd_id);
 		}
 

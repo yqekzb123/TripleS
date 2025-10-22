@@ -14,6 +14,9 @@
 	 limitations under the License.
 */
 
+#include <vector>
+#include <unordered_set>
+
 #include "global.h"
 #include "sequencer.h"
 #include "ycsb_query.h"
@@ -30,7 +33,9 @@
 #include "message.h"
 #include "stats.h"
 #include <boost/lockfree/queue.hpp>
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
+#include "reorder.h"
+#include "manager.h"
+#if CC_ALG == HDCC || CC_ALG == SNAPPER || LONG_TXN_SORT
 #include "cc_selector.h"
 #endif
 
@@ -42,12 +47,22 @@ void Sequencer::init(Workload * wl) {
 	wl_head = NULL;
 	wl_tail = NULL;
 	fill_queue = new boost::lockfree::queue<Message*, boost::lockfree::capacity<65526> > [g_node_cnt];
+
+#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+	// 当前批次内的事务列表
+	current_batch.clear();
+#endif
+	
 #if CC_ALG == HDCC || CC_ALG == SNAPPER
 	last_epoch_max_id = 0;
 	blocked = false;
 	validationCount = 0;
 #endif
 }
+
+// Simple registry: txn_id -> TxnManager* (used to find dependent txn manager by id)
+// static std::unordered_map<uint64_t, TxnManager*> txn_registry;
+// static std::mutex txn_registry_mutex;
 
 // Assumes 1 thread does sequencer work
 void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
@@ -80,6 +95,9 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 
 	// Decrement the number of acks needed for this txn
 	uint32_t query_acks_left = ATOM_SUB_FETCH(wait_list[id].server_ack_cnt, 1);
+	// 打印目前事务还差多少ack
+	DEBUG_SEQ("Sequencer::process_ack() txn_id=%ld batch_id=%ld id=%ld original_txn=%ld ack_left=%d\n",
+			msg->get_txn_id(), msg->get_batch_id(), id, msg->original_txn_id, query_acks_left);
 
 	if (wait_list[id].skew_startts == 0) {
 			wait_list[id].skew_startts = get_sys_clock();
@@ -371,7 +389,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 #endif
 #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
 		uint32_t server_ack_cnt = 0;
-#if WORKLOAD == YCSB
+	#if WORKLOAD == YCSB
 		YCSBClientQueryMessage * cl_msg = (YCSBClientQueryMessage *) msg;
 		if (cl_msg->steps.empty()) {
 			server_ack_cnt = participants.size();
@@ -382,10 +400,10 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 				}
 			}
 		}
-#elif WORKLOAD == TPCC
+	#elif WORKLOAD == TPCC
 
-#else
-#endif
+	#else
+	#endif
 #else
 		uint32_t server_ack_cnt = participants.size();
 #endif
@@ -437,54 +455,170 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 		cl_msg->original_txn_id = UINT64_MAX;
 #endif
 
+#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+		// 如果用了事务重排序，整个batch中的事务号重排序后，都比排序前大
+		// 比如说原来分配的1-10，重排序后就是11-20.
+		// 因此记录原始事务ID，方便后续追踪
+		cl_msg->original_txn_id = txn_id;
+#endif
+
 #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
-#if WORKLOAD == YCSB
+	#if WORKLOAD == YCSB
 		if (cl_msg->steps.empty()) {
+			#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+			// If LONG_TXN_SORT is enabled we collect subtransactions into current_batch
+			// for later reordering/dispatch instead of immediately pushing them into
+			// the per-node fill_queue.
+			current_batch.push_back((Message*)msg);
+			#else
 			for(auto participant = participants.begin(); participant != participants.end(); participant++) {
 				while (!fill_queue[*participant].push(msg) && !simulation->is_done()) {
 				}
 			}
+			#endif
 		} else {
+			// 记录原始事务ID，方便后续追踪
 			cl_msg->original_txn_id = cl_msg->txn_id;
+			// !First pass: create all sub-messages and record them by original step index.
+			// This avoids relying on integer indices (which would break if messages are
+			// reordered) and allows us to link dependencies by Message* pointers.
+			vector<YCSBClientQueryMessage*> created_by_step;
+			created_by_step.resize(cl_msg->steps.size(), nullptr);
+
 			for (uint64_t i = 0; i < cl_msg->steps.size(); i++) {
+				// 如果当前步骤没有请求，跳过
 				if (cl_msg->sub_reqs[i].size() == 0) continue;
+				// 创建一个新的消息，代表一个子事务 (但暂不入队)
 				YCSBClientQueryMessage * new_msg = (YCSBClientQueryMessage *)Message::create_message(CL_QRY);
+				// Register child message in global registry so parents can notify it even if its TxnManager
+				// hasn't been created yet.
+				// 继承原事务的ID和批次号
 				new_msg->original_txn_id = cl_msg->txn_id;
 				new_msg->batch_id = cl_msg->batch_id;
+				new_msg->rtype = CL_QRY;
+				// new_msg->return_node_id = cl_msg->return_node_id;
 
+				// 设置当前子事务还没完成
+				new_msg->isDone = false;
+				// 初始化依赖计数为0（稍后在第二遍会设置为实际依赖数）
+				new_msg->deps_left.store(0);
+
+				// 继承 steps 信息（用于表示读/写级别）
+				new_msg->steps = vector<uint64_t>(1, cl_msg->steps[i]);
+
+				// 为新子事务分配唯一的txn_id
 				txnid_t txn_id = g_node_id + g_node_cnt * next_txn_id;
 				next_txn_id++;
 				new_msg->txn_id = txn_id;
 
+				// 设置返回节点和延迟信息
 				new_msg->return_node_id = g_node_id;
 				new_msg->lat_network_time = 0;
 				new_msg->lat_other_time = 0;
+				// 初始化请求数组，分配空间
 				new_msg->requests.init(cl_msg->sub_reqs[i].size());
 				new_msg->requests.init(g_req_per_query);
+				// 把当前步骤的所有请求加入新消息
 				for (uint64_t j = 0; j < cl_msg->sub_reqs[i].size(); j++) {
 					new_msg->requests.add(cl_msg->sub_reqs[i][j]);
 				}
+
+				// 缓存到按原始步骤索引的数组，稍后再建立依赖并入队
+				created_by_step[i] = new_msg;
+				// Register into txn_registry as a placeholder (TxnManager* will be
+				// registered when the TxnManager for this txn is created). We keep
+				// a mapping from txn_id -> NULL for now to indicate existence.
+				// {
+				// 	std::lock_guard<std::mutex> lk(txn_registry_mutex);
+				// 	txn_registry[new_msg->get_txn_id()] = NULL;
+				// }
+			}
+
+			// !Second pass: link dependencies by Message* pointers. For any write step
+			// (steps==2) make it depend on all read steps (steps==1) that actually
+			// produced sub-messages.
+			for (uint64_t i = 0; i < cl_msg->steps.size(); i++) {
+				YCSBClientQueryMessage * cur = created_by_step[i];
+				if (!cur) continue;
+				if (cl_msg->steps[i] == 2) {
+					int depcount = 0;
+					for (uint64_t k = 0; k < cl_msg->steps.size(); k++) {
+						if (cl_msg->steps[k] == 1 && created_by_step[k] != nullptr) {
+							// Instead of storing Message* pointers to parents (unsafe),
+							// store the parent's txn_id into our parents list indirectly by
+							// incrementing our deps_left and adding ourselves to parent's
+							// dependents_ids so parent can notify us on completion.
+							uint64_t parent_id = created_by_step[k]->get_txn_id();
+							depcount++;
+							{
+								pthread_mutex_lock(&created_by_step[k]->dependents_lock);
+								uint64_t key = get_calvin_key(cur->get_batch_id(), cur->return_node_id, cur->get_txn_id());
+								created_by_step[k]->dependents_ids.push_back(key);
+								pthread_mutex_unlock(&created_by_step[k]->dependents_lock);
+							}
+						}
+					}
+					cur->deps_left.store(depcount);
+				}
+			}
+
+			// !Third pass: now that dependencies are set, compute participants and enqueue.
+			// 打印原本的长事务，被拆成了哪些子事务.
+			// DEBUG_SEQ("SEQ split txn (%ld,%ld) into %ld sub-txns\n",
+				// cl_msg->txn_id, cl_msg->batch_id, cl_msg->steps.size());
+
+			// When LONG_TXN_SORT is enabled we collect subtransactions, also build a
+			// comma-separated list of their txn_ids for debugging/tracing.
+			std::string split_ids;
+			for (uint64_t i = 0; i < cl_msg->steps.size(); i++) {
+				YCSBClientQueryMessage * new_msg = created_by_step[i];
+				if (!new_msg) continue;
 				std::set<uint64_t> participants = YCSBQuery::participants(new_msg, _wl);
+				if (!split_ids.empty()) split_ids += ",";
+				split_ids += std::to_string(new_msg->get_txn_id());
+				#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+				// collect into current_batch for later reordering/dispatch
+				current_batch.push_back((Message*)new_msg);
+				// append txn id to split_ids
+				#else
+				// 在塞到fill_queue之前，注册到全局msg_registry
+				uint64_t key = get_calvin_key(new_msg->get_batch_id(), new_msg->return_node_id, new_msg->get_txn_id());
+				Manager::register_txn_message(key, new_msg);
+
 				for(auto participant = participants.begin(); participant != participants.end(); participant++) {
 					while (!fill_queue[*participant].push(new_msg) && !simulation->is_done()) {
 					}
 				}
+				#endif
 			}
+			// #if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+			if (!split_ids.empty()) {
+				DEBUG_SEQ("SEQ split txn (%ld,%ld) child txns: %s\n", cl_msg->txn_id, cl_msg->batch_id, split_ids.c_str());
+			}
+			// #endif
 		}
-#elif WORKLOAD == TPCC
+	#elif WORKLOAD == TPCC
 
-#else
+	#else
 
-#endif
+	#endif
 #else
 		// Add new txn to fill queue
+		#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+		// If LONG_TXN_SORT is enabled we collect subtransactions into current_batch
+		// for later reordering/dispatch instead of immediately pushing them into
+		// the per-node fill_queue.
+		current_batch.push_back((Message*)msg);
+		#else
 		for(auto participant = participants.begin(); participant != participants.end(); participant++) {
 			DEBUG("SEQ adding (%ld,%ld) to fill queue (recon: %d)\n", msg->get_txn_id(),
-					msg->get_batch_id(), ((PPSClientQueryMessage *)msg)->recon);
+				msg->get_batch_id(), ((PPSClientQueryMessage *)msg)->recon);
 			while (!fill_queue[*participant].push(msg) && !simulation->is_done()) {
 			}
 		}
+		#endif
 #endif
+
 #if LOGGING
 		char * data = (char *)malloc(sizeof(char) * 10);
 		logger.writeToBuffer(thd_id, data, sizeof(data));
@@ -493,6 +627,49 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 	INC_STATS(thd_id,seq_process_cnt,1);
 	INC_STATS(thd_id,seq_process_time,get_sys_clock() - starttime);
 	ATOM_ADD(total_txns_received,1);
+}
+
+// 这里加一个调用reorder给要发的batch重排序的函数
+void Sequencer::reorder_batch() {
+	#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+	// delta值是执行器和调度器的最大值
+	int delta = g_scheduler_thread_cnt > g_thread_cnt ? g_scheduler_thread_cnt : g_thread_cnt;
+	if (current_batch.empty()) return;
+
+	// std::vector<Message*> reorder_batch = Reorder::schedule_transactions_advanced(current_batch,delta,LAMBDA_FACTOR,-1);
+
+	// // Permute txn ids: assign the i-th original id to the i-th message in the
+	// // reordered list. This preserves uniqueness and keeps the same id multiset.
+	// for (size_t i = 0; i < reorder_batch.size(); i++) {
+	// 	Message *m = reorder_batch[i];
+	// 	txnid_t txn_id = g_node_id + g_node_cnt * next_txn_id;
+	// 	next_txn_id++;
+	// 	m->txn_id = txn_id;
+	// }
+
+	std::vector<Message*> reorder_batch = current_batch;
+
+	// Now push reordered messages into the per-node fill_queue.
+	for (auto & msg : reorder_batch) {
+		std::set<uint64_t> participants;
+		#if WORKLOAD == YCSB
+			participants = YCSBQuery::participants(msg,_wl);
+		#elif WORKLOAD == TPCC
+			participants = TPCCQuery::participants(msg,_wl);
+		#elif WORKLOAD == PPS
+			participants = PPSQuery::participants(msg,_wl);
+		#elif WORKLOAD == DA
+			participants = DAQuery::participants(msg,_wl);
+		#endif
+		for(auto participant = participants.begin(); participant != participants.end(); participant++) {
+			while (!fill_queue[*participant].push(msg) && !simulation->is_done()) {}
+		}
+	}
+
+	// We've dispatched the current batch, clear the collector so it can be
+	// reused for the next epoch.
+	current_batch.clear();
+	#endif
 }
 
 // Assumes 1 thread does sequencer work

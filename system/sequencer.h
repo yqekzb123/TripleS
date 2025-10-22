@@ -59,7 +59,9 @@ class Sequencer {
 	void process_txn(Message* msg, uint64_t thd_id, uint64_t early_start, uint64_t last_start,
 									 uint64_t wait_time, uint32_t abort_cnt);
 	void process_abort(Message *msg, uint64_t thd_id);
+	void reorder_batch();
 	void send_next_batch(uint64_t thd_id);
+	
 #if CC_ALG == HDCC
 	bool checkDependency(uint64_t batch_id, uint64_t txn_id);
 #endif
@@ -68,6 +70,10 @@ class Sequencer {
 	void reset_participating_nodes(bool * part_nodes);
 
 	boost::lockfree::queue<Message*, boost::lockfree::capacity<65526> > * fill_queue;
+#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+// 当前批次内的事务列表
+	std::vector<Message*> current_batch;
+#endif
 #if WORKLOAD == YCSB
 	YCSBQuery* node_queries;
 #elif WORKLOAD == TPCC

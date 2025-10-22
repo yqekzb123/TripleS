@@ -906,10 +906,30 @@ TxnManager * QWorkQueue::get_from_calvin_list(uint64_t thd_id) {
 }
 
 void QWorkQueue::insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn) {
-	uint64_t key = (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
+	// uint64_t key = (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
+	uint64_t key = get_calvin_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
 	list_node_entry * entry = (list_node_entry*)mem_allocator.align_alloc(sizeof(list_node_entry));
 	entry->key = key;
 	entry->txn = txn;
+	// Initialize snapshot fields from txn/message state so predicate can read them
+	assert(txn->last_msg != NULL);
+	if (txn->last_msg) {
+		YCSBClientQueryMessage * msg = (YCSBClientQueryMessage*) txn->last_msg;
+		entry->snapshot_lock_ready_cnt.store(txn->lock_ready_cnt);
+		int deps = 0;
+		// If msg has deps_left, use it; otherwise 0
+		// msg->deps_left may not be initialized for non-split workloads
+		#if LONG_TXN_WORKLOAD
+			deps = msg->deps_left.load();
+		#endif
+		entry->snapshot_dep_count.store(deps);
+	} else {
+		entry->snapshot_lock_ready_cnt.store(txn->lock_ready_cnt);
+		entry->snapshot_dep_count.store(0);
+	}
+
+	// remember node pointer in txn so parents/children can update snapshot later
+	txn->scheduled_entry = entry;
 	//
 	calvin_scheduled_list_lockfree->insert(entry, thd_id);
 }
@@ -923,16 +943,27 @@ TxnManager * QWorkQueue::get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t
 
 	std::function<bool(list_node_entry*)> func = [](list_node_entry * arg) -> bool {
 		list_node_entry * entry = arg;
-		if (entry->key <= minSid && entry->txn->lock_ready_cnt == 0) {
+		if (!entry) return false;
+		// select if key <= minSid, no outstanding lock readiness, and no outstanding deps
+		if (entry->key <= minSid && entry->snapshot_lock_ready_cnt.load() == 0 && entry->snapshot_dep_count.load() == 0) {
 			return true;
-		} else {
-			return false;
 		}
+		return false;
+	};
+
+	std::function<bool(list_node_entry*)> func2 = [](list_node_entry * arg) -> bool {
+		list_node_entry * entry = arg;
+		if (!entry) return false;
+		ClientQueryMessage * last_msg = (ClientQueryMessage*)entry->txn->last_msg;
+		if (entry->key <= minSid && entry->txn->lock_ready_cnt == 0 && last_msg->deps_left.load() == 0) {
+			return true;
+		}
+		return false;
 	};
 	list_node_entry * entry = NULL;
 	key = 0;
 
-	bool succ = calvin_scheduled_list_lockfree->try_take(func, entry, thd_id);
+	bool succ = calvin_scheduled_list_lockfree->try_take(func2, entry, thd_id);
 
 	if (succ) {
 		// DEBUG("[LockFreeList] thd %ld get_from_calvin_list_lockfree key=%lu txn=%p\n", thd_id, entry->key, entry->txn);

@@ -571,7 +571,10 @@ void QueryMessage::copy_to_buf(char * buf) {
 
 /************************/
 
-void YCSBClientQueryMessage::init() {}
+void YCSBClientQueryMessage::init() {
+  deps_left.store(0);
+  pthread_mutex_init(&dependents_lock, NULL);
+}
 
 void YCSBClientQueryMessage::release() {
   ClientQueryMessage::release();
@@ -583,6 +586,7 @@ void YCSBClientQueryMessage::release() {
   }
 */
   requests.release();
+  pthread_mutex_destroy(&dependents_lock);
 }
 
 uint64_t YCSBClientQueryMessage::get_size() {
@@ -1074,7 +1078,10 @@ void DAClientQueryMessage::release() { ClientQueryMessage::release(); }
 
 /************************/
 
-void ClientQueryMessage::init() { first_startts = 0; }
+void ClientQueryMessage::init() { 
+  first_startts = 0; 
+  isDone = false;
+}
 
 void ClientQueryMessage::release() {
   partitions.release();
