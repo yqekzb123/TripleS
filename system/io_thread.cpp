@@ -316,7 +316,12 @@ void InputThread::split_long_transaction(Message * msg) {
 			sub.push_back(write_reqs[j]);
 		}
 		sub_reqs.push_back(sub);
+		#if OPEN_YCSB_DEPENDENCY
+		// 打开写依赖于全部的读
 		sub_types.push_back(1); // 写
+		#else
+		sub_types.push_back(0); // 写
+		#endif
 	}
 
 	// 3. 更新ycsb_msg->sub_reqs和steps，并设置依赖关系

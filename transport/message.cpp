@@ -572,7 +572,6 @@ void QueryMessage::copy_to_buf(char * buf) {
 /************************/
 
 void YCSBClientQueryMessage::init() {
-  deps_left.store(0);
   pthread_mutex_init(&dependents_lock, NULL);
 }
 
@@ -1081,6 +1080,8 @@ void DAClientQueryMessage::release() { ClientQueryMessage::release(); }
 void ClientQueryMessage::init() { 
   first_startts = 0; 
   isDone = false;
+
+  deps_left.store(0);
 }
 
 void ClientQueryMessage::release() {

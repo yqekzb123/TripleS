@@ -41,6 +41,7 @@
 #include "focc.h"
 #include "bocc.h"
 #include "lock_free_list.h"
+#include "small_lock_list.h"
 #if CC_ALG == HDCC
 #include "cc_selector.h"
 #endif
@@ -1625,12 +1626,14 @@ RC StatsPerIntervalThread::run(){
       silo_cnt_this_time = 0;
       calvin_cnt_this_time = 0;
       last_time = now_time;
-      DEBUG("------StatsPerIntervalThread %ld seconds--------\n",loop);
-      loop++;
 
+      work_queue.calvin_scheduled_list_lockfree->DEBUG_PRINT_LIST_LENGTH();
+      DEBUG_TIME("------StatsPerIntervalThread %ld seconds--------\n",loop);
+      loop++;
       // 增加清理无锁链表的操作
-      work_queue.calvin_scheduled_list_lockfree->remove_consumed();
+      // work_queue.calvin_scheduled_list_lockfree->remove_consumed();
     }
+    // work_queue.calvin_scheduled_list_lockfree->remove_consumed();
   }
   printf("FINISH %ld:%ld\n",_node_id,_thd_id);
   fflush(stdout);

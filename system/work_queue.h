@@ -23,8 +23,8 @@
 #include <boost/lockfree/queue.hpp>
 #include <boost/circular_buffer.hpp>
 #include "semaphore.h"
-#include "lock_free_linked_list.h"
 #include "lock_free_list.h"
+#include "small_lock_list.h"
 //#include "message.h"
 
 class BaseQuery;
@@ -77,8 +77,8 @@ public:
   void sequencer_enqueue(uint64_t thd_id, Message * msg);
   Message * sequencer_dequeue(uint64_t thd_id);
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
-  void insert_calvin_list(uint64_t thd_id, TxnManager * txn);
-  TxnManager * get_from_calvin_list(uint64_t thd_id);
+  // void insert_calvin_list(uint64_t thd_id, TxnManager * txn);
+  // TxnManager * get_from_calvin_list(uint64_t thd_id);
 
   // 用新的单向无锁链表实现的
   void insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn);
@@ -118,10 +118,12 @@ public:
 
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
   // LockFreeLinkedList<TxnManager *> * calvin_scheduled_list;
-  LockFreeLinkedList * calvin_scheduled_list;
+  // LockFreeLinkedList * calvin_scheduled_list;
   bool sched_ready;
 
-  LockFreeList<list_node_entry *> * calvin_scheduled_list_lockfree;
+  // LockFreeList<list_node_entry *> * calvin_scheduled_list_lockfree;
+
+  LockList<list_node_entry *> * calvin_scheduled_list_lockfree;
 #endif
 
 private:

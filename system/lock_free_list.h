@@ -5,23 +5,24 @@
 #include <memory>
 #include "global.h"
 #include "txn.h"
+#include "small_lock_list.h"
 
 #define PRINT_VISIT_LIST false
 
 
 // 写一个带key或者水印时间的，包括事务TxnManager的结构体
-struct list_node_entry
-{
-public:
-    /* data */
-    uint64_t key; // 这里的key是事务号 (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
-    TxnManager * txn;
-    // snapshot fields for scheduler predicate (do not dereference txn in predicate)
-    std::atomic<int> snapshot_lock_ready_cnt;
-    std::atomic<int> snapshot_dep_count;
-    list_node_entry(uint64_t k, TxnManager * t) : key(k), txn(t), snapshot_lock_ready_cnt(0), snapshot_dep_count(0) {}
-    ~list_node_entry() {}
-};
+// struct list_node_entry
+// {
+// public:
+//     /* data */
+//     uint64_t key; // 这里的key是事务号 (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
+//     TxnManager * txn;
+//     // snapshot fields for scheduler predicate (do not dereference txn in predicate)
+//     std::atomic<int> snapshot_lock_ready_cnt;
+//     std::atomic<int> snapshot_dep_count;
+//     list_node_entry(uint64_t k, TxnManager * t) : key(k), txn(t), snapshot_lock_ready_cnt(0), snapshot_dep_count(0) {}
+//     ~list_node_entry() {}
+// };
 
 
 template<typename T>
@@ -44,6 +45,8 @@ class LockFreeList {
     std::atomic<Node*> tail;
     std::atomic<size_t> count{0};
 
+    std::atomic<size_t> actual_count{0};
+
     // 还是加一个要被删掉的节点队列，放那些需要删但是还没删除的节点
     std::vector<Node*> garbage_nodes;
 public:
@@ -52,6 +55,7 @@ public:
         head.store(dummy);
         tail.store(dummy);
         count.store(0, std::memory_order_relaxed);
+        actual_count.store(0, std::memory_order_relaxed);
     }
 
     ~LockFreeList() {
@@ -71,20 +75,21 @@ public:
                 break;
             } else {
                 // 有其他线程插入了，推进tail
-                tail.compare_exchange_strong(prev_tail, prev_tail->next.load());
+                // tail.compare_exchange_strong(prev_tail, prev_tail->next.load());
             }
         }
         count.fetch_add(1, std::memory_order_relaxed);
+        actual_count.fetch_add(1, std::memory_order_relaxed);
         // DEBUG_LOCKFREE: 入链表
         #if DEBUG_LOCKFREE_LIST
             extern uint64_t minSid;
             list_node_entry * value_cast = static_cast<list_node_entry *>(value);
-            DEBUG_LOCKFREE("[LockFreeList] thd %ld insert_tail key=%lu txn=[%ld,%ld] size=%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(), minSid);
+            DEBUG_LOCKFREE("[LockFreeList] thd %ld insert_tail key=%lu txn=[%ld,%ld] size=%zu-%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(),actual_size(), minSid);
         #endif
     }
 
     // 多消费者遍历并取出满足条件的内容
-    bool try_take(std::function<bool(const T&)> cond, T& out, uint64_t thd_id) {
+    bool try_take(std::function<bool(const T&)> cond1, std::function<bool(const T&)> cond2, T& out, uint64_t thd_id) {
         Node* curr = head.load()->next.load();
         Node* prev = head.load();
         #if PRINT_VISIT_LIST
@@ -93,18 +98,37 @@ public:
         #endif
         while (curr) {
             // 跳过已被删除的节点和危险节点
-            if (curr->status.load() == NODE_REMOVED || curr->status.load() == NODE_TAKEN) {
+            if (curr->status.load() == NODE_TAKEN || curr->status.load() == NODE_REMOVED) {
+                #if DEBUG_LOCKFREE_LIST
+                    list_node_entry * value_cast = static_cast<list_node_entry *>(curr->data);
+                    DEBUG_LOCKFREE("[LockFreeList] thd %ld skip key=%lu size=%zu-%zu node status %d\n", thd_id, value_cast->key, size(),actual_size(), curr->status.load());
+                #endif
                 curr = curr->next.load();
                 continue;
             }
+            // if (curr->status.load() == NODE_REMOVED) {
+            //     // 暂时找不到
+            //     #if DEBUG_LOCKFREE_LIST
+            //         list_node_entry * value_cast = static_cast<list_node_entry *>(curr->data);
+            //         DEBUG_LOCKFREE("[LockFreeList] thd %ld break key=%lu size=%zu-%zu node status %d\n", thd_id, value_cast->key, size(),actual_size(), curr->status.load());
+            //     #endif
+            //     break;
+            // }
             list_node_entry * value_cast = static_cast<list_node_entry *>(curr->data);
             #if PRINT_VISIT_LIST
                 visited_keys.push_back(value_cast->key);
                 visit_log += std::to_string(value_cast->key) + "->";
             #endif
             NodeStatus expected = NODE_AVAILABLE;
-            if (curr->status.load() == NODE_AVAILABLE && cond(curr->data)) {
+            if (curr->status.load() == NODE_AVAILABLE && cond1(curr->data)) {
                 if (curr->status.compare_exchange_strong(expected, NODE_TAKEN)) {
+                    if (!cond2(curr->data)) {
+                        // 条件2不满足，恢复状态
+                        curr->status.store(NODE_AVAILABLE);
+                        prev = curr;
+                        curr = curr->next.load();
+                        continue;
+                    }
                     // 标记为taken，执行器可安全处理
                     out = curr->data;
                     count.fetch_sub(1, std::memory_order_relaxed);
@@ -117,11 +141,27 @@ public:
                     #endif
                     #if DEBUG_LOCKFREE_LIST
                         extern uint64_t minSid;
-                        DEBUG_LOCKFREE("[LockFreeList] thd %ld try_take key=%lu txn=[%ld,%ld] size=%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(), minSid);
+                        DEBUG_LOCKFREE("[LockFreeList] thd %ld try_take key=%lu txn=[%ld,%ld] size=%zu-%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(),actual_size(), minSid);
                     #endif
-                    
+                    NodeStatus expect = NODE_TAKEN;
+                    if (!curr->status.compare_exchange_strong(expect, NODE_REMOVED)) {
+                        assert(false);
+                    }
+                    // 尝试删除该节点
+                    // Node* next = curr->next.load();
+                    // if (prev->next.compare_exchange_strong(curr, next)) {
+                    //     // delete curr; 
+                    //     garbage_nodes.push_back(curr);
+                    //     curr->next.store(nullptr);
+                    //     actual_count.fetch_sub(1, std::memory_order_relaxed);
+                    // } else {
+                    //     // 删除失败，可能是prev被其他线程修改了，下一轮再试
+                    //     assert(false);
+                    // }
+
+                    // -----------
                     // 处理完后，调用者应将status设为NODE_REMOVED
-                    curr->status.store(NODE_REMOVED);
+                    // curr->status.store(NODE_REMOVED);
                     return true;
                 }
             }
@@ -134,9 +174,9 @@ public:
             std::string result = "[LockFreeList] thd " + std::to_string(thd_id) + " try_take visited keys: " + visit_log + "| NO TAKE";
             std::cout << result << std::endl;
         #endif
-        #if DEBUG_LOCKFREE_LIST
-            DEBUG_LOCKFREE("[LockFreeList] thd %ld try_take find NULL\n", thd_id);
-        #endif
+        // #if DEBUG_LOCKFREE_LIST
+        //     DEBUG_LOCKFREE("[LockFreeList] thd %ld try_take find NULL\n", thd_id);
+        // #endif
         return false;
     }
 
@@ -152,9 +192,14 @@ public:
                 if (prev->next.compare_exchange_strong(curr, next)) {
                     // delete curr;
                     garbage_nodes.push_back(curr);
+                    curr->next.store(nullptr);
+                    actual_count.fetch_sub(1, std::memory_order_relaxed);
                     curr = next;
                     prev->removing.store(false);
                     continue;
+                } else {
+                    // 删除失败，可能是prev被其他线程修改了，下一轮再试
+                    assert(false);
                 }
                 prev->removing.store(false);
                 curr = prev->next.load();
@@ -183,6 +228,10 @@ public:
         return count.load(std::memory_order_relaxed);
     }
 
+    size_t actual_size() const {
+        return actual_count.load(std::memory_order_relaxed);
+    }
+
     // 打印链表（只打印key）
     void print() {
         Node* current = head.load()->next.load();
@@ -192,6 +241,12 @@ public:
             current = current->next.load();
         }
         std::cout << "nullptr" << std::endl;
+    }
+
+    void DEBUG_PRINT_LIST_LENGTH() {
+        size_t sz = size();
+        size_t actual_sz = actual_size();
+        DEBUG_TIME("[LockFreeList] DEBUG_PRINT_LIST_LENGTH size=%zu actual_size=%zu\n", sz, actual_sz);
     }
 };
 

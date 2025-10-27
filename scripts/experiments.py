@@ -378,7 +378,7 @@ configs = {
     "NETWORK_DELAY": '0UL',
     "NETWORK_DELAY_TEST": 'false',
     "DONE_TIMER": "1 * 30 * BILLION // ~1 minutes",
-    "WARMUP_TIMER": "1 * 20 * BILLION // ~1 minutes",
+    "WARMUP_TIMER": "1 * 60 * BILLION // ~1 minutes",
     "SEQ_BATCH_TIMER": "5 * 1 * MILLION // ~5ms -- same as CALVIN paper",
     "BATCH_TIMER" : "0",
     "PROG_TIMER" : "10 * BILLION // in s",

@@ -38,6 +38,7 @@
 #endif
 #include "message.h"
 #include "lock_free_list.h"
+#include "small_lock_list.h"
 
 void YCSBTxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	TxnManager::init(thd_id, h_wl);
@@ -459,9 +460,9 @@ RC YCSBTxnManager::run_calvin_txn() {
                 int prev = dep_msg->deps_left.fetch_sub(1);
 
                 
-                DEBUG_SEQ("[%ld] (%ld,%ld) decrementing deps_left of dependent txn %ld(%ld,%ld) from %d to %d\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2], prev, prev - 1);
+                // DEBUG_SEQ("[%ld] (%ld,%ld) decrementing deps_left of dependent txn %ld(%ld,%ld) from %d to %d\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2], prev, prev - 1);
               } else {
-                DEBUG_SEQ("[%ld] (%ld,%ld) dependent txn %ld(%ld,%ld) not found\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2]);
+                // DEBUG_SEQ("[%ld] (%ld,%ld) dependent txn %ld(%ld,%ld) not found\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2]);
               }
             }
             pthread_mutex_unlock(&sub_txn_msg->dependents_lock);

@@ -96,8 +96,8 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 	// Decrement the number of acks needed for this txn
 	uint32_t query_acks_left = ATOM_SUB_FETCH(wait_list[id].server_ack_cnt, 1);
 	// 打印目前事务还差多少ack
-	DEBUG_SEQ("Sequencer::process_ack() txn_id=%ld batch_id=%ld id=%ld original_txn=%ld ack_left=%d\n",
-			msg->get_txn_id(), msg->get_batch_id(), id, msg->original_txn_id, query_acks_left);
+	// DEBUG_SEQ("Sequencer::process_ack() txn_id=%ld batch_id=%ld id=%ld original_txn=%ld ack_left=%d\n",
+	// 		msg->get_txn_id(), msg->get_batch_id(), id, msg->original_txn_id, query_acks_left);
 
 	if (wait_list[id].skew_startts == 0) {
 			wait_list[id].skew_startts = get_sys_clock();
@@ -453,6 +453,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 
 #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
 		cl_msg->original_txn_id = UINT64_MAX;
+		cl_msg->deps_left.store(0);
 #endif
 
 #if LONG_TXN_WORKLOAD && LONG_TXN_SORT
@@ -484,7 +485,6 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 			// reordered) and allows us to link dependencies by Message* pointers.
 			vector<YCSBClientQueryMessage*> created_by_step;
 			created_by_step.resize(cl_msg->steps.size(), nullptr);
-
 			for (uint64_t i = 0; i < cl_msg->steps.size(); i++) {
 				// 如果当前步骤没有请求，跳过
 				if (cl_msg->sub_reqs[i].size() == 0) continue;
@@ -510,6 +510,9 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 				txnid_t txn_id = g_node_id + g_node_cnt * next_txn_id;
 				next_txn_id++;
 				new_msg->txn_id = txn_id;
+				#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+				new_msg->original_sub_txn_id = txn_id;
+				#endif
 
 				// 设置返回节点和延迟信息
 				new_msg->return_node_id = g_node_id;
@@ -522,16 +525,11 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 				for (uint64_t j = 0; j < cl_msg->sub_reqs[i].size(); j++) {
 					new_msg->requests.add(cl_msg->sub_reqs[i][j]);
 				}
-
 				// 缓存到按原始步骤索引的数组，稍后再建立依赖并入队
 				created_by_step[i] = new_msg;
-				// Register into txn_registry as a placeholder (TxnManager* will be
-				// registered when the TxnManager for this txn is created). We keep
-				// a mapping from txn_id -> NULL for now to indicate existence.
-				// {
-				// 	std::lock_guard<std::mutex> lk(txn_registry_mutex);
-				// 	txn_registry[new_msg->get_txn_id()] = NULL;
-				// }
+
+				uint64_t key = get_calvin_key(new_msg->get_batch_id(), new_msg->return_node_id, new_msg->get_txn_id());
+				Manager::register_txn_message(key, new_msg);
 			}
 
 			// !Second pass: link dependencies by Message* pointers. For any write step
@@ -540,14 +538,12 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 			for (uint64_t i = 0; i < cl_msg->steps.size(); i++) {
 				YCSBClientQueryMessage * cur = created_by_step[i];
 				if (!cur) continue;
+				// 对于每一个依赖事务
 				if (cl_msg->steps[i] == 2) {
 					int depcount = 0;
 					for (uint64_t k = 0; k < cl_msg->steps.size(); k++) {
+						// 检查被依赖事务
 						if (cl_msg->steps[k] == 1 && created_by_step[k] != nullptr) {
-							// Instead of storing Message* pointers to parents (unsafe),
-							// store the parent's txn_id into our parents list indirectly by
-							// incrementing our deps_left and adding ourselves to parent's
-							// dependents_ids so parent can notify us on completion.
 							uint64_t parent_id = created_by_step[k]->get_txn_id();
 							depcount++;
 							{
@@ -556,6 +552,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 								created_by_step[k]->dependents_ids.push_back(key);
 								pthread_mutex_unlock(&created_by_step[k]->dependents_lock);
 							}
+							cl_msg->depends_on_messages.push_back(created_by_step[k]);
 						}
 					}
 					cur->deps_left.store(depcount);
@@ -563,10 +560,6 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 			}
 
 			// !Third pass: now that dependencies are set, compute participants and enqueue.
-			// 打印原本的长事务，被拆成了哪些子事务.
-			// DEBUG_SEQ("SEQ split txn (%ld,%ld) into %ld sub-txns\n",
-				// cl_msg->txn_id, cl_msg->batch_id, cl_msg->steps.size());
-
 			// When LONG_TXN_SORT is enabled we collect subtransactions, also build a
 			// comma-separated list of their txn_ids for debugging/tracing.
 			std::string split_ids;
@@ -582,9 +575,6 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 				// append txn id to split_ids
 				#else
 				// 在塞到fill_queue之前，注册到全局msg_registry
-				uint64_t key = get_calvin_key(new_msg->get_batch_id(), new_msg->return_node_id, new_msg->get_txn_id());
-				Manager::register_txn_message(key, new_msg);
-
 				for(auto participant = participants.begin(); participant != participants.end(); participant++) {
 					while (!fill_queue[*participant].push(new_msg) && !simulation->is_done()) {
 					}
@@ -593,7 +583,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 			}
 			// #if LONG_TXN_WORKLOAD && LONG_TXN_SORT
 			if (!split_ids.empty()) {
-				DEBUG_SEQ("SEQ split txn (%ld,%ld) child txns: %s\n", cl_msg->txn_id, cl_msg->batch_id, split_ids.c_str());
+				// DEBUG_SEQ("SEQ split txn (%ld,%ld) child txns: %s\n", cl_msg->batch_id, cl_msg->txn_id, split_ids.c_str());
 			}
 			// #endif
 		}
@@ -636,18 +626,17 @@ void Sequencer::reorder_batch() {
 	int delta = g_scheduler_thread_cnt > g_thread_cnt ? g_scheduler_thread_cnt : g_thread_cnt;
 	if (current_batch.empty()) return;
 
-	// std::vector<Message*> reorder_batch = Reorder::schedule_transactions_advanced(current_batch,delta,LAMBDA_FACTOR,-1);
+	std::vector<Message*> reorder_batch = Reorder::schedule_transactions_advanced(current_batch,delta,LAMBDA_FACTOR,-1);
+	// 测试是reorder的问题，还是下面重分配事务号的问题
+	// std::vector<Message*> reorder_batch = current_batch;
 
-	// // Permute txn ids: assign the i-th original id to the i-th message in the
-	// // reordered list. This preserves uniqueness and keeps the same id multiset.
-	// for (size_t i = 0; i < reorder_batch.size(); i++) {
-	// 	Message *m = reorder_batch[i];
-	// 	txnid_t txn_id = g_node_id + g_node_cnt * next_txn_id;
-	// 	next_txn_id++;
-	// 	m->txn_id = txn_id;
-	// }
-
-	std::vector<Message*> reorder_batch = current_batch;
+	// 重新分配事务号，以保证事务顺序确定
+	for (size_t i = 0; i < reorder_batch.size(); i++) {
+		Message *m = reorder_batch[i];
+		txnid_t txn_id = g_node_id + g_node_cnt * next_txn_id;
+		next_txn_id++;
+		m->txn_id = txn_id;
+	}	
 
 	// Now push reordered messages into the per-node fill_queue.
 	for (auto & msg : reorder_batch) {

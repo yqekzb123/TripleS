@@ -53,6 +53,9 @@ public:
 
 #if LONG_TXN_WORKLOAD
   uint64_t original_txn_id;
+  #if LONG_TXN_SORT && LONG_TXN_SPLIT
+  uint64_t original_sub_txn_id;
+  #endif
 #endif
 
   uint64_t wq_time;
@@ -329,17 +332,25 @@ public:
   bool isDone; // 代表当前子消息是否执行完毕
 
   // !!For long transactions
+  // --------------- 父事务部分 ---------------------
+  // 用来拆分成多个子事务
   vector<vector<ycsb_request * > > sub_reqs;
-
   vector<uint64_t> steps;
-  // // 子事务依赖信息：当当前子事务依赖于原始事务中某些步骤时，记录于message
-  // vector<Message*> depends_on_messages;
-  // 新增：依赖计数（还有多少父依赖未完成）
+  // --------------- 父事务部分 ---------------------
+
+  // --------------- 依赖事务部分 --------------------
+  // 用来记录当前子事务依赖于谁
+  vector<Message*> depends_on_messages;
+  // 依赖计数（还有多少依赖事务未完成
   std::atomic<int> deps_left;
-  // 新增：记录依赖于本子事务的子事务 key 列表（父完成时会通知这些依赖者）
+  // --------------- 依赖事务部分 --------------------
+
+  // --------------- 被依赖事务部分 --------------------
+  // 记录依赖于本子事务的子事务 key 列表（父完成时会通知这些依赖者）
   std::vector<uint64_t> dependents_ids;
   // 保护 dependents_ids 的锁（写入远少于读取/通知）
   pthread_mutex_t dependents_lock;
+  // --------------- 被依赖事务部分 --------------------
 };
 
 class YCSBClientQueryMessage : public ClientQueryMessage {

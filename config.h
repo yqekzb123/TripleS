@@ -255,7 +255,7 @@
 #define LONG_TXN_WORKLOAD true
 #define LONG_TXN_SCHEDULE true
 #define LONG_TXN_SPLIT true
-#define LONG_TXN_SORT false
+#define LONG_TXN_SORT true
 #define SCHEDULER_CNT 2
 // ==== LONG_TXN_SORT ====
 // 冲突衰减因子lambda
@@ -290,7 +290,10 @@
 #define CREATE_TXN_FILE false
 #define STRICT_PPT 0
 // 打开随机依赖
-#define OPEN_YCSB_DEPENDENCY true
+#define OPEN_YCSB_DEPENDENCY false
+
+
+
 // ==== [TPCC] ====
 // For large warehouse count, the tables do not fit in memory
 // small tpcc schemas shrink the table size.
@@ -402,8 +405,9 @@ enum PPSTxnType {
 #define IDX_VERB          false
 #define VERB_ALLOC          true
 
-#define DEBUG_LOCKFREE_LIST true
+#define DEBUG_LOCKFREE_LIST false
 #define DEBUG_SEQUENCER     true
+#define DEBUG_TIMEREPORT     true
 #define DEBUG_LOCK          false
 #define DEBUG_TIMESTAMP       false
 #define DEBUG_SYNTH         false
@@ -512,13 +516,13 @@ enum PPSTxnType {
 
 // Stats and timeout
 #define BILLION 1000000000UL // in ns => 1 second
-#define MILLION 1000000UL // in ns => 1 second
+#define MILLION 1000000UL // in ms => 1 second
 #define STAT_ARR_SIZE 1024
 #define PROG_TIMER 10 * BILLION // in s
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
 #define DONE_TIMER 1 * 30 * BILLION // ~1 minutes
-#define WARMUP_TIMER 1 * 20 * BILLION // ~1 minutes
+#define WARMUP_TIMER 1 * 60 * BILLION // ~1 minutes
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define SNAPPER_TXN_TIMEOUT 0.1 * BILLION

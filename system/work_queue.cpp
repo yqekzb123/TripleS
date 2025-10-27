@@ -68,10 +68,12 @@ void QWorkQueue::init() {
 
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
 	// calvin_scheduled_list = new LockFreeLinkedList<TxnManager *>();
-	calvin_scheduled_list = new LockFreeLinkedList();
+	// calvin_scheduled_list = new LockFreeLinkedList();
 	sched_ready = true;
 
-	calvin_scheduled_list_lockfree = new LockFreeList<list_node_entry *>();
+	// calvin_scheduled_list_lockfree = new LockFreeList<list_node_entry *>();
+
+	calvin_scheduled_list_lockfree = new LockList<list_node_entry *>();
 #endif
 
 	sem_init(&_semaphore, 0, 1);
@@ -840,71 +842,6 @@ Message * QWorkQueue::dequeue(uint64_t thd_id) {
 }
 
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
-void QWorkQueue::insert_calvin_list(uint64_t thd_id, TxnManager * txn) {
-	uint64_t key = (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
-	// Node<TxnManager *> * node = calvin_scheduled_list->insert(key, txn);
-	Node * node = calvin_scheduled_list->insert(key, txn);
-	assert(node != NULL);
-	// int result = calvin_scheduled_list->insert(key, calvin_scheduled_list->head, txn);
-	// assert(result != -1);
-}
-
-TxnManager * QWorkQueue::get_from_calvin_list(uint64_t thd_id) {
-	Node * currNode = calvin_scheduled_list->get_head();
-	Node * nextNode = currNode->succ.get_right();
-
-	while (nextNode->key < minSid) {
-		while (nextNode->succ.get_mark() == 1 && (currNode->succ.get_mark() == 0 || currNode->succ.get_right() != nextNode)) {
-            if (currNode->succ.get_right() == nextNode) {
-                calvin_scheduled_list->HelpMarked(currNode, nextNode);
-            }
-            nextNode = currNode->succ.get_right();
-        }
-        if (nextNode->key < minSid) {
-			if (((TxnManager *) nextNode->element)->lock_ready_cnt == 0) {
-				Node * delNode = calvin_scheduled_list->remove(nextNode->key);
-				if (delNode != NULL) {
-					return (TxnManager *) delNode->element;
-				} else {
-					currNode = calvin_scheduled_list->get_head();
-					nextNode = currNode->succ.get_right();
-				}
-			} else {
-				currNode = nextNode;
-            	nextNode = currNode->succ.get_right();
-			}
-        }
-	}
-	return NULL;
-	
-	// Node<TxnManager *> * currNode = calvin_scheduled_list->get_head();
-	// Node<TxnManager *> * nextNode = (Node<TxnManager*>*) currNode->succ.get_right();
-
-	// while (nextNode->key < minSid) {
-	// 	while (nextNode->succ.get_mark() == 1 && (currNode->succ.get_mark() == 0 || currNode->succ.get_right() != nextNode)) {
-    //         if (currNode->succ.get_right() == nextNode) {
-    //             calvin_scheduled_list->HelpMarked(currNode, nextNode);
-    //         }
-    //         nextNode = (Node<TxnManager*>*) currNode->succ.get_right();
-    //     }
-    //     if (nextNode->key < minSid) {
-	// 		if (nextNode->element->lock_ready_cnt == 0) {
-	// 			Node<TxnManager *> * delNode = calvin_scheduled_list->remove(nextNode->key);
-	// 			if (delNode != NULL) {
-	// 				return delNode->element;
-	// 			} else {
-	// 				currNode = calvin_scheduled_list->get_head();
-	// 				nextNode = (Node<TxnManager*>*) currNode->succ.get_right();
-	// 			}
-	// 		} else {
-	// 			currNode = nextNode;
-    //         	nextNode = (Node<TxnManager*>*) currNode->succ.get_right();
-	// 		}
-    //     }
-	// }
-	// return NULL;
-}
-
 void QWorkQueue::insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn) {
 	// uint64_t key = (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
 	uint64_t key = get_calvin_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
@@ -935,40 +872,48 @@ void QWorkQueue::insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn) 
 }
 
 TxnManager * QWorkQueue::get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t &key) {
-
-	// 下面用calvin_scheduled_list_lockfree的find_and_remove_if，来获取对应数据
-	// 所以这里要先写一个 判断是否可以出链表的函数，然后作为参数传进去.
-	// 要求具体来说是，key < minSid && lock_ready_cnt == 0
-	// 这个函数是传进去的参数是list_node_entry *，返回值是bool
-
+	// 第一个函数
 	std::function<bool(list_node_entry*)> func = [](list_node_entry * arg) -> bool {
 		list_node_entry * entry = arg;
 		if (!entry) return false;
-		// select if key <= minSid, no outstanding lock readiness, and no outstanding deps
-		if (entry->key <= minSid && entry->snapshot_lock_ready_cnt.load() == 0 && entry->snapshot_dep_count.load() == 0) {
+		if (entry->key <= minSid) {
 			return true;
 		}
+		// DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree cond1 skip txn %p key=%lu minSid=%lu\n",entry->txn, entry->key, minSid);
 		return false;
 	};
-
+	// 第二个函数
 	std::function<bool(list_node_entry*)> func2 = [](list_node_entry * arg) -> bool {
 		list_node_entry * entry = arg;
 		if (!entry) return false;
 		ClientQueryMessage * last_msg = (ClientQueryMessage*)entry->txn->last_msg;
-		if (entry->key <= minSid && entry->txn->lock_ready_cnt == 0 && last_msg->deps_left.load() == 0) {
+		if (entry->key <= minSid && entry->txn->lock_ready_cnt <= 0 && last_msg->deps_left.load() <= 0) {
+			// if (entry->txn->lock_ready_cnt < 0) {
+				// DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree txn %p lock_ready_cnt=%d\n", entry->txn, entry->txn->lock_ready_cnt);
+			// }
+			// if (last_msg->deps_left.load() < 0) {
+				// DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree txn %p deps_left=%d\n", entry->txn, last_msg->deps_left.load());
+			// }
 			return true;
 		}
+		// DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree cond2 skip txn %p key=%lu lock_ready_cnt=%d deps_left=%d\n",entry->txn, entry->key, entry->txn->lock_ready_cnt, last_msg->deps_left.load());
 		return false;
 	};
 	list_node_entry * entry = NULL;
 	key = 0;
 
-	bool succ = calvin_scheduled_list_lockfree->try_take(func2, entry, thd_id);
+	bool succ = calvin_scheduled_list_lockfree->try_take(func, func2, entry, thd_id);
 
 	if (succ) {
 		// DEBUG("[LockFreeList] thd %ld get_from_calvin_list_lockfree key=%lu txn=%p\n", thd_id, entry->key, entry->txn);
 		TxnManager * txn = entry->txn;
-		mem_allocator.free(entry, sizeof(list_node_entry));
+		// Avoid leaving a dangling pointer in the TxnManager that refers to this list node.
+		// The memory backing `entry` must NOT be freed immediately because other threads
+		// or deferred readers may still access it. Clear the back-pointer and leave
+		// reclamation to a safe, deferred mechanism (epoch/hazard pointers) or a GC list.
+		// txn->scheduled_entry = NULL;
+		// NOTE: do NOT free(entry) here; if you need reclamation, push `entry` to a
+		// thread-local garbage list to be reclaimed when safe.
 		return txn;
 	} else {
 		return NULL;

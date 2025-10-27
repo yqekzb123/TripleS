@@ -8,13 +8,18 @@
 #if CC_ALG == HDCC || CC_ALG == SNAPPER || LONG_TXN_SORT
 #include "cc_selector.h"
 #endif
-
+// 来一个define，分辨要不要细化冲突类型
+#define CONFLICT_DETAIL true
 
 // 计算事务之间的冲突因子，返回冲突矩阵
 struct ConflictScore {
+	// 最基础的冲突，写写，写读，读写都算
+	// int conflict;
+	// 下面是更细化的冲突类型
 	int ww; // 写写
 	int wr; // 写读
 	int rw; // 读写
+
 	ConflictScore() : ww(0), wr(0), rw(0) {}
 };
 
