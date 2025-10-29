@@ -359,6 +359,8 @@ public:
 	Message* last_msg;
 #if LONG_TXN_WORKLOAD
 	uint64_t original_txn_id;
+	uint64_t original_batch_id;
+	uint64_t origin_return_node_id;
 #endif
 
     // 如果此事务被插入到 calvin_scheduled_list_lockfree 中，

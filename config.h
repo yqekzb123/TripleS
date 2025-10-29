@@ -281,7 +281,7 @@
 // DO NOT LET PEQ_PER_QUERY <= REQ_PER_SHORT_QUERY
 #define REQ_PER_QUERY 50
 #define REQ_PER_SHORT_QUERY 10
-#define LONG_QUERY_PERC 0.0
+#define LONG_QUERY_PERC 0.4
 #else
 #define REQ_PER_QUERY 50
 #define REQ_PER_SHORT_QUERY 10
@@ -406,7 +406,10 @@ enum PPSTxnType {
 #define VERB_ALLOC          true
 
 #define DEBUG_LOCKFREE_LIST false
+#define DEBUG_REORDER         false
 #define DEBUG_SEQUENCER     true
+#define DEBUG_SCHEDULER     false
+#define DEBUG_WORKER        false
 #define DEBUG_TIMEREPORT     true
 #define DEBUG_LOCK          false
 #define DEBUG_TIMESTAMP       false

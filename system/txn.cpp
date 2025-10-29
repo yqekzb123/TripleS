@@ -460,7 +460,9 @@ void TxnManager::reset() {
 	log_flushed = false;
 
 #if LONG_TXN_WORKLOAD
-	original_txn_id = UINT64_MAX;
+	original_txn_id = INVALID_ID;
+	original_batch_id = INVALID_ID;
+	origin_return_node_id = INVALID_ID;
 #endif
 
 	//ready = true;
@@ -898,6 +900,13 @@ bool TxnManager::is_multi_part() {
 }
 
 void TxnManager::commit_stats() {
+	// 对于被拆分的事务来说，只考虑第一个
+	#if CC_ALG == CALVIN && LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+	if (original_txn_id != INVALID_ID && get_txn_id() != original_txn_id &&
+		get_batch_id() != original_batch_id) {
+		return;
+	}
+	#endif
 	uint64_t commit_time = get_sys_clock();
 	uint64_t timespan_short = commit_time - txn_stats.restart_starttime;
 	uint64_t timespan_long  = commit_time - txn_stats.starttime;

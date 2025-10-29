@@ -272,8 +272,10 @@ void Message::mcopy_from_txn(TxnManager * txn) {
   batch_id = txn->get_batch_id();
   algo = txn->algo;
 #endif
-#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+#if LONG_TXN_WORKLOAD
   original_txn_id = txn->original_txn_id;
+  original_batch_id = txn->original_batch_id;
+  origin_return_node_id = txn->origin_return_node_id;
 #endif
 }
 
@@ -282,8 +284,10 @@ void Message::mcopy_to_txn(TxnManager* txn) {
 #if CC_ALG == HDCC
   txn->original_return_id = original_return_node_id;
 #endif
-#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+#if LONG_TXN_WORKLOAD
   txn->original_txn_id = original_txn_id;
+  txn->original_batch_id = original_batch_id;
+  txn->origin_return_node_id = origin_return_node_id;
 #endif
 }
 
@@ -301,8 +305,10 @@ void Message::mcopy_from_buf(char * buf) {
   COPY_VAL(batch_id,buf,ptr);
   COPY_VAL(algo,buf,ptr);
 #endif
-#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+#if LONG_TXN_WORKLOAD
   COPY_VAL(original_txn_id,buf,ptr);
+  COPY_VAL(original_batch_id,buf,ptr);
+  COPY_VAL(origin_return_node_id,buf,ptr);
 #endif
   COPY_VAL(mq_time,buf,ptr);
 
@@ -336,8 +342,10 @@ void Message::mcopy_to_buf(char * buf) {
   COPY_BUF(buf,batch_id,ptr);
   COPY_BUF(buf,algo,ptr);
 #endif
-#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+#if LONG_TXN_WORKLOAD
   COPY_BUF(buf,original_txn_id,ptr);
+  COPY_BUF(buf,original_batch_id,ptr);
+  COPY_BUF(buf,origin_return_node_id,ptr);
 #endif
   COPY_BUF(buf,mq_time,ptr);
 
@@ -572,6 +580,7 @@ void QueryMessage::copy_to_buf(char * buf) {
 /************************/
 
 void YCSBClientQueryMessage::init() {
+  ClientQueryMessage::init();
   pthread_mutex_init(&dependents_lock, NULL);
 }
 
@@ -667,7 +676,9 @@ void YCSBClientQueryMessage::copy_to_buf(char * buf) {
 }
 /************************/
 
-void TPCCClientQueryMessage::init() {}
+void TPCCClientQueryMessage::init() {
+  ClientQueryMessage::init();
+}
 
 void TPCCClientQueryMessage::release() {
   ClientQueryMessage::release();
@@ -861,7 +872,9 @@ void TPCCClientQueryMessage::copy_to_buf(char * buf) {
 
 /************************/
 
-void PPSClientQueryMessage::init() {}
+void PPSClientQueryMessage::init() {
+  ClientQueryMessage::init();
+}
 
 void PPSClientQueryMessage::release() { ClientQueryMessage::release(); }
 
@@ -999,7 +1012,9 @@ void PPSClientQueryMessage::copy_to_buf(char * buf) {
 
 
 /***************DA zone*********/
-void DAClientQueryMessage::init() {}
+void DAClientQueryMessage::init() {
+  ClientQueryMessage::init();
+}
 void DAClientQueryMessage::copy_from_query(BaseQuery* query) {
   ClientQueryMessage::copy_from_query(query);
   DAQuery* da_query = (DAQuery*)(query);
@@ -1083,6 +1098,15 @@ void ClientQueryMessage::init() {
   delay_counts = 0;
 
   deps_left.store(0);
+
+  //其他字段清空
+  parent_marker = INVALID_ID;
+  original_txn_id = INVALID_ID;
+  original_batch_id = INVALID_ID;
+  origin_return_node_id = INVALID_ID;
+  parent_msg = NULL;
+  sub_reqs_size = 0;
+  delay_counts = 0;
 }
 
 void ClientQueryMessage::release() {

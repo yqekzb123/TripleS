@@ -305,6 +305,7 @@ void Stats_thd::clear() {
   sched_txn_table_time=0;
   sched_epoch_cnt=0;
   sched_epoch_diff=0;
+  order_idle_time=0;
   // DLI_MVCC_OCC
   dli_mvcc_occ_validate_time = 0;
   dli_mvcc_occ_check_cnt = 0;
@@ -1044,7 +1045,8 @@ void Stats_thd::print(FILE * outf, bool prog) {
   ",sched_idle_time=%f"
   ",sched_txn_table_time=%f"
   ",sched_epoch_cnt=%ld"
-          ",sched_epoch_diff=%f",
+          ",sched_epoch_diff=%f"
+          ",order_idle_time=%f",
           seq_txn_cnt, seq_batch_cnt, seq_full_batch_cnt, seq_ack_time / BILLION,
           seq_batch_time / BILLION, seq_process_cnt, seq_complete_cnt, seq_process_time / BILLION,
           seq_prep_time / BILLION, seq_idle_time / BILLION, seq_queue_wait_time / BILLION,
@@ -1054,7 +1056,7 @@ void Stats_thd::print(FILE * outf, bool prog) {
           sched_queue_wait_avg_time / BILLION, sched_queue_enqueue_time / BILLION,
           sched_queue_dequeue_time / BILLION, calvin_sched_time / BILLION,
           sched_idle_time / BILLION, sched_txn_table_time / BILLION, sched_epoch_cnt,
-          sched_epoch_diff / BILLION);
+          sched_epoch_diff / BILLION, order_idle_time / BILLION);
   // DLI_MVCC_OCC
   fprintf(outf,
           ",dli_mvcc_occ_validate_time=%f"
@@ -1647,6 +1649,7 @@ void Stats_thd::combine(Stats_thd * stats) {
   sched_txn_table_time+=stats->sched_txn_table_time;
   sched_epoch_cnt+=stats->sched_epoch_cnt;
   sched_epoch_diff+=stats->sched_epoch_diff;
+  order_idle_time+=stats->order_idle_time;
   // DLI_MVCC_OCC
   dli_mvcc_occ_validate_time += stats->dli_mvcc_occ_validate_time;
   dli_mvcc_occ_check_cnt += stats->dli_mvcc_occ_check_cnt;

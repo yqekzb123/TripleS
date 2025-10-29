@@ -140,8 +140,8 @@ def ycsb_long_txn():
     # req_per_query = 10
     # long_query_perc = [0,0.2,0.4,0.6,0.8,1.0]
     # long_query_perc = [0,0.1,0.2,0.3,0.4]
-    # long_query_perc = [0.4]
-    long_query_perc = [0.0]
+    long_query_perc = [0.4]
+    # long_query_perc = [0.0]
     load = [10000]
     tcnt = [4]
     scnt = [2]

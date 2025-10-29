@@ -52,10 +52,11 @@ public:
 #endif
 
 #if LONG_TXN_WORKLOAD
+  // 对于子事务来说，原本的大事务事务号
+  uint64_t original_batch_id;
   uint64_t original_txn_id;
-  #if LONG_TXN_SORT && LONG_TXN_SPLIT
-  uint64_t original_sub_txn_id;
-  #endif
+  // 对于子事务来说，原本的大事务应该返回给的节点
+  uint64_t origin_return_node_id;
 #endif
 
   uint64_t wq_time;
@@ -337,6 +338,10 @@ public:
   vector<vector<ycsb_request * > > sub_reqs;
   vector<uint64_t> steps;
   // --------------- 父事务部分 ---------------------
+  
+  // --------------- 父事务的原本信息 ---------------------
+  uint64_t sub_reqs_size;
+  Message* parent_msg;
 
   // --------------- 依赖事务部分 --------------------
   // 用来记录当前子事务依赖于谁
@@ -351,6 +356,17 @@ public:
   // 保护 dependents_ids 的锁（写入远少于读取/通知）
   pthread_mutex_t dependents_lock;
   // --------------- 被依赖事务部分 --------------------
+
+  // --------------- 入队/通知字段（用于 reorder -> sequencer 协作） --------------------
+  // 表示该消息是否已经被送入 Sequencer（Sequencer 负责分配 txn_id）
+  std::atomic<bool> enqueued{false};
+  // 当使用 Message* 级别的依赖通知时，记录还有多少依赖尚未被入队（用于 reorder 判断依赖是否满足）
+  std::atomic<int> enqueue_left{0};
+  // 直接的依赖者指针列表（消息就地通知，避免全局哈希查找）
+  std::vector<Message*> dependents_ptrs;
+  // 父事务分组标记（由 reorder 生成，Sequencer 使用它将同一父事务的子消息映射到首个子 txn_id）
+  uint64_t parent_marker = INVALID_ID;
+  // --------------- 入队/通知字段（用于 reorder -> sequencer 协作） --------------------
 
   // --------------- 重排序部分 --------------------
   uint64_t delay_counts; // 记录当前子消息被延迟的次数

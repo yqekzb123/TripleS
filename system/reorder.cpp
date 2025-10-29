@@ -84,6 +84,18 @@ bool SlidingWindowReorder::msg_conflicts_with_sent(Message *m) {
 	std::vector<uint64_t> read_keys, write_keys;
 	extract_msg_keys(m, read_keys, write_keys);
 	if (read_keys.empty() && write_keys.empty()) return false;
+	// !If this message depends on other messages that haven't been enqueued to the
+	// sequencer yet, consider it conflicting (can't send yet).
+	ClientQueryMessage * cm = (ClientQueryMessage*) m;
+	if (!cm->depends_on_messages.empty()) {
+		for (Message *dep : cm->depends_on_messages) {
+			// treat as conflict until dependency has been enqueued to Sequencer
+			ClientQueryMessage * dep_cm = (ClientQueryMessage*) dep;
+			if (!dep_cm->enqueued.load()) {
+				return true;
+			}
+		}
+	}
 	// For each sent entry, check three conflict types:
 	//  - write-write: candidate.write vs sent.write
 	//  - write-read : candidate.write vs sent.read
@@ -107,7 +119,16 @@ bool SlidingWindowReorder::msg_conflicts_with_sent(Message *m) {
 
 void SlidingWindowReorder::send_and_register(Message *m) {
 	work_queue.sequencer_enqueue(thd_id, m);
-	DEBUG_SEQ("ReorderThread %ld sent txn %ld\n", thd_id, m->get_txn_id());
+	// mark this Message as having been enqueued to the sequencer and notify dependents
+	ClientQueryMessage * cm = (ClientQueryMessage*) m;
+	cm->enqueued.store(true);
+	// notify dependents (decrement their enqueue_left)
+	for (Message *dep : cm->dependents_ptrs) {
+		ClientQueryMessage *dcm = (ClientQueryMessage*) dep;
+		dcm->enqueue_left.fetch_sub(1);
+	}
+	DEBUG_ORDER("ReorderThread %ld send msg %p-%ld, type %d, return_node_id %ld, parent_marker %ld, origin_return_node_id %ld, sub_reqs %ld\n", thd_id, m,m->get_txn_id(), m ? m->get_rtype() : -1, m ? m->get_return_id() : -1, m ? ((ClientQueryMessage*)m)->parent_marker : -1, m ? ((ClientQueryMessage*)m)->origin_return_node_id : -1, ((ClientQueryMessage*)m)->sub_reqs_size);
+
 	if (delta > 0) {
 		SentEntry &e = sent_buffer[sent_head];
 		build_bloom_for_msg(m, e.bf_read, e.bf_write);
@@ -162,11 +183,95 @@ void SlidingWindowReorder::trigger_window_move() {
 
 // API used from run(): process a new message (returns after handling)
 void SlidingWindowReorder::process_new_msg(Message *m) {
+	// If this is a long-txn parent that contains multiple steps, split it here
+	// into sub-messages so reorder can operate at sub-transaction granularity.
+	// We only split when steps has more than one entry (i.e. it's actually splitable).
+	m->txn_id = temp_txn_id++; // 目前只是临时的事务号
+	// 打印msg的信息
+	DEBUG_ORDER("ReorderThread %ld get msg %p-%ld, type %d, return_node_id %ld\n", thd_id, m, m->txn_id , m ? m->get_rtype() : -1, m ? m->get_return_id() : -1);
+	if (LONG_TXN_WORKLOAD && LONG_TXN_SPLIT) {
+		#if WORKLOAD == YCSB
+		YCSBClientQueryMessage *cl = (YCSBClientQueryMessage*) m;
+		if (cl && cl->steps.size() > 1) {
+			// allocate a parent marker for this split group
+			uint64_t parent_marker = next_parent_marker++;
+			// First pass: create child messages per step
+			std::vector<YCSBClientQueryMessage*> created_by_step;
+			created_by_step.resize(cl->steps.size(), nullptr);
+			uint64_t total_sub_reqs = 0;
+			for (size_t i = 0; i < cl->steps.size(); ++i) {
+				if (cl->sub_reqs[i].size() == 0) continue;
+				YCSBClientQueryMessage * new_msg = (YCSBClientQueryMessage *)Message::create_message(CL_QRY);
+				// inherit batch and return node
+				new_msg->batch_id = cl->batch_id;
+				new_msg->rtype = CL_QRY;
+				new_msg->isDone = false;
+				new_msg->deps_left.store(0);
+				// 记录原始的大事务信息
+				new_msg->origin_return_node_id = cl->return_node_id;
+				// single-step
+				new_msg->steps = std::vector<uint64_t>(1, cl->steps[i]);
+				new_msg->original_txn_id = INVALID_ID; // will be set later by Sequencer
+				new_msg->original_batch_id = INVALID_ID; // will be set later by Sequencer
+				new_msg->return_node_id = g_node_id;
+				new_msg->lat_network_time = 0;
+				new_msg->lat_other_time = 0;
+				// init requests array and copy pointers
+				new_msg->requests.init(cl->sub_reqs[i].size());
+				new_msg->requests.init(g_req_per_query);
+				for (size_t j = 0; j < cl->sub_reqs[i].size(); ++j) {
+					new_msg->requests.add(cl->sub_reqs[i][j]);
+				}
+				created_by_step[i] = new_msg;
+				// mark grouping parent marker so Sequencer can map siblings to first child txn_id
+				new_msg->parent_marker = parent_marker;
+				new_msg->parent_msg = m;
+				total_sub_reqs++;
+			}
+			// Second pass: link intra-parent dependencies (steps==2 depend on steps==1)
+			for (size_t i = 0; i < cl->steps.size(); ++i) {
+				YCSBClientQueryMessage * cur = created_by_step[i];
+				if (!cur) continue;
+				if (cl->steps[i] == 2) {
+					int depcount = 0;
+					for (size_t k = 0; k < cl->steps.size(); ++k) {
+						if (cl->steps[k] == 1 && created_by_step[k] != nullptr) {
+							depcount++;
+							// record pointer dependency; also add cur to dependency's dependents_ptrs
+							cur->depends_on_messages.push_back(created_by_step[k]);
+							{
+								pthread_mutex_lock(&created_by_step[k]->dependents_lock);
+								created_by_step[k]->dependents_ptrs.push_back(cur);
+								pthread_mutex_unlock(&created_by_step[k]->dependents_lock);
+							}
+						}
+					}
+					cur->deps_left.store(depcount);
+					cur->enqueue_left.store(depcount);
+				}
+			}
+			// Third pass: hand each created child into reorder pipeline
+			for (size_t i = 0; i < created_by_step.size(); ++i) {
+				if (!created_by_step[i]) continue;
+				// initialize delay counter on message itself
+				created_by_step[i]->delay_counts = 0;
+				created_by_step[i]->sub_reqs_size = total_sub_reqs;
+				// process each child as a separate message through reorder
+				process_new_msg((Message*)created_by_step[i]);
+			}
+			// release parent message: reorder consumed it by splitting
+			m->release();
+			return;
+		} 
+		#endif
+	}
+
+	// Normal single message processing (either original single-step txn or already-created child)
 	if (!msg_conflicts_with_sent(m)) {
 		send_and_register(m);
 		trigger_window_move();
 	} else {
-		// delay_counts[m] = 0;
+		// use message-internal delay_counts field
 		((ClientQueryMessage*)m)->delay_counts = 0;
 		delay_queues[0].push_back(m);
 	}
@@ -217,7 +322,7 @@ RC ReorderThread::run() {
 	int max_delay = 2; // 可以调整最大延迟次数
 
 	SlidingWindowReorder swr(delta, _thd_id, max_delay);
-	int id = 0; //记录来的事务编号
+	// int id = 0; //记录来的事务编号
 	uint64_t slide_timeout_ns = 1000000ULL; // 1ms default timeout for forcing a window move
 	// Main loop: process incoming ordered messages and perform reordering
 	while(!simulation->is_done()) {
@@ -234,15 +339,14 @@ RC ReorderThread::run() {
 			if (idle_starttime == 0) idle_starttime = get_sys_clock();
 			continue;
 		}
-		// if(idle_starttime > 0) {
-		// 	INC_STATS(_thd_id,seq_idle_time,get_sys_clock() - idle_starttime);
-		// 	idle_starttime = 0;
-		// }
-		msg->txn_id = id; // 目前只是临时的事务号
-		id ++;
+
+		if(idle_starttime > 0) {
+			INC_STATS(_thd_id,order_idle_time,get_sys_clock() - idle_starttime);
+			idle_starttime = 0;
+		}
+
 		// Delegate new message processing to sliding-window helper
 		swr.process_new_msg(msg);
-		// work_queue.sequencer_enqueue(thd_id, msg);
 
 		// INC_STATS(_thd_id,mtx[32],get_sys_clock() - prof_starttime);
 		// prof_starttime = get_sys_clock();

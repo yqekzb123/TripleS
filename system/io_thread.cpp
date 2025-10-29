@@ -240,18 +240,22 @@ RC InputThread::server_recv_loop() {
 			}
 			if(msg->rtype == CALVIN_ACK ||(msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id())) ||
 			(msg->rtype == CL_QRY_O && ISCLIENTN(msg->get_return_id()))) {
-#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
-			#if WORKLOAD == YCSB
-				if (msg->rtype == CL_QRY && ((YCSBClientQueryMessage*)msg)->requests.size() == g_req_per_query) {
-					split_long_transaction(msg);
-				}
+			#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
+				#if WORKLOAD == YCSB
+					if (msg->rtype == CL_QRY && ((YCSBClientQueryMessage*)msg)->requests.size() == g_req_per_query) {
+						split_long_transaction(msg);
+					}
+				#endif
 			#endif
-#endif
-#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
-				work_queue.order_enqueue(get_thd_id(),msg);
-#else
+			#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+				if (msg->rtype == CL_QRY) {
+					work_queue.order_enqueue(get_thd_id(),msg);
+				} else {
+					work_queue.sequencer_enqueue(get_thd_id(),msg);
+				}
+			#else
 				work_queue.sequencer_enqueue(get_thd_id(),msg);
-#endif
+			#endif
 				msgs->erase(msgs->begin());
 				continue;
 			}
@@ -265,7 +269,7 @@ RC InputThread::server_recv_loop() {
 #ifdef FAKE_PROCESS
 			if (fakeprocess(msg))
 #endif
-				work_queue.enqueue(get_thd_id(),msg,false);
+			work_queue.enqueue(get_thd_id(),msg,false);
 			msgs->erase(msgs->begin());
 		}
 		delete msgs;

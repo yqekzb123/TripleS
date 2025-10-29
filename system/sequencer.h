@@ -19,6 +19,7 @@
 
 #include "global.h"
 #include "query.h"
+#include <unordered_map>
 #include <boost/lockfree/queue.hpp>
 
 class Workload;
@@ -59,7 +60,6 @@ class Sequencer {
 	void process_txn(Message* msg, uint64_t thd_id, uint64_t early_start, uint64_t last_start,
 									 uint64_t wait_time, uint32_t abort_cnt);
 	void process_abort(Message *msg, uint64_t thd_id);
-	void reorder_batch();
 	void send_next_batch(uint64_t thd_id);
 	
 #if CC_ALG == HDCC
@@ -92,6 +92,9 @@ class Sequencer {
 	bool blocked;
 	uint64_t validationCount;
 #endif
+
+	// parent_marker -> first_child_txn_id mapping (used when reorder pre-splits children)
+	std::unordered_map<uint64_t, std::pair<uint64_t,uint64_t>> parent_first_child_map;
 };
 
 class Seq_thread_t {

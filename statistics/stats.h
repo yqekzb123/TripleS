@@ -272,6 +272,7 @@ public:
   double sched_txn_table_time;
   uint64_t sched_epoch_cnt;
   double sched_epoch_diff;
+  double order_idle_time;
   // DLI_MVCC_OCC
   double dli_mvcc_occ_validate_time;
   uint64_t dli_mvcc_occ_check_cnt;

@@ -41,8 +41,26 @@
     fflush(stdout); \
   }
 
+#define DEBUG_ORDER(...) \
+  if(DEBUG_REORDER) { \
+    fprintf(stdout,__VA_ARGS__); \
+    fflush(stdout); \
+  }
+
 #define DEBUG_SEQ(...) \
   if(DEBUG_SEQUENCER) { \
+    fprintf(stdout,__VA_ARGS__); \
+    fflush(stdout); \
+  }
+
+#define DEBUG_SCH(...) \
+  if(DEBUG_SCHEDULER) { \
+    fprintf(stdout,__VA_ARGS__); \
+    fflush(stdout); \
+  }
+
+#define DEBUG_WRK(...) \
+  if(DEBUG_WORKER) { \
     fprintf(stdout,__VA_ARGS__); \
     fflush(stdout); \
   }
@@ -332,5 +350,8 @@ public:
 private:
 	uint64_t seed;
 };
+
+// 写一个作为默认无效的值的宏
+#define INVALID_ID UINT64_MAX
 
 #endif

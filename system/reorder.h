@@ -59,7 +59,7 @@ struct SentEntry {
 class SlidingWindowReorder {
 public:
 	SlidingWindowReorder(int delta_, uint64_t thd_id_, int max_delay_ = -1)
-	: delta(delta_), thd_id(thd_id_), max_delay(max_delay_), last_move_time_ns(0) {
+	: delta(delta_), thd_id(thd_id_), max_delay(max_delay_), last_move_time_ns(0), next_parent_marker(1) {
 		if (max_delay <= 0) max_delay = delta;
 		delay_queues.resize((size_t)delta + 1);
 		sent_buffer.resize((size_t)delta);
@@ -93,8 +93,14 @@ private:
 	std::vector<SentEntry> sent_buffer;
 	size_t sent_head;
 	uint64_t last_move_time_ns;
-	std::unordered_map<Message*, int> delay_counts;
+	// track per-txn delay counts (keyed by txn_id for safety)
+	std::unordered_map<uint64_t, int> delay_counts;
 	int max_delay;
+
+	// Next parent marker id generator for grouping child messages created by reorder
+	uint64_t next_parent_marker;
+
+	uint64_t temp_txn_id;
 };
 
 class ReorderThread : public Thread {
