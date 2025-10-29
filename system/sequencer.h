@@ -70,10 +70,7 @@ class Sequencer {
 	void reset_participating_nodes(bool * part_nodes);
 
 	boost::lockfree::queue<Message*, boost::lockfree::capacity<65526> > * fill_queue;
-#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
-// 当前批次内的事务列表
-	std::vector<Message*> current_batch;
-#endif
+
 #if WORKLOAD == YCSB
 	YCSBQuery* node_queries;
 #elif WORKLOAD == TPCC

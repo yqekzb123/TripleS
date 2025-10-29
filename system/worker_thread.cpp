@@ -1627,7 +1627,9 @@ RC StatsPerIntervalThread::run(){
       calvin_cnt_this_time = 0;
       last_time = now_time;
 
+      #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
       work_queue.calvin_scheduled_list_lockfree->DEBUG_PRINT_LIST_LENGTH();
+      #endif
       DEBUG_TIME("------StatsPerIntervalThread %ld seconds--------\n",loop);
       loop++;
       // 增加清理无锁链表的操作

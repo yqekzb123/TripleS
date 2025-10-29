@@ -351,6 +351,10 @@ public:
   // 保护 dependents_ids 的锁（写入远少于读取/通知）
   pthread_mutex_t dependents_lock;
   // --------------- 被依赖事务部分 --------------------
+
+  // --------------- 重排序部分 --------------------
+  uint64_t delay_counts; // 记录当前子消息被延迟的次数
+  // --------------- 重排序部分 --------------------
 };
 
 class YCSBClientQueryMessage : public ClientQueryMessage {

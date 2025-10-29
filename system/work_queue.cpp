@@ -36,6 +36,9 @@ void QWorkQueue::init() {
 	seq_queue = new boost::lockfree::queue<work_queue_entry* > (0);
 	work_queue = new boost::lockfree::queue<work_queue_entry* > (0);
 	new_txn_queue = new boost::lockfree::queue<work_queue_entry* >(0);
+#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+	order_queue = new boost::lockfree::queue<work_queue_entry* > (0);
+#endif
 #if CC_ALG == ARIA
 	aria_read_queue = new boost::lockfree::queue<work_queue_entry* >(0);
 	aria_reserve_queue = new boost::lockfree::queue<work_queue_entry* >(0);
@@ -125,6 +128,53 @@ Message * QWorkQueue::sequencer_dequeue(uint64_t thd_id) {
 	return msg;
 
 }
+
+#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+void QWorkQueue::order_enqueue(uint64_t thd_id, Message * msg) {
+	uint64_t starttime = get_sys_clock();
+	assert(msg);
+	DEBUG_M("OrdQueue::enqueue work_queue_entry alloc\n");
+	work_queue_entry * entry = (work_queue_entry*)mem_allocator.align_alloc(sizeof(work_queue_entry));
+	entry->msg = msg;
+	entry->rtype = msg->rtype;
+	entry->txn_id = msg->txn_id;
+	entry->batch_id = msg->batch_id;
+	entry->starttime = get_sys_clock();
+	assert(ISSERVER);
+
+	DEBUG("Seq Enqueue (%ld,%ld)\n",entry->txn_id,entry->batch_id);
+		while (!order_queue->push(entry) && !simulation->is_done()) {
+		}
+
+	// INC_STATS(thd_id,seq_queue_enqueue_time,get_sys_clock() - starttime);
+	// INC_STATS(thd_id,seq_queue_enq_cnt,1);
+
+}
+Message * QWorkQueue::order_dequeue(uint64_t thd_id) {
+	uint64_t starttime = get_sys_clock();
+	assert(ISSERVER);
+	Message * msg = NULL;
+	work_queue_entry * entry = NULL;
+	bool valid = order_queue->pop(entry);
+
+	if(valid) {
+		msg = entry->msg;
+		assert(msg);
+		DEBUG("Ord Dequeue (%ld,%ld)\n",entry->txn_id,entry->batch_id);
+		// uint64_t queue_time = get_sys_clock() - entry->starttime;
+		// INC_STATS(thd_id,seq_queue_wait_time,queue_time);
+		// INC_STATS(thd_id,seq_queue_cnt,1);
+		// DEBUG("DEQUEUE (%ld,%ld) %ld; %ld; %d,
+		// 0x%lx\n",msg->txn_id,msg->batch_id,msg->return_node_id,queue_time,msg->rtype,(uint64_t)msg);
+		DEBUG_M("OrdQueue::dequeue work_queue_entry free\n");
+		mem_allocator.free(entry,sizeof(work_queue_entry));
+		// INC_STATS(thd_id,seq_queue_dequeue_time,get_sys_clock() - starttime);
+	}
+
+	return msg;
+
+}
+#endif
 
 #if CC_ALG == ARIA
 Message* QWorkQueue::txn_dequeue(uint64_t thd_id) {

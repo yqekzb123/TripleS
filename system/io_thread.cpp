@@ -241,13 +241,17 @@ RC InputThread::server_recv_loop() {
 			if(msg->rtype == CALVIN_ACK ||(msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id())) ||
 			(msg->rtype == CL_QRY_O && ISCLIENTN(msg->get_return_id()))) {
 #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
-#if WORKLOAD == YCSB
+			#if WORKLOAD == YCSB
 				if (msg->rtype == CL_QRY && ((YCSBClientQueryMessage*)msg)->requests.size() == g_req_per_query) {
 					split_long_transaction(msg);
 				}
+			#endif
 #endif
-#endif
+#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+				work_queue.order_enqueue(get_thd_id(),msg);
+#else
 				work_queue.sequencer_enqueue(get_thd_id(),msg);
+#endif
 				msgs->erase(msgs->begin());
 				continue;
 			}

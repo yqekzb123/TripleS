@@ -259,7 +259,7 @@ RC CalvinSequencerThread::run() {
 			simulation->advance_seq_epoch();
 			//last_batchtime = get_wall_clock();
 			// 在这里对batch内的事务进行排序
-			seq_man.reorder_batch();
+			// seq_man.reorder_batch();
 			seq_man.send_next_batch(_thd_id);
 		}
 

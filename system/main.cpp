@@ -57,6 +57,7 @@
 #include "tictoc.h"
 #include "key_xid.h"
 #include "rts_cache.h"
+#include "reorder.h"
 
 void network_test();
 void network_test_recv();
@@ -85,6 +86,9 @@ CalvinSequencerThread * calvin_seq_thds;
 
 #if CC_ALG == HDCC || LONG_TXN_SCHEDULE
 ConflictThread * conflict_thd;
+#endif
+#if CC_ALG == HDCC || LONG_TXN_SORT
+ReorderThread * reorder_thd;
 #endif
 
 #if CC_ALG == ARIA
@@ -339,6 +343,9 @@ int main(int argc, char *argv[]) {
 	all_thd_cnt += 1;	//sequencer thread
 	all_thd_cnt -= 1; 	//abort thread
 #endif
+#if LONG_TXN_SORT
+	all_thd_cnt += 1; // reorder thread
+#endif
 
 
 	printf("%ld, %ld, %ld, %d \n", thd_cnt, rthd_cnt, sthd_cnt, g_abort_thread_cnt);
@@ -379,8 +386,11 @@ int main(int argc, char *argv[]) {
 	calvin_seq_thds = new CalvinSequencerThread[1];
 	// conflict_thds=new ConflictThread[1];
 #endif
-#if CC_ALG == HDCC || LONG_TXN_SCHEDULE
+#if CC_ALG == HDCC
 	conflict_thd=new ConflictThread[1];
+#endif
+#if LONG_TXN_SORT
+	reorder_thd=new ReorderThread[1];
 #endif
 #if CC_ALG == ARIA
 	aria_seq_thds = new AriaSequencerThread[1];
@@ -485,13 +495,12 @@ int main(int argc, char *argv[]) {
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
 	the_first_scheduler_id = id; 
 	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
-#if SET_AFFINITY
+	#if SET_AFFINITY
 		CPU_ZERO(&cpus);
 		CPU_SET(cpu_cnt, &cpus);
 		pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
 		cpu_cnt++;
-#endif
-
+	#endif
 		calvin_lock_thds[i].init(id,g_node_id,m_wl);
 		pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_lock_thds[i]);
 }
@@ -515,6 +524,16 @@ int main(int argc, char *argv[]) {
 
 	calvin_seq_thds[0].init(id,g_node_id,m_wl);
 	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_seq_thds[0]);
+#if LONG_TXN_SORT
+	#if SET_AFFINITY
+		CPU_ZERO(&cpus);
+		CPU_SET(cpu_cnt, &cpus);
+		pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+		cpu_cnt++;
+	#endif
+	reorder_thd[0].init(id, g_node_id, m_wl);
+	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&reorder_thd[0]);
+#endif
 #endif
 #if CC_ALG == SNAPPER
 #if SET_AFFINITY

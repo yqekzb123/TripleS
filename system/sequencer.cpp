@@ -35,7 +35,7 @@
 #include <boost/lockfree/queue.hpp>
 #include "reorder.h"
 #include "manager.h"
-#if CC_ALG == HDCC || CC_ALG == SNAPPER || LONG_TXN_SORT
+#if CC_ALG == HDCC || CC_ALG == SNAPPER
 #include "cc_selector.h"
 #endif
 
@@ -47,11 +47,6 @@ void Sequencer::init(Workload * wl) {
 	wl_head = NULL;
 	wl_tail = NULL;
 	fill_queue = new boost::lockfree::queue<Message*, boost::lockfree::capacity<65526> > [g_node_cnt];
-
-#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
-	// 当前批次内的事务列表
-	current_batch.clear();
-#endif
 	
 #if CC_ALG == HDCC || CC_ALG == SNAPPER
 	last_epoch_max_id = 0;
@@ -304,7 +299,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 														uint64_t last_start, uint64_t wait_time, uint32_t abort_cnt) {
 
 		uint64_t starttime = get_sys_clock();
-		DEBUG("SEQ Processing msg\n");
+		DEBUG_SEQ("SEQ Processing msg\n");
 		qlite_ll * en = wl_tail;
 
 		// LL is potentially a bottleneck here
@@ -466,17 +461,12 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
 	#if WORKLOAD == YCSB
 		if (cl_msg->steps.empty()) {
-			#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
-			// If LONG_TXN_SORT is enabled we collect subtransactions into current_batch
-			// for later reordering/dispatch instead of immediately pushing them into
-			// the per-node fill_queue.
-			current_batch.push_back((Message*)msg);
-			#else
 			for(auto participant = participants.begin(); participant != participants.end(); participant++) {
 				while (!fill_queue[*participant].push(msg) && !simulation->is_done()) {
 				}
+				DEBUG_SEQ("Sequencer::process_txn() Enqueued full msg txn_id=%ld batch_id=%ld to node %ld\n",
+						msg->get_txn_id(), msg->get_batch_id(), *participant);
 			}
-			#endif
 		} else {
 			// 记录原始事务ID，方便后续追踪
 			cl_msg->original_txn_id = cl_msg->txn_id;
@@ -569,21 +559,16 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 				std::set<uint64_t> participants = YCSBQuery::participants(new_msg, _wl);
 				if (!split_ids.empty()) split_ids += ",";
 				split_ids += std::to_string(new_msg->get_txn_id());
-				#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
-				// collect into current_batch for later reordering/dispatch
-				current_batch.push_back((Message*)new_msg);
-				// append txn id to split_ids
-				#else
-				// 在塞到fill_queue之前，注册到全局msg_registry
 				for(auto participant = participants.begin(); participant != participants.end(); participant++) {
 					while (!fill_queue[*participant].push(new_msg) && !simulation->is_done()) {
 					}
+					DEBUG_SEQ("SEQ split txn (%ld,%ld) adding sub-txn %ld to fill queue\n",
+						cl_msg->batch_id, cl_msg->txn_id, new_msg->get_txn_id());
 				}
-				#endif
 			}
 			// #if LONG_TXN_WORKLOAD && LONG_TXN_SORT
 			if (!split_ids.empty()) {
-				// DEBUG_SEQ("SEQ split txn (%ld,%ld) child txns: %s\n", cl_msg->batch_id, cl_msg->txn_id, split_ids.c_str());
+				DEBUG_SEQ("Sequencer::process_txn() split txn (%ld,%ld) child txns: %s\n", cl_msg->batch_id, cl_msg->txn_id, split_ids.c_str());
 			}
 			// #endif
 		}
@@ -592,21 +577,13 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 	#else
 
 	#endif
-#else
-		// Add new txn to fill queue
-		#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
-		// If LONG_TXN_SORT is enabled we collect subtransactions into current_batch
-		// for later reordering/dispatch instead of immediately pushing them into
-		// the per-node fill_queue.
-		current_batch.push_back((Message*)msg);
-		#else
+#else	
 		for(auto participant = participants.begin(); participant != participants.end(); participant++) {
 			DEBUG("SEQ adding (%ld,%ld) to fill queue (recon: %d)\n", msg->get_txn_id(),
 				msg->get_batch_id(), ((PPSClientQueryMessage *)msg)->recon);
 			while (!fill_queue[*participant].push(msg) && !simulation->is_done()) {
 			}
 		}
-		#endif
 #endif
 
 #if LOGGING
@@ -621,7 +598,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 
 // 这里加一个调用reorder给要发的batch重排序的函数
 void Sequencer::reorder_batch() {
-	#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+	#if LONG_TXN_WORKLOAD && LONG_TXN_SORT && 0
 	// delta值是执行器和调度器的最大值
 	int delta = g_scheduler_thread_cnt > g_thread_cnt ? g_scheduler_thread_cnt : g_thread_cnt;
 	if (current_batch.empty()) return;

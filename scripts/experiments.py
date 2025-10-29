@@ -8,6 +8,7 @@ SHORTNAMES = {
     "CLIENT_SEND_THREAD_CNT" : "CST",
     "NODE_CNT" : "N",
     "THREAD_CNT" : "T",
+    "SCHEDULER_CNT" : "SC",
     "REM_THREAD_CNT" : "RT",
     "SEND_THREAD_CNT" : "ST",
     "CC_ALG" : "",
@@ -41,7 +42,7 @@ SHORTNAMES = {
     "NUM_WH":"WH",
 }
 
-fmt_title=["NODE_CNT","CC_ALG","ACCESS_PERC","TXN_WRITE_PERC","PERC_PAYMENT","MPR","MODE","MAX_TXN_IN_FLIGHT","SEND_THREAD_CNT","REM_THREAD_CNT","THREAD_CNT","TXN_WRITE_PERC","TUP_WRITE_PERC","ZIPF_THETA","LONG_QUERY_PERC","NUM_WH"]
+fmt_title=["NODE_CNT","CC_ALG","ACCESS_PERC","TXN_WRITE_PERC","PERC_PAYMENT","MPR","MODE","MAX_TXN_IN_FLIGHT","SEND_THREAD_CNT","REM_THREAD_CNT","THREAD_CNT","SCHEDULER_CNT","TXN_WRITE_PERC","TUP_WRITE_PERC","ZIPF_THETA","LONG_QUERY_PERC","NUM_WH"]
 
 ##############################
 # PLOTS
@@ -139,12 +140,14 @@ def ycsb_long_txn():
     # req_per_query = 10
     # long_query_perc = [0,0.2,0.4,0.6,0.8,1.0]
     # long_query_perc = [0,0.1,0.2,0.3,0.4]
-    long_query_perc = [0.4]
+    # long_query_perc = [0.4]
+    long_query_perc = [0.0]
     load = [10000]
     tcnt = [4]
+    scnt = [2]
     skew = [0.3]
-    fmt = ["WORKLOAD","CC_ALG","LONG_QUERY_PERC","REQ_PER_QUERY","LONG_TXN_WORKLOAD","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT"]
-    exp = [[wl,algo,lq_perc,req_per_query,long_txn_wl,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,thr] for thr,txn_wr_perc,tup_wr_perc,lq_perc,ld,n,sk,algo in itertools.product(tcnt,txn_write_perc,tup_write_perc,long_query_perc,load,nnodes,skew,algos)]
+    fmt = ["WORKLOAD","CC_ALG","LONG_QUERY_PERC","REQ_PER_QUERY","LONG_TXN_WORKLOAD","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","SCHEDULER_CNT"]
+    exp = [[wl,algo,lq_perc,req_per_query,long_txn_wl,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,thr,s_cnt] for thr,s_cnt,txn_wr_perc,tup_wr_perc,lq_perc,ld,n,sk,algo in itertools.product(tcnt,scnt,txn_write_perc,tup_write_perc,long_query_perc,load,nnodes,skew,algos)]
     return fmt,exp
 
 def ycsb_long_txn2():

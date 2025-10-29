@@ -1080,6 +1080,7 @@ void DAClientQueryMessage::release() { ClientQueryMessage::release(); }
 void ClientQueryMessage::init() { 
   first_startts = 0; 
   isDone = false;
+  delay_counts = 0;
 
   deps_left.store(0);
 }

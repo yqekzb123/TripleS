@@ -77,13 +77,15 @@ public:
   void sequencer_enqueue(uint64_t thd_id, Message * msg);
   Message * sequencer_dequeue(uint64_t thd_id);
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
-  // void insert_calvin_list(uint64_t thd_id, TxnManager * txn);
-  // TxnManager * get_from_calvin_list(uint64_t thd_id);
-
   // 用新的单向无锁链表实现的
   void insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn);
   TxnManager * get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t &key);
 #endif
+#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+  void order_enqueue(uint64_t thd_id, Message * msg);
+  Message * order_dequeue(uint64_t thd_id);
+#endif
+
 #if CC_ALG == ARIA
   Message * txn_dequeue(uint64_t thd_id);
   void work_enqueue(uint64_t thd_id, Message * msg, bool not_ready, ARIA_PHASE phase);
@@ -146,6 +148,9 @@ private:
   boost::lockfree::queue<work_queue_entry* > * aria_commit_queue;
 #endif
 
+#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+  boost::lockfree::queue<work_queue_entry* > * order_queue;
+#endif
 
 
   uint64_t sched_ptr;
