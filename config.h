@@ -68,7 +68,7 @@
 // Simulation + Hardware
 /***********************************************/
 #define NODE_CNT 1
-#define THREAD_CNT 4
+#define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
 #define LOGGER_THREAD_CNT 3
@@ -253,13 +253,13 @@
 #define GEN_BY_MPR false
 
 #define LONG_TXN_WORKLOAD true
-#define LONG_TXN_SCHEDULE true
-#define LONG_TXN_SPLIT true
-#define LONG_TXN_SORT true
-#define SCHEDULER_CNT 2
+#define LONG_TXN_SCHEDULE false
+#define LONG_TXN_SPLIT false
+#define LONG_TXN_SORT false
+#define SCHEDULER_CNT 8
 // ==== LONG_TXN_SORT ====
 // 冲突衰减因子lambda
-#define LAMBDA_FACTOR 0.1
+#define LONG_SORT_MAX_DELAY 10
 
 // ==== [YCSB] ====
 // SKEW_METHOD:
@@ -270,7 +270,7 @@
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
 #define SYNTH_TABLE_SIZE 8388608
-#define ZIPF_THETA 0.3
+#define ZIPF_THETA 0.9
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
@@ -291,6 +291,7 @@
 #define STRICT_PPT 0
 // 打开随机依赖
 #define OPEN_YCSB_DEPENDENCY false
+#define ZIPF_0_PERC 0.0 // the percentage of zipf theta = 0
 
 
 
@@ -407,7 +408,7 @@ enum PPSTxnType {
 
 #define DEBUG_LOCKFREE_LIST false
 #define DEBUG_REORDER         false
-#define DEBUG_SEQUENCER     true
+#define DEBUG_SEQUENCER     false
 #define DEBUG_SCHEDULER     false
 #define DEBUG_WORKER        false
 #define DEBUG_TIMEREPORT     true
@@ -524,8 +525,8 @@ enum PPSTxnType {
 #define PROG_TIMER 10 * BILLION // in s
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
-#define DONE_TIMER 1 * 30 * BILLION // ~1 minutes
-#define WARMUP_TIMER 1 * 60 * BILLION // ~1 minutes
+#define DONE_TIMER 1 * 20 * BILLION // ~1 minutes
+#define WARMUP_TIMER 1 * 10 * BILLION // ~1 minutes
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define SNAPPER_TXN_TIMEOUT 0.1 * BILLION

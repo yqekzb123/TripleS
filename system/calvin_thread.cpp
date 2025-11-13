@@ -124,14 +124,16 @@ RC CalvinLockThread::run() {
 				rc = txn_man->acquire_locks();
 		}
 
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+// #if LONG_TXN_WORKLOAD
 		txn_man->last_msg = msg;
+	#if LONG_TXN_SCHEDULE
 		work_queue.insert_calvin_list_lockfree(_thd_id, txn_man);
-#else
+	// #endif
+	#else
 		if(rc == RCOK) {
-				work_queue.enqueue(_thd_id,msg,false);
+			work_queue.enqueue(_thd_id,msg,false);
 		}
-#endif
+	#endif
 		txn_man->set_ready();
 
 		INC_STATS(_thd_id,mtx[33],get_sys_clock() - prof_starttime);

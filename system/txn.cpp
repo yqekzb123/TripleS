@@ -902,8 +902,8 @@ bool TxnManager::is_multi_part() {
 void TxnManager::commit_stats() {
 	// 对于被拆分的事务来说，只考虑第一个
 	#if CC_ALG == CALVIN && LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
-	if (original_txn_id != INVALID_ID && get_txn_id() != original_txn_id &&
-		get_batch_id() != original_batch_id) {
+	if (original_txn_id != INVALID_ID && //代表是子事务
+		(get_txn_id() != original_txn_id || get_batch_id() != original_batch_id)) {
 		return;
 	}
 	#endif
@@ -911,6 +911,8 @@ void TxnManager::commit_stats() {
 	uint64_t timespan_short = commit_time - txn_stats.restart_starttime;
 	uint64_t timespan_long  = commit_time - txn_stats.starttime;
 	INC_STATS(get_thd_id(),total_txn_commit_cnt,1);
+	DEBUG_WRK("Commit_stats txn [%ld-%ld] timespan_long %ld timespan_short %ld\n",
+						get_batch_id(), get_txn_id(), timespan_long, timespan_short);
 
 	uint64_t warmuptime = get_sys_clock() - simulation->run_starttime;
 	DEBUG("Commit_stats execute_time %ld warmup_time %ld\n",warmuptime,g_warmup_timer);

@@ -36,7 +36,7 @@ void QWorkQueue::init() {
 	seq_queue = new boost::lockfree::queue<work_queue_entry* > (0);
 	work_queue = new boost::lockfree::queue<work_queue_entry* > (0);
 	new_txn_queue = new boost::lockfree::queue<work_queue_entry* >(0);
-#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+#if LONG_TXN_WORKLOAD && (LONG_TXN_SORT || LONG_TXN_SPLIT)
 	order_queue = new boost::lockfree::queue<work_queue_entry* > (0);
 #endif
 #if CC_ALG == ARIA
@@ -129,7 +129,7 @@ Message * QWorkQueue::sequencer_dequeue(uint64_t thd_id) {
 
 }
 
-#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+#if LONG_TXN_WORKLOAD && (LONG_TXN_SORT || LONG_TXN_SPLIT)
 void QWorkQueue::order_enqueue(uint64_t thd_id, Message * msg) {
 	uint64_t starttime = get_sys_clock();
 	assert(msg);
@@ -929,7 +929,7 @@ TxnManager * QWorkQueue::get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t
 		if (entry->key <= minSid) {
 			return true;
 		}
-		// DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree cond1 skip txn %p key=%lu minSid=%lu\n",entry->txn, entry->key, minSid);
+		DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree cond1 skip txn %p key=%lu minSid=%lu\n",entry->txn, entry->key, minSid);
 		return false;
 	};
 	// 第二个函数
@@ -938,15 +938,15 @@ TxnManager * QWorkQueue::get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t
 		if (!entry) return false;
 		ClientQueryMessage * last_msg = (ClientQueryMessage*)entry->txn->last_msg;
 		if (entry->key <= minSid && entry->txn->lock_ready_cnt <= 0 && last_msg->deps_left.load() <= 0) {
-			// if (entry->txn->lock_ready_cnt < 0) {
-				// DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree txn %p lock_ready_cnt=%d\n", entry->txn, entry->txn->lock_ready_cnt);
-			// }
-			// if (last_msg->deps_left.load() < 0) {
-				// DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree txn %p deps_left=%d\n", entry->txn, last_msg->deps_left.load());
-			// }
+			if (entry->txn->lock_ready_cnt < 0) {
+				DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree txn %p lock_ready_cnt=%d\n", entry->txn, entry->txn->lock_ready_cnt);
+			}
+			if (last_msg->deps_left.load() < 0) {
+				DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree txn %p deps_left=%d\n", entry->txn, last_msg->deps_left.load());
+			}
 			return true;
 		}
-		// DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree cond2 skip txn %p key=%lu lock_ready_cnt=%d deps_left=%d\n",entry->txn, entry->key, entry->txn->lock_ready_cnt, last_msg->deps_left.load());
+		DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree cond2 skip txn %p key=%lu lock_ready_cnt=%d deps_left=%d\n",entry->txn, entry->key, entry->txn->lock_ready_cnt, last_msg->deps_left.load());
 		return false;
 	};
 	list_node_entry * entry = NULL;

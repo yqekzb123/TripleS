@@ -208,7 +208,7 @@ double YCSBQueryGenerator::zeta(uint64_t n, double theta) {
 
 uint64_t YCSBQueryGenerator::zipf(uint64_t n, double theta) {
 	assert(this->the_n == n);
-	assert(theta == g_zipf_theta);
+	// assert(theta == g_zipf_theta);
 	double alpha = 1 / (1 - theta);
 	double zetan = denom;
 	double eta = (1 - pow(2.0 / n, 1 - theta)) / (1 - zeta_2_theta / zetan);
@@ -360,6 +360,8 @@ BaseQuery * YCSBQueryGenerator::gen_requests_zipf(uint64_t home_partition_id, Wo
 
 	double r_twr = (double)(mrand->next() % 10000) / 10000;
 
+	double zipf_value = (double)(mrand->next() % 10000) / 10000 < ZIPF_0_PERC ? 0.0 : g_zipf_theta;
+
 #if LONG_TXN_WORKLOAD
 	uint64_t req_size = ((double)(mrand->next() % 10000) / 10000) < LONG_QUERY_PERC ? g_req_per_query : g_req_per_short_query;
 #else
@@ -424,7 +426,7 @@ BaseQuery * YCSBQueryGenerator::gen_requests_zipf(uint64_t home_partition_id, Wo
 			req->acctype = RD;
 		else
 			req->acctype = WR;
-		uint64_t row_id = zipf(table_size - 1, g_zipf_theta);
+		uint64_t row_id = zipf(table_size - 1, zipf_value);
 	#endif
 		assert(row_id < table_size);
 		uint64_t primary_key = row_id * g_part_cnt + partition_id;

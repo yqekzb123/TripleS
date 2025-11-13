@@ -129,6 +129,8 @@ void SlidingWindowReorder::send_and_register(Message *m) {
 	}
 	DEBUG_ORDER("ReorderThread %ld send msg %p-%ld, type %d, return_node_id %ld, parent_marker %ld, origin_return_node_id %ld, sub_reqs %ld\n", thd_id, m,m->get_txn_id(), m ? m->get_rtype() : -1, m ? m->get_return_id() : -1, m ? ((ClientQueryMessage*)m)->parent_marker : -1, m ? ((ClientQueryMessage*)m)->origin_return_node_id : -1, ((ClientQueryMessage*)m)->sub_reqs_size);
 
+	#if LONG_TXN_SORT
+	// 只有打开重排序的时候，才需要记录已发送消息
 	if (delta > 0) {
 		SentEntry &e = sent_buffer[sent_head];
 		build_bloom_for_msg(m, e.bf_read, e.bf_write);
@@ -136,6 +138,7 @@ void SlidingWindowReorder::send_and_register(Message *m) {
 		e.valid = true;
 		sent_head = (sent_head + 1) % (size_t)delta;
 	}
+	#endif
 	// update last move time to now (ns)
 	last_move_time_ns = get_sys_clock();
 }
@@ -266,7 +269,8 @@ void SlidingWindowReorder::process_new_msg(Message *m) {
 		#endif
 	}
 
-	// Normal single message processing (either original single-step txn or already-created child)
+	// 处理冲突和重排序
+	#if LONG_TXN_SORT
 	if (!msg_conflicts_with_sent(m)) {
 		send_and_register(m);
 		trigger_window_move();
@@ -275,6 +279,9 @@ void SlidingWindowReorder::process_new_msg(Message *m) {
 		((ClientQueryMessage*)m)->delay_counts = 0;
 		delay_queues[0].push_back(m);
 	}
+	#else
+	send_and_register(m);
+	#endif
 }
 
 void SlidingWindowReorder::maybe_timeout_move(uint64_t now_ns, uint64_t timeout_ns) {
@@ -313,13 +320,17 @@ void ReorderThread::setup() {
 }
 
 RC ReorderThread::run() {
-	#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+	#if LONG_TXN_WORKLOAD && (LONG_TXN_SORT || LONG_TXN_SPLIT)
 	tsetup();
 	Message * msg;
 	uint64_t idle_starttime = 0;
 	uint64_t prof_starttime = 0;
+	#if LONG_TXN_SCHEDULE
 	int delta = g_scheduler_thread_cnt > g_thread_cnt ? g_scheduler_thread_cnt : g_thread_cnt;
-	int max_delay = 2; // 可以调整最大延迟次数
+	#else
+	int delta = 1;
+	#endif
+	int max_delay = LONG_SORT_MAX_DELAY; // 可以调整最大延迟次数
 
 	SlidingWindowReorder swr(delta, _thd_id, max_delay);
 	// int id = 0; //记录来的事务编号

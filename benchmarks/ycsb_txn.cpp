@@ -418,9 +418,9 @@ RC YCSBTxnManager::run_calvin_txn() {
   #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
   YCSBClientQueryMessage* sub_txn_msg = NULL;
   #endif
-  DEBUG("[%ld] (%ld,%ld) Run calvin txn\n",get_thd_id(),txn->txn_id,txn->batch_id);
+  DEBUG_WRK("[%ld] (%ld,%ld) Run calvin txn\n",get_thd_id(),txn->batch_id,txn->txn_id);
   while(!calvin_exec_phase_done() && rc == RCOK) {
-    DEBUG("[%ld] (%ld,%ld) phase %d\n",get_thd_id(),txn->txn_id,txn->batch_id,this->phase);
+    DEBUG_WRK("[%ld] (%ld,%ld) phase %d\n",get_thd_id(),txn->batch_id,txn->txn_id,this->phase);
     switch(this->phase) {
       case CALVIN_RW_ANALYSIS:
         // Phase 1: Read/write set analysis
@@ -460,9 +460,9 @@ RC YCSBTxnManager::run_calvin_txn() {
                 int prev = dep_msg->deps_left.fetch_sub(1);
 
                 
-                // DEBUG_SEQ("[%ld] (%ld,%ld) decrementing deps_left of dependent txn %ld(%ld,%ld) from %d to %d\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2], prev, prev - 1);
+                DEBUG_WRK("[%ld] (%ld,%ld) decrementing deps_left of dependent txn %ld(%ld,%ld) from %d to %d\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2], prev, prev - 1);
               } else {
-                // DEBUG_SEQ("[%ld] (%ld,%ld) dependent txn %ld(%ld,%ld) not found\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2]);
+                DEBUG_WRK("[%ld] (%ld,%ld) dependent txn %ld(%ld,%ld) not found\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2]);
               }
             }
             pthread_mutex_unlock(&sub_txn_msg->dependents_lock);

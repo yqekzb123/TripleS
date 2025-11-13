@@ -81,7 +81,7 @@ public:
   void insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn);
   TxnManager * get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t &key);
 #endif
-#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+#if LONG_TXN_WORKLOAD && (LONG_TXN_SORT || LONG_TXN_SPLIT)
   void order_enqueue(uint64_t thd_id, Message * msg);
   Message * order_dequeue(uint64_t thd_id);
 #endif
@@ -148,7 +148,7 @@ private:
   boost::lockfree::queue<work_queue_entry* > * aria_commit_queue;
 #endif
 
-#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+#if LONG_TXN_WORKLOAD && (LONG_TXN_SORT || LONG_TXN_SPLIT)
   boost::lockfree::queue<work_queue_entry* > * order_queue;
 #endif
 

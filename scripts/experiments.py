@@ -140,14 +140,43 @@ def ycsb_long_txn():
     # req_per_query = 10
     # long_query_perc = [0,0.2,0.4,0.6,0.8,1.0]
     # long_query_perc = [0,0.1,0.2,0.3,0.4]
-    long_query_perc = [0.4]
-    # long_query_perc = [0.0]
+    # long_query_perc = [0.4]
+    long_query_perc = [0.0]
     load = [10000]
-    tcnt = [4]
-    scnt = [2]
+    total_cnt=[24]
+    tcnt = [16]
+    # scnt = [4,8,12]
+    scnt = [8]
     skew = [0.3]
+    # skew = [0.9]
     fmt = ["WORKLOAD","CC_ALG","LONG_QUERY_PERC","REQ_PER_QUERY","LONG_TXN_WORKLOAD","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,lq_perc,req_per_query,long_txn_wl,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,thr,s_cnt] for thr,s_cnt,txn_wr_perc,tup_wr_perc,lq_perc,ld,n,sk,algo in itertools.product(tcnt,scnt,txn_write_perc,tup_write_perc,long_query_perc,load,nnodes,skew,algos)]
+    exp = [[wl,algo,lq_perc,req_per_query,long_txn_wl,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,t_cnt-s_cnt,s_cnt] for t_cnt,thr,s_cnt,txn_wr_perc,tup_wr_perc,lq_perc,ld,n,sk,algo in itertools.product(total_cnt,tcnt,scnt,txn_write_perc,tup_write_perc,long_query_perc,load,nnodes,skew,algos)]
+    return fmt,exp
+
+def tpcc_long_txn():
+    wl = 'TPCC'
+    nnodes = [2]
+    algos=['CALVIN']
+    base_table_size=1048576*8
+    txn_write_perc = [1.0]
+    tup_write_perc = [0.2]
+    long_txn_wl = 'true'
+    # long_txn_wl = 'false'
+    req_per_query = 50
+    # req_per_query = 10
+    # long_query_perc = [0,0.2,0.4,0.6,0.8,1.0]
+    # long_query_perc = [0,0.1,0.2,0.3,0.4]
+    # long_query_perc = [0.4]
+    long_query_perc = [0.0]
+    load = [10000]
+    total_cnt=[24]
+    tcnt = [16]
+    # scnt = [4,8,12]
+    scnt = [8]
+    skew = [0.3]
+    # skew = [0.9]
+    fmt = ["WORKLOAD","CC_ALG","LONG_QUERY_PERC","REQ_PER_QUERY","LONG_TXN_WORKLOAD","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","SCHEDULER_CNT"]
+    exp = [[wl,algo,lq_perc,req_per_query,long_txn_wl,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,t_cnt-s_cnt,s_cnt] for t_cnt,thr,s_cnt,txn_wr_perc,tup_wr_perc,lq_perc,ld,n,sk,algo in itertools.product(total_cnt,tcnt,scnt,txn_write_perc,tup_write_perc,long_query_perc,load,nnodes,skew,algos)]
     return fmt,exp
 
 def ycsb_long_txn2():
@@ -342,6 +371,7 @@ experiment_map = {
     'ycsb_dist_ratio': ycsb_dist_ratio,
     'ycsb_long_txn': ycsb_long_txn,
     'ycsb_long_txn2': ycsb_long_txn2,
+    'tpcc_long_txn': tpcc_long_txn,
     'ycsb_log': ycsb_log,
     'ycsb_prorate': ycsb_prorate,
     'ycsb_aria_batch': ycsb_aria_batch,
@@ -380,8 +410,8 @@ configs = {
     "MAX_TXN_IN_FLIGHT": 10000,
     "NETWORK_DELAY": '0UL',
     "NETWORK_DELAY_TEST": 'false',
-    "DONE_TIMER": "1 * 30 * BILLION // ~1 minutes",
-    "WARMUP_TIMER": "1 * 60 * BILLION // ~1 minutes",
+    "DONE_TIMER": "1 * 20 * BILLION // ~1 minutes",
+    "WARMUP_TIMER": "1 * 10 * BILLION // ~1 minutes",
     "SEQ_BATCH_TIMER": "5 * 1 * MILLION // ~5ms -- same as CALVIN paper",
     "BATCH_TIMER" : "0",
     "PROG_TIMER" : "10 * BILLION // in s",

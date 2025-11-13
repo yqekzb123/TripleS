@@ -247,7 +247,7 @@ RC InputThread::server_recv_loop() {
 					}
 				#endif
 			#endif
-			#if LONG_TXN_WORKLOAD && LONG_TXN_SORT
+			#if LONG_TXN_WORKLOAD && (LONG_TXN_SORT || LONG_TXN_SPLIT)
 				if (msg->rtype == CL_QRY) {
 					work_queue.order_enqueue(get_thd_id(),msg);
 				} else {

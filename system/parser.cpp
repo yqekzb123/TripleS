@@ -193,11 +193,14 @@ void parser(int argc, char * argv[]) {
   g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
   g_abort_thread_cnt = 0;
   g_total_thread_cnt -= 1;
-  #if LONG_TXN_SORT
+  #if LONG_TXN_SORT || LONG_TXN_SPLIT
     g_total_thread_cnt += 1; // reorder thread
   #endif
 #else
-    g_total_thread_cnt += 2; // sequencer + scheduler thread
+  g_total_thread_cnt += 2; // sequencer + scheduler thread
+  #if LONG_TXN_SORT || LONG_TXN_SPLIT
+    g_total_thread_cnt += 1; // reorder thread
+  #endif
   // Remove abort thread
   g_abort_thread_cnt = 0;
   g_total_thread_cnt -= 1;

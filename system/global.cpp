@@ -181,10 +181,10 @@ UInt32 g_send_thread_cnt = SEND_THREAD_CNT;
 
 #if CC_ALG == CALVIN
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
-UInt32 g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1 + LONG_TXN_SORT;
+UInt32 g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1 + LONG_TXN_SORT | LONG_TXN_SPLIT;
 #else
 // sequencer + scheduler thread
-UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2;
+UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2 + LONG_TXN_SORT | LONG_TXN_SPLIT;
 #endif
 #elif CC_ALG == SNAPPER
 // sequencer + scheduler thread + snapper_check_thread

@@ -87,7 +87,7 @@ CalvinSequencerThread * calvin_seq_thds;
 #if CC_ALG == HDCC || LONG_TXN_SCHEDULE
 ConflictThread * conflict_thd;
 #endif
-#if CC_ALG == HDCC || LONG_TXN_SORT
+#if CC_ALG == HDCC || LONG_TXN_SORT || LONG_TXN_SPLIT
 ReorderThread * reorder_thd;
 #endif
 
@@ -343,7 +343,7 @@ int main(int argc, char *argv[]) {
 	all_thd_cnt += 1;	//sequencer thread
 	all_thd_cnt -= 1; 	//abort thread
 #endif
-#if LONG_TXN_SORT
+#if LONG_TXN_SORT || LONG_TXN_SPLIT
 	all_thd_cnt += 1; // reorder thread
 #endif
 
@@ -389,7 +389,7 @@ int main(int argc, char *argv[]) {
 #if CC_ALG == HDCC
 	conflict_thd=new ConflictThread[1];
 #endif
-#if LONG_TXN_SORT
+#if LONG_TXN_SORT || LONG_TXN_SPLIT
 	reorder_thd=new ReorderThread[1];
 #endif
 #if CC_ALG == ARIA
@@ -524,7 +524,7 @@ int main(int argc, char *argv[]) {
 
 	calvin_seq_thds[0].init(id,g_node_id,m_wl);
 	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_seq_thds[0]);
-#if LONG_TXN_SORT
+#if LONG_TXN_SORT || LONG_TXN_SPLIT
 	#if SET_AFFINITY
 		CPU_ZERO(&cpus);
 		CPU_SET(cpu_cnt, &cpus);
