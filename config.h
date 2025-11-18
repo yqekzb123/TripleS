@@ -301,7 +301,7 @@
 #define MPIR 0.01
 #define MPR_NEWORDER MPR
 #if NODE_CNT == 1
-#define NO_REMOTE
+// #define NO_REMOTE
 #endif
 enum TPCCTable {
   TPCC_WAREHOUSE,

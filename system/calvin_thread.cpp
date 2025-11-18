@@ -127,7 +127,7 @@ RC CalvinLockThread::run() {
 // #if LONG_TXN_WORKLOAD
 		txn_man->last_msg = msg;
 	#if LONG_TXN_SCHEDULE
-		work_queue.insert_list_lockfree(_thd_id, txn_man);
+		work_queue.insert_calvin_list_lockfree(_thd_id, txn_man);
 	// #endif
 	#else
 		if(rc == RCOK) {

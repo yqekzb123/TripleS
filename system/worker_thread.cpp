@@ -401,7 +401,71 @@ char type2char(DATxnType txn_type)
       return 'U';
   }
 }
+#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE && CC_ALG == CALVIN
+RC WorkerThread::run() {
+  tsetup();
+  printf("Running WorkerThread %ld\n",_thd_id);
 
+  uint64_t ready_starttime;
+  uint64_t idle_starttime = 0;
+
+	while(!simulation->is_done()) {
+    txn_man = NULL;
+    heartbeat();
+
+    progress_stats();
+    Message* msg = NULL;
+    uint64_t key = 0;
+    int msg_orig = -1;
+    txn_man = work_queue.get_from_calvin_list_lockfree(_thd_id, key);
+    if (txn_man == NULL) {
+      msg_orig = 2;
+      msg = work_queue.dequeue(get_thd_id());
+
+      if(!msg) {
+        if (idle_starttime == 0) idle_starttime = get_sys_clock();
+        continue;
+      }
+      simulation->last_da_query_time = get_sys_clock();
+      if(idle_starttime > 0) {
+        INC_STATS(_thd_id,worker_idle_time,get_sys_clock() - idle_starttime);
+        idle_starttime = 0;
+      }
+      txn_man = get_transaction_manager(msg);
+    }
+
+    txn_man->txn_stats.clear_short();
+    txn_man->txn_stats.work_queue_cnt += 1;
+
+    if (msg == NULL) {
+      msg_orig = 1;
+      msg = txn_man->last_msg;
+    }
+
+    ready_starttime = get_sys_clock();
+    bool ready = txn_man->unset_ready();
+    INC_STATS(get_thd_id(),worker_activate_txn_time,get_sys_clock() - ready_starttime);
+    if(!ready) {
+      // Return to work queue, end processing
+      work_queue.enqueue(get_thd_id(),msg,true);
+      continue;
+    }
+    txn_man->register_thread(this);
+
+    process(msg);
+
+    ready_starttime = get_sys_clock();
+    if(txn_man) {
+      bool ready = txn_man->set_ready();
+      assert(ready);
+    }
+    INC_STATS(get_thd_id(),worker_deactivate_txn_time,get_sys_clock() - ready_starttime);
+  }
+  printf("FINISH %ld:%ld\n",_node_id,_thd_id);
+  fflush(stdout);
+  return FINISH;
+}
+#else
 RC WorkerThread::run() {
   tsetup();
   printf("Running WorkerThread %ld\n",_thd_id);
@@ -666,7 +730,7 @@ RC WorkerThread::run() {
   fflush(stdout);
   return FINISH;
 }
-// #endif
+#endif
 
 RC WorkerThread::process_rfin(Message * msg) {
   DEBUG("RFIN %ld\n",msg->get_txn_id());
