@@ -28,6 +28,7 @@
 #include "transport.h"
 #include "msg_queue.h"
 #include "message.h"
+#include "aria.h"
 #if CC_ALG == HDCC
 #include "row_hdcc.h"
 #endif
@@ -1992,8 +1993,12 @@ RC TPCCTxnManager::run_aria_txn() {
 		assert(rc == RCOK || rc == WAIT_REM);
 
 		assert(aria_phase == ARIA_READ);
+		#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+		txn_next_aria_phase(get_thd_id(),aria_phase,get_batch_id(),return_id,get_txn_id());
+		#else
 		aria_phase = (ARIA_PHASE) (aria_phase + 1);
 		assert(simulation->aria_phase == ARIA_READ);
+		#endif
 		break;
 	case ARIA_RESERVATION:
 		if (tpcc_query->txn_type == TPCC_PAYMENT) {
@@ -2068,8 +2073,12 @@ RC TPCCTxnManager::run_aria_txn() {
 		assert(rc == RCOK || rc == Abort || rc == WAIT_REM);
 
 		assert(aria_phase == ARIA_RESERVATION);
+		#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+		txn_next_aria_phase(get_thd_id(),aria_phase,get_batch_id(),return_id,get_txn_id());
+		#else
 		aria_phase = (ARIA_PHASE) (aria_phase + 1);
 		assert(simulation->aria_phase == ARIA_RESERVATION);
+		#endif
 		break;
 	case ARIA_CHECK:
 		if (txn->rc == Abort) {
@@ -2087,8 +2096,12 @@ RC TPCCTxnManager::run_aria_txn() {
 		}
 
 		assert(aria_phase == ARIA_CHECK);
+		#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+		txn_next_aria_phase(get_thd_id(),aria_phase,get_batch_id(),return_id,get_txn_id());
+		#else
 		aria_phase = (ARIA_PHASE) (aria_phase + 1);
 		assert(simulation->aria_phase == ARIA_CHECK);
+		#endif
 		break;
 	case ARIA_COMMIT:
 		send_finish_messages();
@@ -2104,8 +2117,12 @@ RC TPCCTxnManager::run_aria_txn() {
 		}
 
 		assert(aria_phase == ARIA_COMMIT);
+		#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+		txn_next_aria_phase(get_thd_id(),aria_phase,get_batch_id(),return_id,get_txn_id());
+		#else
 		aria_phase = (ARIA_PHASE) (aria_phase + 1);
 		assert(simulation->aria_phase == ARIA_COMMIT);
+		#endif
 		break;
 	default:
 		assert(false);

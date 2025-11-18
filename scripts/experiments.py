@@ -130,7 +130,7 @@ def ycsb_writes():
 def ycsb_long_txn():
     wl = 'YCSB'
     nnodes = [1]
-    algos=['CALVIN']
+    algos=['ARIA']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
     tup_write_perc = [0.2]

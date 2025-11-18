@@ -163,8 +163,18 @@ UInt32 g_thread_cnt = PART_CNT/NODE_CNT;
 UInt32 g_scheduler_thread_cnt = SCHEDULER_CNT;
 UInt32 g_thread_cnt = THREAD_CNT + 1 - g_scheduler_thread_cnt;
 uint64_t the_first_scheduler_id = 0;
+// 调度器的水印 for Calvin
 uint64_t * sids;
 uint64_t minSid = 0;
+// Aria的水印，分为4个阶段
+uint64_t * read_reservation_sids; // 从Read阶段到Reservation阶段中的水印
+uint64_t min_read_reservation_sid;
+uint64_t * reservation_check_sids; // 从Reservation阶段到Check阶段中的水印
+uint64_t min_reservation_check_sid;
+uint64_t * check_commit_sids; // 从Check阶段到Commit阶段中的水印
+uint64_t min_check_commit_sid;
+uint64_t * commit_read_sids; // 从这一批次的Commit到下一批次的Read阶段的水印
+uint64_t min_commit_read_sid;
 #else
 UInt32 g_thread_cnt = THREAD_CNT;
 uint64_t minSid = 0;

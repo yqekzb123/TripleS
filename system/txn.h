@@ -23,8 +23,6 @@
 #include "array.h"
 #include "transport/message.h"
 #include "index_btree.h"
-// #include "lock_free_list.h"
-//#include "wl.h"
 #if CC_ALG == SNAPPER
 #include <utility>
 #include <forward_list>

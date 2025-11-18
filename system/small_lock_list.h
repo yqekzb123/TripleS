@@ -19,11 +19,20 @@ struct list_node_entry
 public:
     /* data */
     uint64_t key; // 这里的key是事务号 (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
-    TxnManager * txn;
-    // snapshot fields for scheduler predicate (do not dereference txn in predicate)
-    std::atomic<int> snapshot_lock_ready_cnt;
-    std::atomic<int> snapshot_dep_count;
-    list_node_entry(uint64_t k, TxnManager * t) : key(k), txn(t), snapshot_lock_ready_cnt(0), snapshot_dep_count(0) {}
+
+    // 下面两个指针二选一使用
+    TxnManager * txn; // 可选的事务指针
+    Message * msg; // 可选的消息指针
+
+    // 下面是用来考虑依赖和锁计数的，现在没用到
+    // std::atomic<int> snapshot_lock_ready_cnt;
+    // std::atomic<int> snapshot_dep_count;
+
+    // list_node_entry(uint64_t k, TxnManager * t) : key(k), txn(t), snapshot_lock_ready_cnt(0), snapshot_dep_count(0) {}
+    // list_node_entry(uint64_t k, Message * m) : key(k), msg(m), snapshot_lock_ready_cnt(0), snapshot_dep_count(0) {}
+    list_node_entry() : key(0), txn(nullptr), msg(nullptr) {}
+    list_node_entry(uint64_t k, TxnManager * t) : key(k), txn(t), msg(nullptr) {}
+    list_node_entry(uint64_t k, Message * m) : key(k), txn(nullptr), msg(m) {}
     ~list_node_entry() {}
 };
 
@@ -50,8 +59,19 @@ class LockList {
     std::vector<Node*> garbage_nodes;
     std::mutex garbage_mtx;
 
+    // For Debuging
+    std::string name;
+
 public:
     LockList() {
+        head = new Node(T());
+        tail = head;
+        count.store(0, std::memory_order_relaxed);
+        actual_count.store(0, std::memory_order_relaxed);
+        name="";
+    }
+
+    LockList(std::string list_name) : name(list_name) {
         head = new Node(T());
         tail = head;
         count.store(0, std::memory_order_relaxed);
@@ -72,7 +92,7 @@ public:
             std::vector<uint64_t> visited_keys;
             std::string visit_log;
         #endif
-        DEBUG_LOCKFREE("[LockList] thd %ld try_take start size=%zu-%zu minSid=%lu\n", thd_id, size(), actual_size(), minSid);
+        DEBUG_LOCKFREE("[LockList:%s] thd %ld try_take start size=%zu-%zu minSid=%lu\n", name.c_str(), thd_id, size(), actual_size(), minSid);
         while (curr) {
             // 获取curr锁
             curr->mtx.lock();
@@ -99,16 +119,16 @@ public:
                 curr->mtx.unlock();
                 prev->mtx.unlock();
                 #if PRINT_VISIT_LIST
-                    std::string result = "[LockList] thd " + std::to_string(thd_id) + " try_take visited keys: " + visit_log + "| TAKE key=" + std::to_string(value_cast->key);
+                    std::string result = "[LockList" + name + "] thd " + std::to_string(thd_id) + " try_take visited keys: " + visit_log + "| TAKE key=" + std::to_string(value_cast->key);
                     std::cout << result << std::endl;
                 #endif
                 #if DEBUG_LOCKFREE_LIST
                     extern uint64_t minSid;
-                    DEBUG_LOCKFREE("[LockList] thd %ld try_take key=%lu txn=[%ld,%ld] size=%zu-%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(), actual_size(), minSid);
+                    DEBUG_LOCKFREE("[LockList:%s] thd %ld try_take key=%lu txn=[%ld,%ld] size=%zu-%zu minSid=%lu\n", name.c_str(), thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(), actual_size(), minSid);
                 #endif
                 return true;
             } else {
-                DEBUG_LOCKFREE("[LockList] thd %ld try_take skip key=%lu txn=[%ld,%ld] size=%zu-%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(), actual_size(), minSid);
+                DEBUG_LOCKFREE("[LockList:%s] thd %ld try_take skip key=%lu txn=[%ld,%ld] size=%zu-%zu minSid=%lu\n", name.c_str(), thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(), actual_size(), minSid);
             }
             // move forward: unlock prev, advance
             prev->mtx.unlock();
@@ -118,9 +138,9 @@ public:
         }
         // unlock last prev if locked
         prev->mtx.unlock();
-        DEBUG_LOCKFREE("[LockList] thd %ld try_take failed size=%zu-%zu minSid=%lu\n", thd_id, size(), actual_size(), minSid);
+        DEBUG_LOCKFREE("[LockList:%s] thd %ld try_take failed size=%zu-%zu minSid=%lu\n", name.c_str(), thd_id, size(), actual_size(), minSid);
         #if PRINT_VISIT_LIST
-            std::string result = "[LockList] thd " + std::to_string(thd_id) + " try_take visited keys: " + visit_log + "| NO TAKE";
+            std::string result = "[LockList" + name + "] thd " + std::to_string(thd_id) + " try_take visited keys: " + visit_log + "| NO TAKE";
             std::cout << result << std::endl;
         #endif
         return false;
@@ -144,7 +164,7 @@ public:
         #if DEBUG_LOCKFREE_LIST
             extern uint64_t minSid;
             list_node_entry * value_cast = static_cast<list_node_entry *>(value);
-            DEBUG_LOCKFREE("[LockList] thd %ld insert_tail key=%lu txn=[%ld,%ld] size=%zu-%zu minSid=%lu\n", thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(), actual_size(), minSid);
+            DEBUG_LOCKFREE("[LockList:%s] thd %ld insert_tail key=%lu txn=[%ld,%ld] size=%zu-%zu minSid=%lu\n", name.c_str(), thd_id, value_cast->key, value_cast->txn->get_batch_id(), value_cast->txn->get_txn_id(), size(), actual_size(), minSid);
         #endif
     }
 
@@ -211,7 +231,7 @@ public:
     void DEBUG_PRINT_LIST_LENGTH() {
         size_t sz = size();
         size_t actual_sz = actual_size();
-        DEBUG_TIME("[LockList] DEBUG_PRINT_LIST_LENGTH size=%zu actual_size=%zu\n", sz, actual_sz);
+        DEBUG_TIME("[LockList:%s] DEBUG_PRINT_LIST_LENGTH size=%zu actual_size=%zu\n", name.c_str(), sz, actual_sz);
     }
 };
 
