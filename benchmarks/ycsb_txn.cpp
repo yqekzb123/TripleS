@@ -37,7 +37,7 @@
 #include "row_hdcc.h"
 #endif
 #include "message.h"
-#include "lock_free_list.h"
+#include "aria.h"
 #include "small_lock_list.h"
 
 void YCSBTxnManager::init(uint64_t thd_id, Workload * h_wl) {
@@ -550,8 +550,14 @@ RC YCSBTxnManager::run_aria_txn() {
     assert(rc == RCOK || rc == WAIT_REM);
 
     assert(aria_phase == ARIA_READ);
-    aria_phase = (ARIA_PHASE) (aria_phase + 1);
-    assert(simulation->aria_phase == ARIA_READ);
+    
+    
+    #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+      txn_next_aria_phase(get_thd_id(),aria_phase,get_batch_id(),return_id,get_txn_id());
+    #else
+      aria_phase = (ARIA_PHASE) (aria_phase + 1);
+      assert(simulation->aria_phase == ARIA_READ);
+    #endif
     // printf("txn: %ld read phase rc: %d\n", txn->txn_id, rc);
 
     break;
@@ -577,8 +583,12 @@ RC YCSBTxnManager::run_aria_txn() {
     assert(rc == RCOK || rc == Abort || rc == WAIT_REM);
 
     assert(aria_phase == ARIA_RESERVATION);
-    aria_phase = (ARIA_PHASE) (aria_phase + 1);
-    assert(simulation->aria_phase == ARIA_RESERVATION);
+    #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+      txn_next_aria_phase(get_thd_id(),aria_phase,get_batch_id(),return_id,get_txn_id());
+    #else
+      aria_phase = (ARIA_PHASE) (aria_phase + 1);
+      assert(simulation->aria_phase == ARIA_RESERVATION);
+    #endif
     // printf("txn: %ld reserve phase rc: %d\n", txn->txn_id, rc);
 
 // #if true
@@ -608,8 +618,12 @@ RC YCSBTxnManager::run_aria_txn() {
     }
 
     assert(aria_phase == ARIA_CHECK);
-    aria_phase = (ARIA_PHASE) (aria_phase + 1);
-    assert(simulation->aria_phase == ARIA_CHECK);
+    #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+      txn_next_aria_phase(get_thd_id(),aria_phase,get_batch_id(),return_id,get_txn_id());
+    #else
+      aria_phase = (ARIA_PHASE) (aria_phase + 1);
+      assert(simulation->aria_phase == ARIA_CHECK);
+    #endif
     // printf("txn: %ld check phase rc: %d\n", txn->txn_id, rc);
     break;
   case ARIA_COMMIT:
@@ -626,8 +640,12 @@ RC YCSBTxnManager::run_aria_txn() {
     }
 
     assert(aria_phase == ARIA_COMMIT);
-    aria_phase = (ARIA_PHASE) (aria_phase + 1);
-    assert(simulation->aria_phase == ARIA_COMMIT);
+    #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+      txn_next_aria_phase(get_thd_id(),aria_phase,get_batch_id(),return_id,get_txn_id());
+    #else
+      aria_phase = (ARIA_PHASE) (aria_phase + 1);
+      assert(simulation->aria_phase == ARIA_COMMIT);
+    #endif
     // printf("txn: %ld commit phase rc: %d\n", txn->txn_id, rc);
     break;
   default:

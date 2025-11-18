@@ -239,7 +239,7 @@
 #define GEN_BY_MPR false
 
 #define LONG_TXN_WORKLOAD true
-#define LONG_TXN_SCHEDULE true
+#define LONG_TXN_SCHEDULE false
 #define LONG_TXN_SPLIT false
 #define LONG_TXN_SORT false
 #define SCHEDULER_CNT 8
@@ -256,7 +256,7 @@
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
 #define SYNTH_TABLE_SIZE 8388608
-#define ZIPF_THETA 0.9
+#define ZIPF_THETA 0.3
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
@@ -267,7 +267,7 @@
 // DO NOT LET PEQ_PER_QUERY <= REQ_PER_SHORT_QUERY
 #define REQ_PER_QUERY 50
 #define REQ_PER_SHORT_QUERY 10
-#define LONG_QUERY_PERC 0.4
+#define LONG_QUERY_PERC 0.0
 #else
 #define REQ_PER_QUERY 50
 #define REQ_PER_SHORT_QUERY 10
@@ -393,10 +393,10 @@ enum PPSTxnType {
 #define VERB_ALLOC          true
 
 #define DEBUG_LOCKFREE_LIST false
-#define DEBUG_REORDER         false
-#define DEBUG_SEQUENCER     false
-#define DEBUG_SCHEDULER     false
-#define DEBUG_WORKER        false
+#define DEBUG_REORDER         true
+#define DEBUG_SEQUENCER     true
+#define DEBUG_SCHEDULER     true
+#define DEBUG_WORKER        true
 #define DEBUG_TIMEREPORT     true
 #define DEBUG_LOCK          false
 #define DEBUG_TIMESTAMP       false

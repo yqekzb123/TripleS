@@ -23,7 +23,6 @@
 #include <boost/lockfree/queue.hpp>
 #include <boost/circular_buffer.hpp>
 #include "semaphore.h"
-#include "lock_free_list.h"
 #include "small_lock_list.h"
 //#include "message.h"
 
@@ -77,9 +76,18 @@ public:
   void sequencer_enqueue(uint64_t thd_id, Message * msg);
   Message * sequencer_dequeue(uint64_t thd_id);
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
-  // 用新的单向无锁链表实现的
-  void insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn);
-  TxnManager * get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t &key);
+  // 判断能不能取出事务的两个条件函数
+  bool Func1(list_node_entry * arg);
+  bool Func2(list_node_entry * arg);
+  // 最基础的函数
+  void insert_list_lockfree(uint64_t thd_id, 
+									  LockList<list_node_entry *> * list, 
+									  Message * msg, TxnManager * txn);
+  TxnManager * get_txn_from_list_lockfree(uint64_t thd_id, LockList<list_node_entry *> * list, uint64_t &key);
+  Message * get_msg_from_list_lockfree(uint64_t thd_id, LockList<list_node_entry *> * list, uint64_t &key);
+  // 用于Calvin的
+  void insert_list_lockfree(uint64_t thd_id, TxnManager * txn);
+  TxnManager * get_from_list_lockfree(uint64_t thd_id, uint64_t &key);
 #endif
 #if LONG_TXN_WORKLOAD && (LONG_TXN_SORT || LONG_TXN_SPLIT)
   void order_enqueue(uint64_t thd_id, Message * msg);
@@ -88,8 +96,14 @@ public:
 
 #if CC_ALG == ARIA
   Message * txn_dequeue(uint64_t thd_id);
+  #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+  // 在流水线模式下，可以随时从任何队列里取事务。
+  void work_enqueue_lockfree_list(uint64_t thd_id, Message * msg, bool not_ready, ARIA_PHASE phase);
+  Message * work_dequeue_lockfree_list(uint64_t thd_id, ARIA_PHASE phase);
+  #else
   void work_enqueue(uint64_t thd_id, Message * msg, bool not_ready, ARIA_PHASE phase);
   Message * work_dequeue(uint64_t thd_id);
+  #endif
 #endif
 
   uint64_t get_cnt() {return get_wq_cnt() + get_rem_wq_cnt() + get_new_wq_cnt();}
@@ -119,28 +133,27 @@ public:
 #endif
 
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
-  // LockFreeLinkedList<TxnManager *> * calvin_scheduled_list;
-  // LockFreeLinkedList * calvin_scheduled_list;
   bool sched_ready;
-
-  // LockFreeList<list_node_entry *> * calvin_scheduled_list_lockfree;
-
   LockList<list_node_entry *> * calvin_scheduled_list_lockfree;
+
+  #if CC_ALG == ARIA
+  bool read_ready;
+  LockList<list_node_entry *> * aria_read_lockfree;
+  bool reserve_ready;
+  LockList<list_node_entry *> * aria_reserve_lockfree;
+  bool check_ready;
+  LockList<list_node_entry *> * aria_check_lockfree;
+  bool commit_ready;
+  LockList<list_node_entry *> * aria_commit_lockfree;
+  #endif
 #endif
 
 private:
-#ifdef NEW_WORK_QUEUE
-  WCircularBuffer work_queue;
-  WCircularBuffer new_txn_queue;
-
-  sem_t 	mw;
-  sem_t 	mt;
-#else
   boost::lockfree::queue<work_queue_entry* > * work_queue;
   boost::lockfree::queue<work_queue_entry* > * new_txn_queue;
-#endif
   boost::lockfree::queue<work_queue_entry* > * seq_queue;
   boost::lockfree::queue<work_queue_entry* > ** sched_queue;
+
 #if CC_ALG == ARIA
   boost::lockfree::queue<work_queue_entry* > * aria_read_queue;
   boost::lockfree::queue<work_queue_entry* > * aria_reserve_queue;

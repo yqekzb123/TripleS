@@ -40,7 +40,6 @@
 #include "ssi.h"
 #include "focc.h"
 #include "bocc.h"
-#include "lock_free_list.h"
 #include "small_lock_list.h"
 #if CC_ALG == HDCC
 #include "cc_selector.h"
@@ -51,92 +50,6 @@ void WorkerThread::setup() {
     send_init_done_to_all_nodes();
   }
   _thd_txn_id = 0;
-}
-
-void WorkerThread::fakeprocess(Message * msg) {
-  RC rc __attribute__ ((unused));
-
-  DEBUG("%ld Processing %ld %d\n",get_thd_id(),msg->get_txn_id(),msg->get_rtype());
-  assert(msg->get_rtype() == CL_QRY || msg->get_rtype() == CL_QRY_O || msg->get_txn_id() != UINT64_MAX);
-  uint64_t starttime = get_sys_clock();
-		switch(msg->get_rtype()) {
-			case RPASS:
-        //rc = process_rpass(msg);
-				break;
-			case RPREPARE:
-        rc = RCOK;
-        txn_man->set_rc(rc);
-        msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,RACK_PREP),msg->return_node_id);
-				break;
-			case RFWD:
-        rc = process_rfwd(msg);
-				break;
-			case RQRY:
-        rc = RCOK;
-        txn_man->set_rc(rc);
-        msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,RQRY_RSP),msg->return_node_id);
-				break;
-			case RQRY_CONT:
-        rc = RCOK;
-        txn_man->set_rc(rc);
-        msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,RQRY_RSP),msg->return_node_id);
-				break;
-			case RQRY_RSP:
-        rc = process_rqry_rsp(msg);
-				break;
-			case RFIN:
-        rc = RCOK;
-        txn_man->set_rc(rc);
-        if(!((FinishMessage*)msg)->readonly || CC_ALG == MAAT || CC_ALG == OCC || CC_ALG == TICTOC || CC_ALG == BOCC || CC_ALG == SSI)
-        // if(!((FinishMessage*)msg)->readonly || CC_ALG == MAAT || CC_ALG == OCC)
-          msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,RACK_FIN),GET_NODE_ID(msg->get_txn_id()));
-        // rc = process_rfin(msg);
-				break;
-			case RACK_PREP:
-        rc = process_rack_prep(msg);
-				break;
-			case RACK_FIN:
-        rc = process_rack_rfin(msg);
-				break;
-			case RTXN_CONT:
-        rc = process_rtxn_cont(msg);
-				break;
-      case CL_QRY:
-      case CL_QRY_O:
-			case RTXN:
-#if CC_ALG == CALVIN
-        rc = process_calvin_rtxn(msg);
-#elif CC_ALG == HDCC || CC_ALG == SNAPPER
-        if (msg->algo == CALVIN) {
-          rc = process_calvin_rtxn(msg);
-        } else {
-          rc = process_rtxn(msg);
-        }
-#else
-        rc = process_rtxn(msg);
-#endif
-				break;
-			case LOG_FLUSHED:
-        rc = process_log_flushed(msg);
-				break;
-			case LOG_MSG:
-        rc = process_log_msg(msg);
-				break;
-			case LOG_MSG_RSP:
-        rc = process_log_msg_rsp(msg);
-				break;
-			default:
-        printf("Msg: %d\n",msg->get_rtype());
-        fflush(stdout);
-				assert(false);
-				break;
-		}
-  uint64_t timespan = get_sys_clock() - starttime;
-  INC_STATS(get_thd_id(),worker_process_cnt,1);
-  INC_STATS(get_thd_id(),worker_process_time,timespan);
-  INC_STATS(get_thd_id(),worker_process_cnt_by_type[msg->rtype],1);
-  INC_STATS(get_thd_id(),worker_process_time_by_type[msg->rtype],timespan);
-  DEBUG("%ld EndProcessing %d %ld\n",get_thd_id(),msg->get_rtype(),msg->get_txn_id());
 }
 
 void WorkerThread::statqueue(uint64_t thd_id, Message * msg, uint64_t starttime) {
@@ -529,7 +442,7 @@ RC WorkerThread::run() {
       #elif CC_ALG == ARIA
       // 对于ARIA来说，如果开启流水线，就应该尝试从多个无锁链表里取，取不出来就选下一个，除非都取不出来
         for (ARIA_PHASE phase = ARIA_READ; phase <= ARIA_COMMIT; phase = ARIA_PHASE(phase + 1)) {
-          msg = work_queue.work_dequeue(get_thd_id(), phase);
+          msg = work_queue.work_dequeue_lockfree_list(get_thd_id(), phase);
           if (msg != NULL) break;
         }
       #endif
@@ -634,11 +547,13 @@ RC WorkerThread::run() {
 #if CC_ALG == ARIA
     else if (msg->rtype == CL_QRY) {
       txn_man = get_transaction_manager(msg);
+      #if !LONG_TXN_WORKLOAD && !LONG_TXN_SCHEDULE
       if (txn_man->aria_phase != simulation->aria_phase) {
         // printf("thd: %ld, txn: %ld runs twice\n", get_thd_id(), txn_man->get_txn_id());
         work_queue.work_enqueue(get_thd_id(), msg, false, txn_man->aria_phase);
         continue;
       }
+      #endif
 
       txn_man->txn_stats.clear_short();
       txn_man->txn_stats.msg_queue_time += msg->mq_time;
@@ -651,7 +566,11 @@ RC WorkerThread::run() {
       txn_man->txn_stats.work_queue_cnt += 1;
 
       if (txn_man->participants_cnt != 0) {
+        #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+        work_queue.work_enqueue_lockfree_list(get_thd_id(), msg, false, txn_man->aria_phase);
+        #else
         work_queue.work_enqueue(get_thd_id(), msg, true, txn_man->aria_phase);
+        #endif
         continue;
       }
 
@@ -659,7 +578,11 @@ RC WorkerThread::run() {
       bool ready = txn_man->unset_ready();
       INC_STATS(get_thd_id(),worker_activate_txn_time,get_sys_clock() - ready_starttime);
       if(!ready) {
+        #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+        work_queue.work_enqueue_lockfree_list(get_thd_id(), msg, false, txn_man->aria_phase);
+        #else
         work_queue.work_enqueue(get_thd_id(),msg,true,txn_man->aria_phase);
+        #endif
         continue;
       }
       // printf("txn: %ld unset ready\n", txn_man->get_txn_id());
@@ -673,9 +596,14 @@ RC WorkerThread::run() {
 #if CC_ALG == ARIA  
     if (msg->rtype == CL_QRY) {
       if (simulation->aria_phase != ARIA_COMMIT) {
+        #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+        work_queue.work_enqueue_lockfree_list(get_thd_id(), msg, false, txn_man->aria_phase);
+        #else
         work_queue.work_enqueue(get_thd_id(), msg, false, txn_man->aria_phase);
+        #endif
       }
 
+      #if !LONG_TXN_SCHEDULE
       // if we processed all local transactions in this phase, go to next phase and reset the count
       if (ATOM_ADD_FETCH(simulation->batch_process_count, 1) == g_aria_batch_size) {
         bool isAriaCommit = simulation->aria_phase == ARIA_COMMIT;
@@ -696,6 +624,7 @@ RC WorkerThread::run() {
           }
         }
       }
+      #endif
     }
 #endif
     // process(msg);  /// DA
@@ -1657,7 +1586,14 @@ RC StatsPerIntervalThread::run(){
       last_time = now_time;
 
       #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+      #if CC_ALG == CALVIN
       work_queue.calvin_scheduled_list_lockfree->DEBUG_PRINT_LIST_LENGTH();
+      #elif CC_ALG == ARIA
+      work_queue.aria_read_lockfree->DEBUG_PRINT_LIST_LENGTH();
+      work_queue.aria_reserve_lockfree->DEBUG_PRINT_LIST_LENGTH();
+      work_queue.aria_check_lockfree->DEBUG_PRINT_LIST_LENGTH();
+      work_queue.aria_commit_lockfree->DEBUG_PRINT_LIST_LENGTH();
+      #endif
       #endif
       DEBUG_TIME("------StatsPerIntervalThread %ld seconds--------\n",loop);
       loop++;
