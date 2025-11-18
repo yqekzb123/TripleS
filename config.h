@@ -45,25 +45,11 @@
 
 #define SECOND 130 // Set the queue monitoring time.
 // #define THD_ID_QUEUE
-#define ONE_NODE_RECIEVE 0 // only node 0 will receive the txn query
-
 #define USE_WORKERNUMTHREAD 1
-#if 0
-// #define LESS_DIS // Reduce the number of yCSB remote data to 1
-// #define LESS_DIS_NUM 10 // Reduce the number of yCSB remote data to 1
-// #define NEW_WORK_QUEUE  // The workQueue data structure has been modified to perform 10,000 better than the original implementation.
-// #define NO_2PC  // Removing 2PC, of course, would be problematic in distributed transactions.
-// #define FAKE_PROCESS  // Io_thread returns as soon as it gets the request from the remote. Avoid waiting in the WORK_queue.
-// #define NO_REMOTE // remove all remote txn
-#endif 
 #define TXN_QUEUE_PERCENT 0.0 // The proportion of the transaction to take from txn_queue firstly.
 #define MALLOC_TYPE 0 // 0 represent normal malloc. 1 represent je-malloc
 // ! end of these parameters
-// ! Parameters used to locate distributed performance bottlenecks.
-#define SEND_TO_SELF_PAHSE 0 // 0 means do not send to self, 1 will execute the phase1, 2 will execute phase2, 3 will exeute phase1 and phase 2
-// msg send can be split into three stage, stage1 encapsulates msg; stage2 send msg; stgae3 parse msg;
-#define SEND_STAGE 1 // 1 will execute the stage1, 2 will execute stage1 and 3, 3 will exeute all
-// ! end of these parameters
+
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
@@ -162,7 +148,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG CALVIN
+#define CC_ALG ARIA
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -253,7 +239,7 @@
 #define GEN_BY_MPR false
 
 #define LONG_TXN_WORKLOAD true
-#define LONG_TXN_SCHEDULE false
+#define LONG_TXN_SCHEDULE true
 #define LONG_TXN_SPLIT false
 #define LONG_TXN_SORT false
 #define SCHEDULER_CNT 8

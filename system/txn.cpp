@@ -720,27 +720,6 @@ RC TxnManager::start_abort() {
 	return abort();
 }
 
-#ifdef NO_2PC
-RC TxnManager::start_commit() {
-	RC rc = RCOK;
-	DEBUG("%ld start_commit RO?%d\n",get_txn_id(),query->readonly());
-	_is_sub_txn = false;
-
-	rc = validate();
-	if(CC_ALG == SSI) {
-		ssi_man.gene_finish_ts(this);
-	}
-	if(CC_ALG == WSI) {
-		wsi_man.gene_finish_ts(this);
-	}
-	if(rc == RCOK)
-		rc = commit();
-	else
-		start_abort();
-
-		return rc;
-}
-#else
 RC TxnManager::start_commit() {
 	// ! trans process time
 	uint64_t prepare_start_time = get_sys_clock();
@@ -832,7 +811,7 @@ RC TxnManager::start_commit() {
 	}
 	return rc;
 }
-#endif
+
 void TxnManager::send_prepare_messages() {
 	rsp_cnt = query->partitions_touched.size() - 1;
 	DEBUG("%ld Send PREPARE messages to %d\n",get_txn_id(),rsp_cnt);

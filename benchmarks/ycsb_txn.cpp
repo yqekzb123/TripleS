@@ -302,7 +302,7 @@ void YCSBTxnManager::copy_remote_requests(YCSBQueryMessage * msg) {
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
   //msg->requests.init(ycsb_query->requests.size());
   uint64_t dest_node_id = GET_NODE_ID(ycsb_query->requests[next_record_id]->key);
-#if ONE_NODE_RECIEVE == 1 && defined(NO_REMOTE) && LESS_DIS_NUM == 10
+#ifdef NO_REMOTE
   while (next_record_id < ycsb_query->requests.size() && GET_NODE_ID(ycsb_query->requests[next_record_id]->key) == dest_node_id) {
 #else
   while (next_record_id < ycsb_query->requests.size() && !is_local_request(next_record_id) &&

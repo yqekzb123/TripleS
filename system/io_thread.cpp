@@ -114,7 +114,7 @@ RC InputThread::client_recv_loop() {
 		while(!msgs->empty()) {
 			Message * msg = msgs->front();
 			assert(msg->rtype == CL_RSP);
-		#if CC_ALG == BOCC || CC_ALG == FOCC || ONE_NODE_RECIEVE == 1
+		#if CC_ALG == BOCC || CC_ALG == FOCC
 			return_node_offset = msg->return_node_id;
 		#else
 			return_node_offset = msg->return_node_id - g_server_start_node;
@@ -265,9 +265,6 @@ RC InputThread::server_recv_loop() {
 				msgs->erase(msgs->begin());
 				continue;
 			}
-#endif
-#ifdef FAKE_PROCESS
-			if (fakeprocess(msg))
 #endif
 			work_queue.enqueue(get_thd_id(),msg,false);
 			msgs->erase(msgs->begin());

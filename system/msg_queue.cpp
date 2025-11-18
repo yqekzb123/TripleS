@@ -66,7 +66,7 @@ void MessageQueue::statqueue(uint64_t thd_id, msg_entry * entry) {
 void MessageQueue::enqueue(uint64_t thd_id, Message * msg,uint64_t dest) {
   DEBUG("MQ Enqueue %ld\n",dest)
   assert(dest < g_total_node_cnt);
-#if ONE_NODE_RECIEVE == 1 && defined(NO_REMOTE) && LESS_DIS_NUM == 10
+#ifdef NO_REMOTE 
 #else
   assert(dest != g_node_id);
 #endif

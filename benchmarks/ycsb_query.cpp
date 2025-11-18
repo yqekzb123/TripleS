@@ -372,13 +372,7 @@ BaseQuery * YCSBQueryGenerator::gen_requests_zipf(uint64_t home_partition_id, Wo
 	for (UInt32 i = 0; i < req_size; i ++) {
 		double r = (double)(mrand->next() % 10000) / 10000;
 		uint64_t partition_id;
-#ifdef LESS_DIS
-		if ( rid < LESS_DIS_NUM) {
-			partition_id = home_partition_id;
-		} else {
-			partition_id = (home_partition_id + 1) % g_part_cnt;
-		}
-#else
+
 	#ifdef NO_REMOTE
 		partition_id = home_partition_id;
 	#else
@@ -408,7 +402,7 @@ BaseQuery * YCSBQueryGenerator::gen_requests_zipf(uint64_t home_partition_id, Wo
 			}
 		}
 	#endif
-#endif
+
 		ycsb_request * req = (ycsb_request*) mem_allocator.alloc(sizeof(ycsb_request));
 	#if DYNAMIC_FLAG
 		//assuming that dy_write is columns, dy_skew is rows

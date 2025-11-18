@@ -45,9 +45,7 @@ void MessageThread::init(uint64_t thd_id) {
 void MessageThread::check_and_send_batches() {
   uint64_t starttime = get_sys_clock();
   for(uint64_t dest_node_id = 0; dest_node_id < buffer_cnt; dest_node_id++) {
-#if SEND_TO_SELF_PAHSE == 0
     if (dest_node_id == g_node_id) continue;
-#endif
     if(buffer[dest_node_id]->ready()) {
       send_batch(dest_node_id);
     }
@@ -399,110 +397,8 @@ void MessageThread::run() {
   assert(msg);
   assert(dest_node_id < g_total_node_cnt);
   assert(dest_node_id != g_node_id);
-#if SEND_TO_SELF_PAHSE == 0
-  if (dest_node_id == g_node_id) {// && 
-#elif SEND_TO_SELF_PAHSE == 1
-  if (dest_node_id == g_node_id &&
-     (msg->get_rtype() == RQRY_RSP) {
-#elif SEND_TO_SELF_PAHSE == 2
-  if (dest_node_id == g_node_id &&
-     (msg->get_rtype() == RQRY)) {
-#elif SEND_TO_SELF_PAHSE == 3
-  if (false) {
-#endif
-#if SEND_STAGE == 1
-    DEBUG("try to %ld enqueue Msg into workqueue %d, (%ld,%ld) to %ld\n", _thd_id, msg->rtype, msg->txn_id, msg->batch_id,
-        dest_node_id);
-    uint64_t starttime = get_sys_clock();
-    sbuf = buffer[dest_node_id];
 
-    if(!sbuf->fits(msg->get_size())) {
-      assert(sbuf->cnt > 0);
-      sbuf->reset(dest_node_id);
-    }
-    uint64_t old_ptr = sbuf->ptr;
-    ASSERT(msg->get_rtype() == RQRY ||
-        msg->get_rtype() == RQRY_RSP);
-    if (msg->get_rtype() == RQRY ||
-        msg->get_rtype() == RQRY_RSP) {
-      fake_copy_to_buf(msg, &(sbuf->buffer[sbuf->ptr]));
-    } else {
-      msg->copy_to_buf(&(sbuf->buffer[sbuf->ptr]));
-    }
-    sbuf->cnt += 1;
-    sbuf->ptr += msg->get_size();
-    // if(CC_ALG != CALVIN) {
-    //   Message::release_message(msg);
-    // }
-    Message *new_msg;
-    if (msg->get_rtype() == RQRY ||
-        msg->get_rtype() == RQRY_RSP) {
-      new_msg = fake_create_message(&sbuf->buffer[old_ptr]);
-    } else {
-      new_msg = Message::create_message(&sbuf->buffer[old_ptr]);
-    }
-    
-    new_msg->return_node_id = g_node_id;
-    DEBUG("%ld enqueue Msg into workqueue %d, (%ld,%ld) to %ld\n", _thd_id, new_msg->rtype, new_msg->txn_id, new_msg->batch_id,
-        dest_node_id);
-    if (buffer[dest_node_id]->ready()) {
-      assert(sbuf->cnt > 0);
-      sbuf->reset(dest_node_id);   
-    }
-    INC_STATS(0,trans_msgsend_stage_one,get_sys_clock()-starttime);
-    work_queue.enqueue(get_thd_id(),msg,false);
-#elif SEND_STAGE == 2
-    DEBUG("try to %ld enqueue Msg into workqueue %d, (%ld,%ld) to %ld\n", _thd_id, msg->rtype, msg->txn_id, msg->batch_id,
-        dest_node_id);
-    uint64_t starttime = get_sys_clock();
-    uint64_t stage3_span1 = 0, stage3_span2 = 0;
-    sbuf = buffer[dest_node_id];
-
-    if(!sbuf->fits(msg->get_size())) {
-      assert(sbuf->cnt > 0);
-      // stage 3 parse msg
-      uint64_t stage3_starttime = get_sys_clock();
-      ((uint32_t*)sbuf->buffer)[2] = sbuf->cnt;
-      sbuf->set_send_time(get_sys_clock());
-      Message::create_messages((char*)sbuf->buffer);
-      stage3_span1 = get_sys_clock() - stage3_starttime;
-      // stage 3 parse msg
-      sbuf->reset(dest_node_id);
-    }
-    uint64_t old_ptr = sbuf->ptr;
-    msg->copy_to_buf(&(sbuf->buffer[sbuf->ptr]));
-    sbuf->cnt += 1;
-    sbuf->ptr += msg->get_size();
-    if(CC_ALG != CALVIN) {
-      Message::release_message(msg);
-    }
-    Message *new_msg = Message::create_message(&sbuf->buffer[old_ptr]);
-    new_msg->return_node_id = g_node_id;
-    if (buffer[dest_node_id]->ready()) {
-      assert(sbuf->cnt > 0);
-      // stage 3 parse msg
-      uint64_t stage3_starttime = get_sys_clock();
-      ((uint32_t*)sbuf->buffer)[2] = sbuf->cnt;
-      sbuf->set_send_time(get_sys_clock());
-      Message::create_messages((char*)sbuf->buffer);
-      stage3_span2 = get_sys_clock() - stage3_starttime;
-      // stage 3 parse msg
-      sbuf->reset(dest_node_id);      
-    }
-    DEBUG("%ld enqueue Msg into workqueue %d, (%ld,%ld) to %ld\n", _thd_id, new_msg->rtype, new_msg->txn_id, new_msg->batch_id,
-        dest_node_id);
-    INC_STATS(0,trans_msgsend_stage_one,get_sys_clock()-starttime - stage3_span1 - stage3_span2);
-    INC_STATS(0,trans_msgsend_stage_three,stage3_span1 + stage3_span2);
-    work_queue.enqueue(get_thd_id(),msg,false);
-#else
-    DEBUG("try to %ld enqueue Msg into workqueue %d, (%ld,%ld) to %ld\n", _thd_id, msg->rtype, msg->txn_id, msg->batch_id,
-        dest_node_id);
-    work_queue.enqueue(get_thd_id(),msg,false);
-#endif
-    return;
-  }
-
-#if ONE_NODE_RECIEVE == 1 && defined(NO_REMOTE) && LESS_DIS_NUM == 10
+#ifdef NO_REMOTE
 #else
   assert(dest_node_id != g_node_id);
 #endif

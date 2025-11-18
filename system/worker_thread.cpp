@@ -401,71 +401,7 @@ char type2char(DATxnType txn_type)
       return 'U';
   }
 }
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
-RC WorkerThread::run() {
-  tsetup();
-  printf("Running WorkerThread %ld\n",_thd_id);
 
-  uint64_t ready_starttime;
-  uint64_t idle_starttime = 0;
-
-	while(!simulation->is_done()) {
-    txn_man = NULL;
-    heartbeat();
-
-    progress_stats();
-    Message* msg = NULL;
-    uint64_t key = 0;
-    int msg_orig = -1;
-    txn_man = work_queue.get_from_calvin_list_lockfree(_thd_id, key);
-    if (txn_man == NULL) {
-      msg_orig = 2;
-      msg = work_queue.dequeue(get_thd_id());
-
-      if(!msg) {
-        if (idle_starttime == 0) idle_starttime = get_sys_clock();
-        continue;
-      }
-      simulation->last_da_query_time = get_sys_clock();
-      if(idle_starttime > 0) {
-        INC_STATS(_thd_id,worker_idle_time,get_sys_clock() - idle_starttime);
-        idle_starttime = 0;
-      }
-      txn_man = get_transaction_manager(msg);
-    }
-
-    txn_man->txn_stats.clear_short();
-    txn_man->txn_stats.work_queue_cnt += 1;
-
-    if (msg == NULL) {
-      msg_orig = 1;
-      msg = txn_man->last_msg;
-    }
-
-    ready_starttime = get_sys_clock();
-    bool ready = txn_man->unset_ready();
-    INC_STATS(get_thd_id(),worker_activate_txn_time,get_sys_clock() - ready_starttime);
-    if(!ready) {
-      // Return to work queue, end processing
-      work_queue.enqueue(get_thd_id(),msg,true);
-      continue;
-    }
-    txn_man->register_thread(this);
-
-    process(msg);
-
-    ready_starttime = get_sys_clock();
-    if(txn_man) {
-      bool ready = txn_man->set_ready();
-      assert(ready);
-    }
-    INC_STATS(get_thd_id(),worker_deactivate_txn_time,get_sys_clock() - ready_starttime);
-  }
-  printf("FINISH %ld:%ld\n",_node_id,_thd_id);
-  fflush(stdout);
-  return FINISH;
-}
-#else
 RC WorkerThread::run() {
   tsetup();
   printf("Running WorkerThread %ld\n",_thd_id);
@@ -482,33 +418,64 @@ RC WorkerThread::run() {
     Message* msg;
 
   // DA takes msg logic
-
-  // #define TEST_MSG_order
-  #ifdef TEST_MSG_order
-    while(1)
-    {
-      msg = work_queue.dequeue(get_thd_id());
-      if (!msg) {
-        if (idle_starttime == 0) idle_starttime = get_sys_clock();
-        continue;
+    #ifdef TEST_MSG_order
+      while(1)
+      {
+        msg = work_queue.dequeue(get_thd_id());
+        if (!msg) {
+          if (idle_starttime == 0) idle_starttime = get_sys_clock();
+          continue;
+        }
+        printf("s seq_id:%lu type:%c trans_id:%lu item:%c state:%lu next_state:%lu\n",
+        ((DAClientQueryMessage*)msg)->seq_id,
+        type2char(((DAClientQueryMessage*)msg)->txn_type),
+        ((DAClientQueryMessage*)msg)->trans_id,
+        static_cast<char>('x'+((DAClientQueryMessage*)msg)->item_id),
+        ((DAClientQueryMessage*)msg)->state,
+        (((DAClientQueryMessage*)msg)->next_state));
+        fflush(stdout);
       }
-      printf("s seq_id:%lu type:%c trans_id:%lu item:%c state:%lu next_state:%lu\n",
-      ((DAClientQueryMessage*)msg)->seq_id,
-      type2char(((DAClientQueryMessage*)msg)->txn_type),
-      ((DAClientQueryMessage*)msg)->trans_id,
-      static_cast<char>('x'+((DAClientQueryMessage*)msg)->item_id),
-      ((DAClientQueryMessage*)msg)->state,
-      (((DAClientQueryMessage*)msg)->next_state));
-      fflush(stdout);
-    }
-  #endif
+    #endif
+    #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+      #if CC_ALG == CALVIN
+      // 对于Calvin来说，如果开启流水线，就应该从list_lockfree里取事务。因为这个里面会进行判断，当前事务是否可以拿出来处理。
+      int msg_orig = -1; // 纯粹是用来debug的
+      txn_man = work_queue.get_from_list_lockfree(_thd_id, key);
+      if (txn_man == NULL) {
+        msg_orig = 2;
+        msg = work_queue.dequeue(get_thd_id());
 
-#if CC_ALG != ARIA
-    msg = work_queue.dequeue(get_thd_id());
-#else
-    msg = work_queue.work_dequeue(get_thd_id());
-#endif
-
+        if(!msg) {
+          if (idle_starttime == 0) idle_starttime = get_sys_clock();
+          continue;
+        }
+        simulation->last_da_query_time = get_sys_clock();
+        if(idle_starttime > 0) {
+          INC_STATS(_thd_id,worker_idle_time,get_sys_clock() - idle_starttime);
+          idle_starttime = 0;
+        }
+        txn_man = get_transaction_manager(msg);
+      }
+      txn_man->txn_stats.clear_short();
+      txn_man->txn_stats.work_queue_cnt += 1;
+      if (msg == NULL) {
+        msg_orig = 1;
+        msg = txn_man->last_msg;
+      }
+      #elif CC_ALG == ARIA
+      // 对于ARIA来说，如果开启流水线，就应该尝试从多个无锁链表里取，取不出来就选下一个，除非都取不出来
+        for (ARIA_PHASE phase = ARIA_READ; phase <= ARIA_COMMIT; phase = ARIA_PHASE(phase + 1)) {
+          msg = work_queue.work_dequeue(get_thd_id(), phase);
+          if (msg != NULL) break;
+        }
+      #endif
+    #else 
+      #if CC_ALG != ARIA
+          msg = work_queue.dequeue(get_thd_id());
+      #else
+          msg = work_queue.work_dequeue(get_thd_id());
+      #endif
+    #endif
 
     if(!msg) {
       if (idle_starttime == 0) idle_starttime = get_sys_clock();
@@ -527,14 +494,15 @@ RC WorkerThread::run() {
     }
 #endif
     //uint64_t starttime = get_sys_clock();
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-    if((msg->rtype != CL_QRY && msg->rtype != CL_QRY_O) || msg->algo == CALVIN){
+    int algo = CC_ALG;
+    #if CC_ALG == HDCC || CC_ALG == SNAPPER
+      algo = msg->algo;
+    #endif
+    if((msg->rtype != CL_QRY && msg->rtype != CL_QRY_O) || algo == CALVIN) {
       txn_man = get_transaction_manager(msg);
+      #if CC_ALG == HDCC || CC_ALG == SNAPPER
       txn_man->algo = msg->algo;
-#else
-    if((msg->rtype != CL_QRY && msg->rtype != CL_QRY_O) || CC_ALG == CALVIN) {
-      txn_man = get_transaction_manager(msg);
-#endif
+      #endif
 
       if (CC_ALG != CALVIN && IS_LOCAL(txn_man->get_txn_id())) {
         if (msg->rtype != RTXN_CONT &&
@@ -602,14 +570,11 @@ RC WorkerThread::run() {
 #if CC_ALG == ARIA
     else if (msg->rtype == CL_QRY) {
       txn_man = get_transaction_manager(msg);
-
-#if CC_ALG == ARIA
       if (txn_man->aria_phase != simulation->aria_phase) {
         // printf("thd: %ld, txn: %ld runs twice\n", get_thd_id(), txn_man->get_txn_id());
         work_queue.work_enqueue(get_thd_id(), msg, false, txn_man->aria_phase);
         continue;
       }
-#endif
 
       txn_man->txn_stats.clear_short();
       txn_man->txn_stats.msg_queue_time += msg->mq_time;
@@ -638,11 +603,9 @@ RC WorkerThread::run() {
       txn_man->register_thread(this);
     }
 #endif
-#ifdef FAKE_PROCESS
-    fakeprocess(msg);
-#else
+
     process(msg);
-#endif
+
 #if CC_ALG == ARIA  
     if (msg->rtype == CL_QRY) {
       if (simulation->aria_phase != ARIA_COMMIT) {
@@ -681,19 +644,21 @@ RC WorkerThread::run() {
 
     // delete message
     ready_starttime = get_sys_clock();
-#if CC_ALG != CALVIN
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-  if (msg->algo == CALVIN) {
-  } else {
-#elif CC_ALG == ARIA
-  if (msg->rtype != CL_QRY) {
-#endif
-    msg->release();
-    delete msg;
-#if CC_ALG == HDCC || CC_ALG == SNAPPER || CC_ALG == ARIA
-  }
-#endif
-#endif
+    #if CC_ALG == HDCC || CC_ALG == SNAPPER
+      if (msg->algo == CALVIN) {
+      } else {
+        msg->release();
+        delete msg;
+      }
+    #elif CC_ALG == ARIA
+      if (msg->rtype != CL_QRY) {
+        msg->release();
+        delete msg;
+      }
+    #elif CC_ALG != CALVIN
+      msg->release();
+      delete msg;
+    #endif
     INC_STATS(get_thd_id(),worker_release_msg_time,get_sys_clock() - ready_starttime);
 
 	}
@@ -701,7 +666,7 @@ RC WorkerThread::run() {
   fflush(stdout);
   return FINISH;
 }
-#endif
+// #endif
 
 RC WorkerThread::process_rfin(Message * msg) {
   DEBUG("RFIN %ld\n",msg->get_txn_id());
@@ -1017,7 +982,7 @@ RC WorkerThread::process_rqry_rsp(Message * msg) {
 #if CC_ALG != ARIA
 RC WorkerThread::process_rqry(Message * msg) {
   DEBUG("RQRY %ld\n",msg->get_txn_id());
-#if ONE_NODE_RECIEVE == 1 && defined(NO_REMOTE) && LESS_DIS_NUM == 10
+#ifdef NO_REMOTE 
 #else
   M_ASSERT_V(!IS_LOCAL(msg->get_txn_id()), "RQRY local: %ld %ld/%d\n", msg->get_txn_id(),
              msg->get_txn_id() % g_node_cnt, g_node_id);

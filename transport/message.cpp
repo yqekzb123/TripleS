@@ -48,7 +48,7 @@ std::vector<Message*> * Message::create_messages(char * buf) {
     INC_STATS(0,trans_network_recv,get_sys_clock());
     INC_STATS(0,trans_network_wait,get_sys_clock()-starttime);
   }
-#if ONE_NODE_RECIEVE == 1 && defined(NO_REMOTE) && LESS_DIS_NUM == 10
+#ifdef NO_REMOTE
 #else
   assert(dest_id == g_node_id);
   assert(return_id != g_node_id);
@@ -1816,7 +1816,7 @@ void YCSBQueryMessage::copy_to_txn(TxnManager * txn) {
   ((YCSBQuery*)(txn->query))->requests.clear();
 #endif
   //((YCSBQuery*)(txn->query))->requests.copy(requests);
-#if ONE_NODE_RECIEVE == 1 && defined(NO_REMOTE) && LESS_DIS_NUM == 10
+#ifdef NO_REMOTE 
 #else
   ((YCSBQuery*)(txn->query))->requests.append(requests);
   ((YCSBQuery*)(txn->query))->orig_request = &requests;

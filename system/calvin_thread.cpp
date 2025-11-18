@@ -42,7 +42,7 @@
 
 void CalvinLockThread::setup() {}
 
-// #if CC_ALG != SNAPPER
+
 RC CalvinLockThread::run() {
 	tsetup();
 
@@ -127,7 +127,7 @@ RC CalvinLockThread::run() {
 // #if LONG_TXN_WORKLOAD
 		txn_man->last_msg = msg;
 	#if LONG_TXN_SCHEDULE
-		work_queue.insert_calvin_list_lockfree(_thd_id, txn_man);
+		work_queue.insert_list_lockfree(_thd_id, txn_man);
 	// #endif
 	#else
 		if(rc == RCOK) {
@@ -143,101 +143,6 @@ RC CalvinLockThread::run() {
 	fflush(stdout);
 	return FINISH;
 }
-// #else
-// RC CalvinLockThread::run() {
-// 	tsetup();
-
-// 	// RC rc = RCOK;
-// 	TxnManager * txn_man;
-// 	uint64_t prof_starttime = get_sys_clock();
-// 	uint64_t idle_starttime = 0;
-// 	// uint64_t last_batch_id = 0;
-// 	unordered_map<row_t *, vector<pair<TxnManager *, access_t>>> read_write_sets;
-
-// 	while(!simulation->is_done()) {
-// 		txn_man = NULL;
-
-// 		Message * msg = work_queue.sched_dequeue(_thd_id);
-
-// 		if(!msg) {
-// 			if (idle_starttime == 0) idle_starttime = get_sys_clock();
-// 			continue;
-// 		}
-// 		if(idle_starttime > 0) {
-// 				INC_STATS(_thd_id,sched_idle_time,get_sys_clock() - idle_starttime);
-// 				idle_starttime = 0;
-// 		}
-
-// 		prof_starttime = get_sys_clock();
-// 		assert(msg->get_txn_id() != UINT64_MAX || msg->rtype == RDONE);
-
-// 		if(msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
-// 			txn_man =
-// 					txn_table.get_transaction_manager(get_thd_id(), msg->get_txn_id(), msg->get_batch_id());
-// 			txn_man->algo = msg->algo;
-
-// 			while (!txn_man->unset_ready()) {
-// 			}
-// 		#if CC_ALG == SNAPPER
-// 			txn_man->txn->timestamp = UINT64_MAX;
-// 		#endif
-// 			assert(ISSERVERN(msg->get_return_id()));
-// 			txn_man->txn_stats.starttime = get_sys_clock();
-
-// 			txn_man->txn_stats.lat_network_time_start = msg->lat_network_time;
-// 			txn_man->txn_stats.lat_other_time_start = msg->lat_other_time;
-
-// 			msg->copy_to_txn(txn_man);
-// 			txn_man->register_thread(this);
-// 			assert(ISSERVERN(txn_man->return_id));
-
-// 			INC_STATS(get_thd_id(),sched_txn_table_time,get_sys_clock() - prof_starttime);
-// 			prof_starttime = get_sys_clock();
-
-// 			// rc = RCOK;
-
-// 			//get all rows first
-// 			txn_man->get_read_write_set();
-
-// 			for (auto i = txn_man->read_write_set.begin(); i != txn_man->read_write_set.end(); i++) {
-// 				auto record = read_write_sets.find(i->first);
-// 				if(record == read_write_sets.end()) {
-// 					read_write_sets.emplace(i->first, vector<pair<TxnManager *, access_t>>(1, pair<TxnManager *, access_t>(txn_man, i->second)));
-// 				} else {
-// 					record->second.push_back(pair<TxnManager *, access_t>(txn_man, i->second));
-// 				}
-// 			}
-
-// 			txn_man->set_ready();
-// 		} else {
-// 			msg->release();
-// 			msg = NULL;
-// 			for (auto i = read_write_sets.begin(); i != read_write_sets.end(); i++) {
-// 				row_t * row = i->first;
-// 				auto vector = i->second;
-// 				row->enter_critical_section();
-// 				for (auto j = vector.begin(); j != vector.end(); j++) {
-// 					TxnManager * txn = j->first;
-// 					RC rc = txn->acquire_lock(row, j->second);
-// 					if (rc == RCOK) {
-// 						Message* msg = Message::create_message(txn,RTXN);
-//         				msg->algo = CALVIN;
-// 						work_queue.enqueue(_thd_id,msg,false);
-// 						INC_STATS(_thd_id,mtx[33],get_sys_clock() - prof_starttime);
-// 						prof_starttime = get_sys_clock();
-// 					}
-// 				}
-// 				row->leave_critical_section();
-// 				vector.clear();
-// 			}
-// 			read_write_sets.clear();
-// 		}
-// 	}
-// 	printf("FINISH %ld:%ld\n",_node_id,_thd_id);
-// 	fflush(stdout);
-// 	return FINISH;
-// }
-// #endif
 
 void CalvinSequencerThread::setup() {}
 
