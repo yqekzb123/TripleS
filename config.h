@@ -53,7 +53,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 1
+#define NODE_CNT 4
 #define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -148,7 +148,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG ARIA
+#define CC_ALG CALVIN
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -255,9 +255,9 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 8388608
-#define ZIPF_THETA 0.9
-#define TXN_WRITE_PERC 1.0
+#define SYNTH_TABLE_SIZE 33554432
+#define ZIPF_THETA 0.1
+#define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
 #define SCAN_LEN          20
@@ -267,7 +267,7 @@
 // DO NOT LET PEQ_PER_QUERY <= REQ_PER_SHORT_QUERY
 #define REQ_PER_QUERY 50
 #define REQ_PER_SHORT_QUERY 10
-#define LONG_QUERY_PERC 0.4
+#define LONG_QUERY_PERC 0.2
 #else
 #define REQ_PER_QUERY 50
 #define REQ_PER_SHORT_QUERY 10
@@ -512,9 +512,10 @@ enum PPSTxnType {
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
 #define DONE_TIMER 1 * 20 * BILLION // ~1 minutes
-#define WARMUP_TIMER 1 * 10 * BILLION // ~1 minutes
+#define WARMUP_TIMER 1 * 20 * BILLION // ~1 minutes
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
+#define ONE_MILLISECOND 1 * MILLION
 #define SNAPPER_TXN_TIMEOUT 0.1 * BILLION
 
 #define SEED 0

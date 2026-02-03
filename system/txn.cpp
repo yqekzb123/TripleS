@@ -66,6 +66,7 @@ void TxnStats::init() {
 	twopc_time=0;
 	write_cnt = 0;
 	abort_cnt = 0;
+	copy_request_counts = 0;
 
 	 total_work_queue_time = 0;
 	 work_queue_time = 0;
@@ -114,6 +115,8 @@ void TxnStats::reset() {
 	work_queue_cnt = 0;
 	total_msg_queue_time += msg_queue_time;
 	msg_queue_time = 0;
+
+	copy_request_counts= 0;
 
 	clear_short();
 
@@ -587,7 +590,7 @@ void TxnManager::reset_query() {
 }
 
 RC TxnManager::commit() {
-	DEBUG("Commit %ld\n",get_txn_id());
+	DEBUG_WRK("Commit %ld\n",get_txn_id());
 	RC rc = do_insert();
 	assert(rc == RCOK);
 	rc = do_delete();

@@ -23,8 +23,6 @@
 #include "array.h"
 #include "transport/message.h"
 #include "index_btree.h"
-// #include "lock_free_list.h"
-//#include "wl.h"
 #if CC_ALG == SNAPPER
 #include <utility>
 #include <forward_list>
@@ -150,6 +148,9 @@ public:
 
 	double lat_network_time_start;
 	double lat_other_time_start;
+
+	// for debug
+	uint64_t copy_request_counts;
 };
 
 /*
@@ -259,6 +260,9 @@ public:
 	bool raw;
 	bool war;
 	ARIA_PHASE aria_phase;
+
+	ListNode<watermark_node_entry*>* rld_pointer;
+	ListNode<watermark_node_entry*>* cld_pointer;
 #endif
 
 #if CC_ALG == SILO

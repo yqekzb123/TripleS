@@ -4,8 +4,12 @@
 #include "ycsb_query.h"
 #include "tpcc_query.h"
 #include "msg_queue.h"
+#include "water_mark.h"
+#include "global.h"
 
 #if CC_ALG == ARIA
+
+#if !LONG_TXN_SCHEDULE
 
 void AriaSequencer::init(Workload *wl) {
     next_txn_id = 0;
@@ -47,9 +51,9 @@ void AriaSequencer::fill_batch(uint64_t _thd_id) {
                 continue;
         }
         if(idle_starttime > 0) {
-			INC_STATS(_thd_id,seq_idle_time,get_sys_clock() - idle_starttime);
-			idle_starttime = 0;
-		}
+            INC_STATS(_thd_id,seq_idle_time,get_sys_clock() - idle_starttime);
+            idle_starttime = 0;
+        }
         auto rtype = msg->get_rtype();
         assert(rtype == CL_QRY);
         process_txn(msg, _thd_id);
@@ -99,19 +103,19 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
     uint64_t starttime = get_sys_clock();
     uint64_t txn_id = msg->txn_id;
     uint64_t batch_id = msg->batch_id;
-    // printf("process ack txn_id: %ld, rc: %d\n", txn_id, ((AckMessage *)msg)->rc);
+    DEBUG_SCH("process ack txn_id: %ld, rc: %d txns_left %ld\n", txn_id, ((AckMessage *)msg)->rc, txns_left);
     for (uint64_t i = 0; i < aria_batch.size(); i++) {
         if (aria_batch[i]->msg->txn_id == txn_id && aria_batch[i]->msg->batch_id == batch_id) {
             if (((AckMessage *)msg)->rc == RCOK) {
                 INC_STATS(thd_id, seq_txn_cnt, 1);
 
-#if WORKLOAD == YCSB
+            #if WORKLOAD == YCSB
                 YCSBClientQueryMessage * cl_msg = (YCSBClientQueryMessage *)aria_batch[i]->msg;
                 // for(uint64_t i = 0; i < cl_msg->requests.size(); i++) {
 				// 	DEBUG_M("Sequencer::process_ack() ycsb_request free\n");
 				// 	mem_allocator.free(cl_msg->requests[i],sizeof(ycsb_request));
                 // }
-#elif WORKLOAD == TPCC
+            #elif WORKLOAD == TPCC
                 TPCCClientQueryMessage * cl_msg = (TPCCClientQueryMessage*)aria_batch[i]->msg;
                 // if(cl_msg->txn_type == TPCC_NEW_ORDER) {
 				// 	for(uint64_t i = 0; i < cl_msg->items.size(); i++) {
@@ -119,7 +123,7 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
 				// 			mem_allocator.free(cl_msg->items[i],sizeof(Item_no));
 				// 	}
 			    // }
-#endif
+            #endif
 
                 uint64_t curr_clock = get_sys_clock();
                 uint64_t long_timespan = curr_clock - aria_batch[i]->seq_first_startts;
@@ -141,12 +145,10 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
                 INC_STATS(0, lat_short_cc_time, msg->lat_cc_time);
                 INC_STATS(0, lat_short_process_time, msg->lat_process_time);
 
-                if (msg->return_node_id != g_node_id)
-                {
+                if (msg->return_node_id != g_node_id) {
                     INC_STATS(0, lat_short_network_time, msg->lat_network_time);
                 }
-                // INC_STATS(0, lat_short_batch_time, 0);
-                
+
                 cl_msg->release();
 
                 ClientResponseMessage * rsp_msg = (ClientResponseMessage *)Message::create_message(msg->get_txn_id(), CL_RSP);
@@ -172,10 +174,11 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
 
             txns_left--;
             if (txns_left == 0) {
-                // This is the last ack for this batch, wait work thread finish all transactions and go to next phase.
+                DEBUG_SCH("thd_id: %ld, all ack received for this batch, move to next phase %d\n", thd_id, simulation->aria_phase);
+                // This is the last ack for this batch. wait work thread finish all transactions and go to next phase.
                 while (simulation->batch_process_count != 0 && !simulation->is_done()) {}
                 simulation->next_aria_phase();
-                // printf("thd_id: %ld, phase: %d\n", thd_id, simulation->aria_phase);
+                DEBUG_SCH("thd_id: %ld, phase: %d\n", thd_id, simulation->aria_phase);
                 assert(simulation->aria_phase == ARIA_COLLECT);
             }
 
@@ -185,4 +188,232 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
         }
     }
 }
-#endif
+
+#else // LONG_TXN_SCHEDULE: pipelined implementations (kept inside .cpp static data so header/class unchanged)
+void AriaSequencer::init(Workload *wl) {
+    next_txn_id = 0;
+    batch_id = 0;
+    last_batch_time = 0;
+    txns_left = 0;
+    _wl = wl;
+    pipeline_batches.clear();
+    pipeline_current_batch = nullptr;
+    pipeline_next_batch_id = 0;
+    pipeline_txns_left = 0;
+    assert((uint32_t)g_inflight_max > g_aria_batch_size);
+}
+
+void AriaSequencer::send_next_batch(uint64_t thd_id) {
+    uint64_t prof_stat = get_sys_clock();
+    if (pipeline_batches.empty()) return;
+    PBatch * b = nullptr;
+    for (auto &bb : pipeline_batches) {
+        if (!bb->sent) { 
+            b = bb; 
+            break; 
+        }
+    }
+    if (!b) return;
+    DEBUG_SCH("PIPELINE SEND NEXT BATCH %ld %ld %ld\n", thd_id, b->id, b->txns.size());
+    for (uint64_t i = 0; i < b->txns.size(); i++) {
+        // !目前设定为在发送事务的时候，提高 min_commit_read_sid
+        uint64_t key = get_calvin_key(b->txns[i]->msg->batch_id, b->txns[i]->msg->return_node_id,b->txns[i]->msg->txn_id);
+        // min_commit_read_sid = std::max(min_commit_read_sid, key);
+        watermark_node_entry* entry = (watermark_node_entry*)mem_allocator.align_alloc(sizeof(watermark_node_entry));
+        entry->key = key;
+
+        ListNode<watermark_node_entry*>* rld = reservation_check_water_mark->insert(entry, thd_id);
+        ListNode<watermark_node_entry*>* cld = check_commit_water_mark->insert(entry, thd_id);
+        // DEBUG_SCH("reservation_check_water_mark and check_commit_water_mark save %ld.\n", key);
+        // !发送事务到工作队列
+        ((ClientQueryMessage*)b->txns[i]->msg)->aria_phase = ARIA_READ;
+        ((ClientQueryMessage*)b->txns[i]->msg)->rld_pointer = rld;
+        ((ClientQueryMessage*)b->txns[i]->msg)->cld_pointer = cld;
+        work_queue.work_enqueue_lockfree_list(thd_id, b->txns[i]->msg, false, ARIA_READ);
+        DEBUG_SCH("PIPELINE SEND NEXT TXN %ld to queue in phase ARIA_READ, txn[%ld,%ld], key: %lu\n", thd_id, b->txns[i]->msg->batch_id, b->txns[i]->msg->txn_id, key);
+    }
+    INC_STATS(thd_id, seq_batch_cnt, 1);
+    if (b->txns.size() == g_aria_batch_size) INC_STATS(thd_id, seq_full_batch_cnt, 1);
+    b->sent = true;
+    batch_id = b->id + 1;
+    INC_STATS(thd_id, seq_prep_time, get_sys_clock() - prof_stat);
+    INC_STATS(thd_id, seq_batch_time, get_sys_clock() - last_batch_time);
+    last_batch_time = prof_stat;
+}
+
+void AriaSequencer::fill_batch(uint64_t _thd_id) {
+    Message * msg;
+    uint64_t idle_starttime = 0;
+    if (!pipeline_current_batch) { 
+        pipeline_current_batch = new PBatch(pipeline_next_batch_id);
+    }
+    while (pipeline_current_batch->txns.size() < g_aria_batch_size) {
+        msg = work_queue.txn_dequeue(_thd_id);
+        if (!msg) {
+            if (idle_starttime == 0) idle_starttime = get_sys_clock();
+            break;
+        }
+        if (idle_starttime > 0) { 
+            INC_STATS(_thd_id, seq_idle_time, get_sys_clock() - idle_starttime); idle_starttime = 0; 
+        }
+        int rtype = msg->get_rtype(); 
+        assert(rtype == CL_QRY || rtype == CL_QRY_O);
+        aria_txn * en = (aria_txn *) mem_allocator.alloc(sizeof(aria_txn));
+        msg->batch_id = pipeline_current_batch->id;
+        msg->txn_id = g_node_id + g_node_cnt * next_txn_id; next_txn_id++;
+        assert(msg->txn_id != UINT64_MAX);
+        assert(ISCLIENTN(msg->get_return_id()));
+        en->client_id = msg->get_return_id(); 
+        en->client_startts = ((ClientQueryMessage *)msg)->client_startts;
+        en->total_batch_time = 0; 
+        en->abort_cnt = 0; 
+        msg->return_node_id = g_node_id; 
+        msg->lat_network_time = 0; 
+        msg->lat_other_time = 0;
+        en->msg = msg; 
+        en->seq_startts = get_sys_clock(); 
+        en->seq_first_startts = en->seq_startts;
+        pipeline_current_batch->txns.push_back(en);
+    }
+    if (pipeline_current_batch->txns.size() > 0) {
+        pipeline_current_batch->txns_left = pipeline_current_batch->txns.size();
+        pipeline_batches.push_back(pipeline_current_batch);
+        pipeline_txns_left += pipeline_current_batch->txns_left;
+        pipeline_current_batch = nullptr; 
+        pipeline_next_batch_id++;
+    }
+    txns_left = pipeline_txns_left;
+}
+
+void AriaSequencer::put_one_txn_to_batch(uint64_t _thd_id) {
+    Message * msg = work_queue.txn_dequeue(_thd_id);
+    if (!msg) return;
+    int rtype = msg->get_rtype(); 
+    assert(rtype == CL_QRY || rtype == CL_QRY_O);
+    if (!pipeline_current_batch)
+        pipeline_current_batch = new PBatch(pipeline_next_batch_id);
+    aria_txn * en = (aria_txn *) mem_allocator.alloc(sizeof(aria_txn));
+    msg->batch_id = pipeline_current_batch->id;
+    msg->txn_id = g_node_id + g_node_cnt * next_txn_id; next_txn_id++; 
+    assert(msg->txn_id != UINT64_MAX);
+    assert(ISCLIENTN(msg->get_return_id()));
+    en->client_id = msg->get_return_id(); 
+    en->client_startts = ((ClientQueryMessage *)msg)->client_startts;
+    en->total_batch_time = 0; 
+    en->abort_cnt = 0; 
+    msg->return_node_id = g_node_id; 
+    msg->lat_network_time = 0; 
+    msg->lat_other_time = 0;
+    en->msg = msg; 
+    en->seq_startts = get_sys_clock(); 
+    en->seq_first_startts = en->seq_startts;
+    pipeline_current_batch->txns.push_back(en);
+    if (pipeline_current_batch->txns.size() >= g_aria_batch_size) {
+        pipeline_current_batch->txns_left = pipeline_current_batch->txns.size();
+        pipeline_batches.push_back(pipeline_current_batch);
+        pipeline_txns_left += pipeline_current_batch->txns_left;
+        pipeline_current_batch = nullptr; 
+        pipeline_next_batch_id++;
+    }
+    txns_left = pipeline_txns_left;
+}
+
+void AriaSequencer::process_txn(Message* msg, uint64_t thd_id) {
+    // Provide minimal compatibility for calls that expect process_txn to exist
+    if (!pipeline_current_batch) pipeline_current_batch = new PBatch(pipeline_next_batch_id);
+    aria_txn * en = (aria_txn *) mem_allocator.alloc(sizeof(aria_txn));
+    msg->batch_id = pipeline_current_batch->id;
+    msg->txn_id = g_node_id + g_node_cnt * next_txn_id; next_txn_id++; assert(msg->txn_id != UINT64_MAX);
+    assert(ISCLIENTN(msg->get_return_id()));
+    en->client_id = msg->get_return_id(); en->client_startts = ((ClientQueryMessage *)msg)->client_startts;
+    en->total_batch_time = 0; en->abort_cnt = 0; msg->return_node_id = g_node_id; msg->lat_network_time = 0; msg->lat_other_time = 0;
+    en->msg = msg; en->seq_startts = get_sys_clock(); en->seq_first_startts = en->seq_startts;
+    pipeline_current_batch->txns.push_back(en);
+    if (pipeline_current_batch->txns.size() >= g_aria_batch_size) {
+        pipeline_current_batch->txns_left = pipeline_current_batch->txns.size();
+        pipeline_batches.push_back(pipeline_current_batch);
+        pipeline_txns_left += pipeline_current_batch->txns_left;
+        pipeline_current_batch = nullptr; pipeline_next_batch_id++;
+    }
+    txns_left = pipeline_txns_left;
+}
+
+void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
+    uint64_t starttime = get_sys_clock();
+    uint64_t txn_id = msg->txn_id;
+    uint64_t b_id = msg->batch_id;
+    DEBUG_SCH("PIPELINE PROCESS ACK txn_id: %ld, b_id: %ld, rc: %d\n", txn_id, b_id, ((AckMessage *)msg)->rc);
+    // 先根据b_id找到对应的PBatch
+
+    PBatch * b = nullptr;
+    int bi;
+    for (bi = 0; bi < pipeline_batches.size(); ++bi) {
+        PBatch * bb = pipeline_batches[bi];
+        if (bb->id == b_id) {
+            b = bb;
+            break;
+        }
+    }
+    if (!b) {
+        assert(false);
+        DEBUG_SCH("PIPELINE PROCESS ACK ERROR: batch id %ld not found for txn_id %ld\n", b_id, txn_id);
+        return;
+    }
+    // 再找对应的事务
+    for (size_t i = 0; i < b->txns.size(); ++i) {
+        if (b->txns[i]->msg->txn_id == txn_id) {
+            assert(b->txns[i]->msg->batch_id == b_id);
+            if (((AckMessage *)msg)->rc == RCOK) {
+                INC_STATS(thd_id, seq_txn_cnt, 1);
+            #if WORKLOAD == YCSB
+                YCSBClientQueryMessage * cl_msg = (YCSBClientQueryMessage *)b->txns[i]->msg;
+            #elif WORKLOAD == TPCC
+                TPCCClientQueryMessage * cl_msg = (TPCCClientQueryMessage*)b->txns[i]->msg;
+            #endif
+                uint64_t curr_clock = get_sys_clock();
+                uint64_t long_timespan = curr_clock - b->txns[i]->seq_first_startts;
+                uint64_t short_timespan = curr_clock - b->txns[i]->seq_startts;
+                if (warmup_done) {
+                    INC_STATS_ARR(0, first_start_commit_latency, long_timespan);
+                    INC_STATS_ARR(0, last_start_commit_latency, short_timespan);
+                    INC_STATS_ARR(0, start_abort_commit_latency, short_timespan);
+                }
+                if (b->txns[i]->abort_cnt > 0) 
+                    INC_STATS(0, unique_txn_abort_cnt, 1);
+                INC_STATS(0, lat_l_loc_msg_queue_time, curr_clock - last_batch_time);
+                INC_STATS(0, lat_short_work_queue_time, msg->lat_work_queue_time);
+                INC_STATS(0, lat_short_msg_queue_time, msg->lat_msg_queue_time);
+                INC_STATS(0, lat_short_cc_block_time, msg->lat_cc_block_time);
+                INC_STATS(0, lat_short_cc_time, msg->lat_cc_time);
+                INC_STATS(0, lat_short_process_time, msg->lat_process_time);
+                if (msg->return_node_id != g_node_id) 
+                    INC_STATS(0, lat_short_network_time, msg->lat_network_time);
+                cl_msg->release();
+                ClientResponseMessage * rsp_msg = (ClientResponseMessage *)Message::create_message(msg->get_txn_id(), CL_RSP);
+                rsp_msg->client_startts = b->txns[i]->client_startts;
+                msg_queue.enqueue(thd_id, rsp_msg, b->txns[i]->client_id);
+                mem_allocator.free(b->txns[i], sizeof(aria_txn));
+                b->txns.erase(b->txns.begin() + i);
+                INC_STATS(thd_id, seq_complete_cnt, 1);
+                Message * nxt = work_queue.txn_dequeue(thd_id);
+                if (nxt) { process_txn(nxt, thd_id); }
+            } else {
+                b->txns[i]->abort_cnt++; b->txns[i]->seq_startts = get_sys_clock();
+            }
+            if (b->txns_left > 0) b->txns_left--; 
+            if (pipeline_txns_left > 0) pipeline_txns_left--;
+            txns_left = pipeline_txns_left;
+            if (b->txns_left == 0) { 
+                delete b; 
+                pipeline_batches.erase(pipeline_batches.begin() + bi); 
+            }
+            INC_STATS(thd_id, seq_ack_time, get_sys_clock() - starttime);
+            return;
+        }
+    }
+
+}
+
+#endif // !LONG_TXN_SCHEDULE
+
+#endif // CC_ALG == ARIA

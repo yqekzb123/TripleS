@@ -100,11 +100,11 @@ RC ClientThread::run() {
 
 		DEBUG("Client: thread %lu sending query to node: %u, %d, %f\n",
 				_thd_id, next_node_id,inf_cnt,simulation->seconds_from_start(get_sys_clock()));
-#ifdef NO_REMOTE
-		Message * msg = Message::create_message((BaseQuery*)m_query,CL_QRY_O);
-#else
+// #ifdef NO_REMOTE
+// 		Message * msg = Message::create_message((BaseQuery*)m_query,CL_QRY_O);
+// #else
 		Message * msg = Message::create_message((BaseQuery*)m_query,CL_QRY);
-#endif
+// #endif
 		((ClientQueryMessage*)msg)->client_startts = get_sys_clock();
 		msg_queue.enqueue(get_thd_id(),msg,next_node_id);
 		num_txns_sent++;

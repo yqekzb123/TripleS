@@ -56,6 +56,7 @@
 #include "rts_cache.h"
 #include "cc_selector.h"
 #include "aria_sequencer.h"
+#include "water_mark.h"
 
 #include <boost/lockfree/queue.hpp>
 #include "da_block_queue.h"
@@ -159,12 +160,30 @@ UInt32 g_core_cnt = CORE_CNT;
 
 #if CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC
 UInt32 g_thread_cnt = PART_CNT/NODE_CNT;
-#elif LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#elif LONG_TXN_SCHEDULE
 UInt32 g_scheduler_thread_cnt = SCHEDULER_CNT;
+#if CC_ALG == CALVIN
 UInt32 g_thread_cnt = THREAD_CNT + 1 - g_scheduler_thread_cnt;
+#else
+UInt32 g_thread_cnt = THREAD_CNT;
+#endif
 uint64_t the_first_scheduler_id = 0;
+// 调度器的水印 for Calvin ------------------
 uint64_t * sids;
 uint64_t minSid = 0;
+// Aria的水印，分为4个阶段 -------------------
+#if CC_ALG == ARIA
+WaterMarkList* reservation_check_water_mark;
+WaterMarkList* check_commit_water_mark;
+// uint64_t * read_reservation_sids; // 从Read阶段到Reservation阶段中的水印
+// uint64_t min_read_reservation_sid = 0;
+// uint64_t * reservation_check_sids; // 从Reservation阶段到Check阶段中的水印
+// uint64_t min_reservation_check_sid = 0;
+// uint64_t * check_commit_sids; // 从Check阶段到Commit阶段中的水印
+// uint64_t min_check_commit_sid = 0;
+// uint64_t * commit_read_sids; // 从这一批次的Commit到下一批次的Read阶段的水印
+// uint64_t min_commit_read_sid = 0;
+#endif
 #else
 UInt32 g_thread_cnt = THREAD_CNT;
 uint64_t minSid = 0;

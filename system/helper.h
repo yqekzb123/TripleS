@@ -19,6 +19,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <mutex>
 #include <stdint.h>
 #include "global.h"
 
@@ -350,6 +351,18 @@ public:
 private:
 	uint64_t seed;
 };
+
+// 用来表示有锁链表节点
+enum NodeStatus : int { NODE_AVAILABLE = 0, NODE_TAKEN = 1, NODE_REMOVED = 2 };
+template<typename T>
+struct ListNode {
+    T data;
+    ListNode* next;
+    std::mutex mtx; // per-node lock for hand-over-hand locking
+    NodeStatus status;
+    ListNode(const T& d) : data(d), next(nullptr), status(NODE_AVAILABLE) {}
+};
+
 
 // 写一个作为默认无效的值的宏
 #define INVALID_ID UINT64_MAX

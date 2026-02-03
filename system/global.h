@@ -97,6 +97,7 @@ class KeyXidCache;
 class RtsCache;
 class CCSelector;
 class ConflictStaticsMessage;
+class WaterMarkList;
 // class QTcpQueue;
 
 typedef uint32_t UInt32;
@@ -197,10 +198,19 @@ extern UInt32 g_logger_thread_cnt;
 extern UInt32 g_tcp_thread_cnt;
 extern UInt32 g_send_thread_cnt;
 extern UInt32 g_rem_thread_cnt;
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
 extern UInt32 g_scheduler_thread_cnt;
 extern uint64_t the_first_scheduler_id;
 extern uint64_t * sids;
+#if CC_ALG == ARIA
+// Aria的水印，分为4个阶段
+extern WaterMarkList* reservation_check_water_mark;
+extern WaterMarkList* check_commit_water_mark;
+// extern uint64_t * reservation_check_sids; // 从Reservation阶段到Check阶段中的水印
+// extern uint64_t min_reservation_check_sid;
+// extern uint64_t * check_commit_sids; // 从Check阶段到Commit阶段中的水印
+// extern uint64_t min_check_commit_sid;
+#endif
 #endif
 extern uint64_t minSid;
 

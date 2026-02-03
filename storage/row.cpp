@@ -558,6 +558,9 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 	txn->cur_row->init(get_table(), get_part_id());
 	INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
 	txn->cur_row->copy(this);
+	#if LONG_TXN_SCHEDULE
+	rc = this->manager->access(txn, type, this);
+	#endif
 	uint64_t copy_time = get_sys_clock();
 	access->data = txn->cur_row;
 	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
@@ -837,6 +840,9 @@ uint64_t row_t::return_row(RC rc, access_t type, TxnManager *txn, row_t *row) {
 	}
 #elif CC_ALG == ARIA
 	assert(row != NULL);
+	#if LONG_TXN_SCHEDULE
+	this->manager->clean(txn, type);
+	#endif
 	row->free_row();
 	mem_allocator.free(row, sizeof(row_t));
 	return 0;

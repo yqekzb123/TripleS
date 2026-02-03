@@ -31,7 +31,9 @@ void SimManager::init() {
 	worker_epoch = 1;
 	seq_epoch = 0;
 	rsp_cnt = g_total_node_cnt - 1;
-	aria_phase = ARIA_INIT;
+	// aria_phase = ARIA_INIT;
+	// 
+	aria_phase = ARIA_COLLECT;
 	batch_process_count = 0;
 	barrier_count = 0;
 	barriers = (bool *) mem_allocator.alloc(sizeof(bool) * g_node_cnt);

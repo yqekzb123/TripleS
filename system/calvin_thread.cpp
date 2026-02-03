@@ -91,9 +91,11 @@ RC CalvinLockThread::run() {
 		txn_man->register_thread(this);
 		assert(ISSERVERN(txn_man->return_id));
 
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
 		uint64_t old_sid = sids[id];
-		sids[id] = (txn_man->get_batch_id() << 32) + (txn_man->return_id << 24) + txn_man->get_txn_id() + 1;
+		uint64_t key = get_calvin_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+		// sids[id] = (txn_man->get_batch_id() << 32) + (txn_man->return_id << 24) + txn_man->get_txn_id() + 1;
+		sids[id] = key;
 		DEBUG_SCH("[CalvinThread] %ld set sid from %ld to %ld, now minSid %ld\n", _thd_id, old_sid, sids[id], minSid);
 		//Update minSid
 		if (_thd_id == the_first_scheduler_id) {
@@ -127,7 +129,7 @@ RC CalvinLockThread::run() {
 // #if LONG_TXN_WORKLOAD
 		txn_man->last_msg = msg;
 	#if LONG_TXN_SCHEDULE
-		work_queue.insert_list_lockfree(_thd_id, txn_man);
+		work_queue.insert_calvin_list_lockfree(_thd_id, txn_man);
 	// #endif
 	#else
 		if(rc == RCOK) {

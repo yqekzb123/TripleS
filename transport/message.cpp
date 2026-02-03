@@ -251,6 +251,11 @@ uint64_t Message::mget_size() {
 #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
   size += sizeof(uint64_t);
 #endif
+#if LONG_TXN_WORKLOAD
+  size += sizeof(uint64_t); // original_txn_id
+  size += sizeof(uint64_t); // original_batch_id
+  size += sizeof(uint64_t); // origin_return_node_id
+#endif 
   // for stats, send message queue time
   size += sizeof(uint64_t);
 
@@ -1107,6 +1112,12 @@ void ClientQueryMessage::init() {
   parent_msg = NULL;
   sub_reqs_size = 0;
   delay_counts = 0;
+
+  #if CC_ALG == ARIA
+  aria_phase = ARIA_READ;
+  rld_pointer = NULL;
+  cld_pointer = NULL;
+  #endif
 }
 
 void ClientQueryMessage::release() {
@@ -1123,6 +1134,9 @@ uint64_t ClientQueryMessage::get_size() {
   size += sizeof(size_t);
   size += sizeof(uint64_t) * partitions.size();
   size += sizeof(bool);
+  #if CC_ALG == ARIA
+  size += sizeof(ARIA_PHASE);
+  #endif
   return size;
 }
 
@@ -1139,6 +1153,9 @@ void ClientQueryMessage::copy_from_txn(TxnManager * txn) {
   partitions.copy(txn->query->partitions);
   client_startts = txn->client_startts;
   isDeterministicAbort = txn->query->isDeterministicAbort;
+  #if CC_ALG == ARIA
+  aria_phase = txn->aria_phase;
+  #endif
 }
 
 void ClientQueryMessage::copy_to_txn(TxnManager * txn) {
@@ -1149,6 +1166,11 @@ void ClientQueryMessage::copy_to_txn(TxnManager * txn) {
   txn->client_startts = client_startts;
   txn->client_id = return_node_id;
   txn->query->isDeterministicAbort = isDeterministicAbort;
+  #if CC_ALG == ARIA
+  txn->aria_phase = aria_phase;
+  txn->rld_pointer = rld_pointer;
+  txn->cld_pointer = cld_pointer;
+  #endif
 }
 
 void ClientQueryMessage::copy_from_buf(char * buf) {
@@ -1166,6 +1188,9 @@ void ClientQueryMessage::copy_from_buf(char * buf) {
     partitions.add(part);
   }
   COPY_VAL(isDeterministicAbort, buf, ptr);
+  #if CC_ALG == ARIA
+  COPY_VAL(aria_phase, buf, ptr);
+  #endif
 }
 
 void ClientQueryMessage::copy_to_buf(char * buf) {
@@ -1180,6 +1205,9 @@ void ClientQueryMessage::copy_to_buf(char * buf) {
     COPY_BUF(buf,part,ptr);
   }
   COPY_BUF(buf, isDeterministicAbort, ptr);
+  #if CC_ALG == ARIA
+  COPY_BUF(buf, aria_phase, ptr);
+  #endif
 }
 
 /************************/

@@ -4,6 +4,7 @@
 #include "aria_sequencer.h"
 #include "work_queue.h"
 #include "message.h"
+#include "aria.h"
 
 #if CC_ALG == ARIA
 
@@ -18,6 +19,7 @@ RC AriaSequencerThread::run() {
 
     while (!simulation->is_done())
     {
+        #if 0
         //TODO: 好像不需要ARIA_INIT
         if (simulation->aria_phase == ARIA_INIT) {
             aria_seq.fill_batch(_thd_id);
@@ -25,7 +27,22 @@ RC AriaSequencerThread::run() {
             // printf("thd_id: %ld, phase: %d\n", _thd_id, simulation->aria_phase);
             assert(simulation->aria_phase == ARIA_COLLECT);
         }
+        #endif
 
+        /*
+         * Two modes:
+         * - default batch mode: only fill/send when global phase == ARIA_COLLECT (unchanged behavior)
+         * - pipelined mode (LONG_TXN_SCHEDULE): repeatedly try to put one txn into the current batch
+         *   and send the batch when it becomes full. This lets the sequencer interleave collecting
+         *   transactions and processing acks.
+         */
+        #if LONG_TXN_SCHEDULE
+            // Pipelined: attempt to append one txn (non-blocking). Then try to send any ready batches.
+            aria_seq.put_one_txn_to_batch(_thd_id);
+            // try to send next batch (no-op if none ready)
+            aria_seq.send_next_batch(_thd_id);
+            // update_aria_sid(_thd_id, 0, nullptr, simulation->min_read_reservation_sid, ARIA_COLLECT);
+        #else
         if (simulation->aria_phase == ARIA_COLLECT) {
             aria_seq.fill_batch(_thd_id);
             aria_seq.send_next_batch(_thd_id);
@@ -33,6 +50,7 @@ RC AriaSequencerThread::run() {
             // printf("thd_id: %ld, phase: %d\n", _thd_id, simulation->aria_phase);
             assert(simulation->aria_phase == ARIA_READ);
         }
+        #endif
 
         msg = work_queue.sequencer_dequeue(_thd_id);
         if (!msg) {
@@ -46,7 +64,7 @@ RC AriaSequencerThread::run() {
             idle_starttime = 0;
         }
 
-        auto rtype = msg->get_rtype();
+        int rtype = msg->get_rtype();
         if (rtype == ARIA_ACK) {
             aria_seq.process_ack(msg, _thd_id);
         } else {
@@ -59,4 +77,5 @@ RC AriaSequencerThread::run() {
     
     return FINISH; 
 }
+
 #endif

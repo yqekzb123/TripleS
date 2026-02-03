@@ -58,6 +58,7 @@
 #include "key_xid.h"
 #include "rts_cache.h"
 #include "reorder.h"
+#include "water_mark.h"
 
 void network_test();
 void network_test_recv();
@@ -164,11 +165,25 @@ int main(int argc, char *argv[]) {
 	return 0;
 #endif
 
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
 	sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_scheduler_thread_cnt);
 	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
 		sids[i] = 0;
 	}
+	#if CC_ALG == ARIA
+	reservation_check_water_mark = new WaterMarkList("reservation_check_water_mark");
+	check_commit_water_mark = new WaterMarkList("check_commit_water_mark");
+
+	// read_reservation_sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_thread_cnt);
+	// memset(read_reservation_sids, 0, sizeof(uint64_t) * g_thread_cnt);
+	// reservation_check_sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_thread_cnt);
+	// memset(reservation_check_sids, 0, sizeof(uint64_t) * g_thread_cnt);
+	// check_commit_sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_thread_cnt);
+	// memset(check_commit_sids, 0, sizeof(uint64_t) * g_thread_cnt);
+
+	// commit_read_sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t));
+	// memset(commit_read_sids, 0, sizeof(uint64_t));
+	#endif
 #endif
 
 

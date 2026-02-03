@@ -24,10 +24,13 @@
 #include <pthread.h>
 #include <vector>
 #include <atomic>
+// #include "water_mark.h"
+// #include "small_lock_list.h"
 
 class ycsb_request;
 class LogRecord;
 struct Item_no;
+struct watermark_node_entry;
 
 class Message {
 public:
@@ -371,6 +374,12 @@ public:
   // --------------- 重排序部分 --------------------
   uint64_t delay_counts; // 记录当前子消息被延迟的次数
   // --------------- 重排序部分 --------------------
+
+  #if CC_ALG == ARIA
+  ARIA_PHASE aria_phase;
+  ListNode<watermark_node_entry*>* rld_pointer;
+  ListNode<watermark_node_entry*>* cld_pointer;
+  #endif
 };
 
 class YCSBClientQueryMessage : public ClientQueryMessage {
