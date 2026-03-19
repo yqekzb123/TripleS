@@ -678,8 +678,12 @@ Message * QWorkQueue::dequeue(uint64_t thd_id) {
 void QWorkQueue::insert_list_lockfree(uint64_t thd_id, 
 									  TxnMsgLockList * list, 
 									  Message * msg, TxnManager * txn) {
-	// uint64_t key = (msg->get_batch_id() << 32) + (msg->return_id << 24) + msg->get_txn_id() + 1;
-	uint64_t key = get_calvin_key(msg->get_batch_id(), msg->get_return_id(), msg->get_txn_id());
+	uint64_t key;
+	if (msg) {
+		key = get_calvin_key(msg->get_batch_id(), msg->get_return_id(), msg->get_txn_id());
+	} else {
+		key = get_calvin_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
+	}
 	list_node_entry * entry = (list_node_entry*)mem_allocator.align_alloc(sizeof(list_node_entry));
 	entry->key = key;
 	if (txn) {

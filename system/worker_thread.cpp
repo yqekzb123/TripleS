@@ -319,45 +319,58 @@ char type2char(DATxnType txn_type)
   }
 }
 #if LONG_TXN_SCHEDULE && CC_ALG == CALVIN
+
 RC WorkerThread::run() {
   tsetup();
   printf("Running WorkerThread %ld\n",_thd_id);
 
   uint64_t ready_starttime;
   uint64_t idle_starttime = 0;
-
+  
 	while(!simulation->is_done()) {
     txn_man = NULL;
     heartbeat();
-
+    enum class message_original {no_msg, work_queue, LockfreeQueue};
     progress_stats();
     Message* msg = NULL;
     uint64_t key = 0;
-    int msg_orig = -1;
-    txn_man = work_queue.get_from_calvin_list_lockfree(_thd_id, key);
-    if (txn_man == NULL) {
-      msg_orig = 2;
+    message_original msg_orig = message_original::no_msg;
+    // tmd，应该先拿远程操作。。
+    {
       msg = work_queue.dequeue(get_thd_id());
-
-      if(!msg) {
-        if (idle_starttime == 0) idle_starttime = get_sys_clock();
-        continue;
+      if (msg) {
+        msg_orig = message_original::work_queue;
+        txn_man = get_transaction_manager(msg);
+        // msg = txn_man->last_msg;
       }
-      simulation->last_da_query_time = get_sys_clock();
-      if(idle_starttime > 0) {
-        INC_STATS(_thd_id,worker_idle_time,get_sys_clock() - idle_starttime);
-        idle_starttime = 0;
-      }
-      txn_man = get_transaction_manager(msg);
     }
-
+    // 如果没有msg，再去拿本地的事务
+    if (!msg) {
+      txn_man = work_queue.get_from_calvin_list_lockfree(_thd_id, key);
+      if (txn_man) {
+        msg_orig = message_original::LockfreeQueue;
+        msg = txn_man->last_msg;
+      }
+    }
+    if (txn_man == NULL) {
+      if (idle_starttime == 0) idle_starttime = get_sys_clock();
+        continue;
+    }
+    // 拿到了
+    simulation->last_da_query_time = get_sys_clock();
+    if(idle_starttime > 0) {
+      INC_STATS(_thd_id,worker_idle_time,get_sys_clock() - idle_starttime);
+      idle_starttime = 0;
+    }
+    assert(msg);
     txn_man->txn_stats.clear_short();
     txn_man->txn_stats.work_queue_cnt += 1;
 
-    if (msg == NULL) {
-      msg_orig = 1;
-      msg = txn_man->last_msg;
-    }
+    // 如果msg来源于无锁队列
+    // if (msg == NULL) {
+    //   msg_orig = 1;
+    //   msg = txn_man->last_msg;
+    // }
 
     ready_starttime = get_sys_clock();
     bool ready = txn_man->unset_ready();
@@ -1426,6 +1439,11 @@ RC WorkerThread::process_calvin_rtxn(Message * msg) {
   DEBUG("START %ld %f %lu\n", txn_man->get_txn_id(),
         simulation->seconds_from_start(get_sys_clock()), txn_man->txn_stats.starttime);
   assert(ISSERVERN(txn_man->return_id));
+  #if LONG_TXN_SCHEDULE && (CC_ALG == ARIA || CC_ALG == CALVIN)
+  uint64_t key = get_calvin_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+  assert(key <= minSid);
+  assert(txn_man->lock_ready_cnt <= 0);
+  #endif
   txn_man->txn_stats.local_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
   // Execute
   RC rc = txn_man->run_calvin_txn();

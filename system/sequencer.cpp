@@ -536,8 +536,10 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 	DEBUG_SEQ("INSERT txn=[%ld,%ld] origin_txn=[%ld,%ld] in BATCH %ld, left txn %d\n", msg->get_batch_id(),msg->get_txn_id(),msg->original_batch_id,msg->original_txn_id, en->epoch,en->txns_left);
 
 	for(auto participant = participants.begin(); participant != participants.end(); participant++) {
-		DEBUG("SEQ adding (%ld,%ld) to fill queue (recon: %d)\n", msg->get_txn_id(),
-			msg->get_batch_id(), ((PPSClientQueryMessage *)msg)->recon);
+		// DEBUG("SEQ adding (%ld,%ld) to fill queue (recon: %d)\n", msg->get_txn_id(),
+			// msg->get_batch_id(), ((PPSClientQueryMessage *)msg)->recon);
+		DEBUG("SEQ adding (%ld,%ld) to fill queue\n", msg->get_txn_id(),
+			msg->get_batch_id());
 		while (!fill_queue[*participant].push(msg) && !simulation->is_done()) {
 		}
 	}
@@ -586,7 +588,7 @@ void Sequencer::send_next_batch(uint64_t thd_id) {
 	for(uint64_t j = 0; j < g_node_cnt; j++) {
 		while(fill_queue[j].pop(msg)) {
 			if(j == g_node_id) {
-					work_queue.sched_enqueue(thd_id,msg);
+				work_queue.sched_enqueue(thd_id,msg);
 			} else {
 				msg_queue.enqueue(thd_id,msg,j);
 			}

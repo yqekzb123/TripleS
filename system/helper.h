@@ -72,6 +72,12 @@
     fflush(stdout); \
   }
 
+#define DEBUG_LK(...) \
+  if(DEBUG_LOCK) { \
+    fprintf(stdout,__VA_ARGS__); \
+    fflush(stdout); \
+  }
+
     //fprintf(stdout,"[alloc] ");
 #define DEBUG_M(...) \
   if(DEBUG_ALLOC && warmup_done) { \

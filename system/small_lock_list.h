@@ -12,7 +12,7 @@
 
 #define PRINT_VISIT_LIST false
 
-enum ENTRY_TYPE { TYPE_TXN, TYPE_MSG };
+enum class ENTRY_TYPE { TYPE_TXN, TYPE_MSG };
 // 写一个带key或者水印时间的，包括事务TxnManager的结构体
 struct list_node_entry
 {
@@ -86,7 +86,8 @@ public:
         #if DEBUG_LOCKFREE_LIST
             extern uint64_t minSid;
             list_node_entry * value_cast = static_cast<list_node_entry *>(value);
-            std::string debug_str = generate_debug_string(value_cast);
+            // std::string debug_str = generate_debug_string(value_cast);
+            std::string debug_str = "";
             DEBUG_LOCKFREE("[LockList:%s] thd %ld insert_tail key=%lu %s size=%zu-%zu minSid=%lu\n", name.c_str(), thd_id, value_cast->key, debug_str.c_str(), size(), actual_size(), minSid);
         #endif
         return node;
@@ -109,7 +110,8 @@ public:
                     #if DEBUG_LOCKFREE_LIST
                         extern uint64_t minSid;
                         list_node_entry * value_cast = static_cast<list_node_entry *>(curr->data);
-                        std::string debug_str = generate_debug_string(value_cast);
+                        // std::string debug_str = generate_debug_string(value_cast);
+                        std::string debug_str = "";
                         DEBUG_LOCKFREE("[LockList:%s] thd %ld mark_consumed key=%lu %s size=%zu-%zu minSid=%lu\n", name.c_str(), thd_id, value_cast->key, debug_str.c_str(), size(), actual_size(), minSid);
                     #endif
                     // release locks
@@ -146,11 +148,11 @@ public:
         if (target_node->status == NODE_AVAILABLE) {
             target_node->status = NODE_REMOVED;
             count.fetch_sub(1, std::memory_order_relaxed);
-            #if DEBUG_LOCKFREE_LIST
-                list_node_entry * value_cast = static_cast<list_node_entry *>(target_node->data);
-                std::string debug_str = generate_debug_string(value_cast);
-                DEBUG_LOCKFREE("[LockList:%s] thd %ld mark_consumed_by_pointer key=%lu %s size=%zu-%zu\n", name.c_str(), thd_id, value_cast->key, debug_str.c_str(), size(), actual_size());
-            #endif
+            // #if DEBUG_LOCKFREE_LIST
+            //     list_node_entry * value_cast = static_cast<list_node_entry *>(target_node->data);
+            //     std::string debug_str = generate_debug_string(value_cast);
+            //     DEBUG_LOCKFREE("[LockList:%s] thd %ld mark_consumed_by_pointer key=%lu %s size=%zu-%zu\n", name.c_str(), thd_id, value_cast->key, debug_str.c_str(), size(), actual_size());
+            // #endif
         }
         target_node->mtx.unlock();
         return true;
@@ -220,7 +222,7 @@ public:
     }
 };
 
-
+// 通用的Locklist
 class TxnMsgLockList : public LockList<list_node_entry*> {
 public:
     TxnMsgLockList() : LockList<list_node_entry*>("TxnMsgLockList") {}

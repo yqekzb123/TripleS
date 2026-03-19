@@ -98,9 +98,9 @@ def ycsb_scaling():
     exp = [[wl,algo,n,base_table_size*n,mpr,prorate_rate,tup_wr_perc,txn_wr_perc,ld,sk,thr,cthr,sthr,rthr,sthr,rthr] for thr,cthr,sthr,rthr,txn_wr_perc,tup_wr_perc,sk,ld,mpr,prorate_rate,n,algo in itertools.product(tcnt,ctcnt,scnt,rcnt,txn_write_perc,tup_write_perc,skew,load,mpr,prorate,nnodes,algos)]
     return fmt,exp
 
-def ycsb_skew():
+def ycsb_skew_pip():
     wl = 'YCSB'
-    nnodes = [4]
+    nnodes = [2]
     # algos=['HDCC','CALVIN','SILO','ARIA']
     algos=['CALVIN']
     base_table_size=1048576*8
@@ -110,8 +110,30 @@ def ycsb_skew():
     total_cnt=[24]
     tcnt = [16]
     scnt = [8]
+    long_schedule = 'true'
     # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    skew = [0.1,0.7,0.9,1.5]
+    skew = [0.1]
+    # skew = [0.1,0.9]
+    fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
+    exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt-s_cnt,s_cnt] for t_cnt,thr,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,tcnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
+    return fmt,exp
+
+def ycsb_skew_origin():
+    wl = 'YCSB'
+    nnodes = [2]
+    # algos=['HDCC','CALVIN','SILO','ARIA']
+    algos=['CALVIN']
+    base_table_size=1048576*8
+    txn_write_perc = [1]
+    tup_write_perc = [0.2]
+    load = [10000]
+    total_cnt=[24]
+    tcnt = [16]
+    scnt = [1]
+    long_schedule = 'false'
+    # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
+    skew = [0.1]
+    # skew = [0.1,0.9]
     fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
     exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt-s_cnt,s_cnt] for t_cnt,thr,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,tcnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
     return fmt,exp
@@ -374,7 +396,9 @@ experiment_map = {
     'ycsb_once': ycsb_once,
     'ycsb_scaling': ycsb_scaling,
     'ycsb_writes': ycsb_writes,
-    'ycsb_skew': ycsb_skew,
+    # 'ycsb_skew': ycsb_skew,
+    'ycsb_skew_pip': ycsb_skew_pip,
+    'ycsb_skew_origin':ycsb_skew_origin,
     'ycsb_dist_ratio': ycsb_dist_ratio,
     'ycsb_long_txn': ycsb_long_txn,
     'ycsb_long_txn2': ycsb_long_txn2,
@@ -409,7 +433,7 @@ configs = {
     "MAX_TXN_PER_PART" : 500000,
     "WORKLOAD" : "YCSB",
     "CC_ALG" : "HDCC",
-    "MPR" : 0.2,
+    "MPR" : 0.2,    #分布式事务比列
     "TPORT_TYPE":"TCP",
     "TPORT_PORT":"18000",
     "PART_CNT": "NODE_CNT",
@@ -455,7 +479,7 @@ configs = {
     "MODE":"NORMAL_MODE",
     "SHMEM_ENV":"false",
     "STRICT_PPT":0,
-    "SET_AFFINITY":"true",
+    "SET_AFFINITY":"false",
     "SERVER_GENERATE_QUERIES":"false",
     "SKEW_METHOD":"ZIPF",
     "ENVIRONMENT_EC2":"false",

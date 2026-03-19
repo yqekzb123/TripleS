@@ -103,6 +103,7 @@ uint64_t merge_idx_key(uint64_t key1, uint64_t key2, uint64_t key3) {
 	return key1 << 42 | key2 << 21 | key3;
 }
 
+// todo: 应该叫计算。。流式执行的通用。。key
 uint64_t get_calvin_key(uint64_t batch_id, uint64_t return_id, uint64_t txn_id) {
 	uint64_t key = (batch_id << 32) + (return_id << 24) + txn_id + 1;
 	return key;

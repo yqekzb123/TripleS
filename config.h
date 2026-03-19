@@ -53,7 +53,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 4
+#define NODE_CNT 2
 #define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -125,7 +125,7 @@
 /***********************************************/
 #define TPORT_TYPE tcp
 #define TPORT_PORT 18000
-#define SET_AFFINITY true
+#define SET_AFFINITY false
 
 #define MAX_TPORT_NAME 128
 #define MSG_SIZE 128 // in bytes
@@ -255,7 +255,7 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 33554432
+#define SYNTH_TABLE_SIZE 16777216
 #define ZIPF_THETA 0.1
 #define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2
@@ -276,7 +276,7 @@
 #define CREATE_TXN_FILE false
 #define STRICT_PPT 0
 // 打开随机依赖
-#define OPEN_YCSB_DEPENDENCY false
+#define OPEN_YCSB_DEPENDENCY true
 #define ZIPF_0_PERC 0.0 // the percentage of zipf theta = 0
 
 
@@ -399,8 +399,8 @@ enum PPSTxnType {
 #define DEBUG_WORKER        false
 #define DEBUG_TIMEREPORT     true
 #define DEBUG_LOCK          false
-#define DEBUG_TIMESTAMP       false
-#define DEBUG_SYNTH         false
+// #define DEBUG_TIMESTAMP       false
+// #define DEBUG_SYNTH         false
 #define DEBUG_ASSERT        false
 #define DEBUG_DISTR false
 #define DEBUG_ALLOC false

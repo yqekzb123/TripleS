@@ -50,7 +50,7 @@ RC Row_lock::lock_get(lock_t type, TxnManager * txn) {
       INC_STATS(txn->get_thd_id(),twopl_already_owned_cnt,1);
     }
 
-    // TMP_DEBUG("txn: %ld try to lock on row: %ld\n", txn->get_txn_id(), _row->get_primary_key());
+    DEBUG_LK("lock (%ld,%ld): try to lock on row: %ld\n", txn->get_batch_id(),txn->get_txn_id(), _row->get_primary_key());
     LockEntry * entry = get_entry();
     entry->start_ts = get_sys_clock();
     entry->txn = txn;
@@ -65,7 +65,9 @@ RC Row_lock::lock_get(lock_t type, TxnManager * txn) {
         auto txn_cmp = [](TxnManager* a, TxnManager* b) -> bool {
             if (a->get_batch_id() != b->get_batch_id())
                 return a->get_batch_id() < b->get_batch_id();
-            return a->get_txn_id() < b->get_txn_id();
+            else if (a->return_id != b->return_id) 
+                return a->return_id < b->return_id;
+            else return a->get_txn_id() < b->get_txn_id();
         };
 
         // 判断owners_tail和txn的顺序
@@ -168,8 +170,8 @@ RC Row_lock::lock_release(TxnManager * txn) {
     pthread_mutex_lock( latch );
     INC_STATS(txn->get_thd_id(),mtx[18],get_sys_clock() - starttime);
 
-    DEBUG("unlock (%ld,%ld): owners %d, own type %d, key %ld %lx\n", txn->get_txn_id(),
-        txn->get_batch_id(), owner_cnt, lock_type, _row->get_primary_key(), (uint64_t)_row);
+    DEBUG_LK("unlock (%ld,%ld): owners %d, own type %d, key %ld %lx\n", 
+        txn->get_batch_id(),txn->get_txn_id(), owner_cnt, lock_type, _row->get_primary_key(), (uint64_t)_row);
 
     // Try to find the entry in the owners
     // TMP_DEBUG("txn: %ld release lock on row: %ld\n", txn->get_txn_id(), _row->get_primary_key());

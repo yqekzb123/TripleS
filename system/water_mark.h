@@ -8,6 +8,8 @@
 // 当一个事务号完成某个阶段时，找到对应的pair，标记为完成。
 // 然后检查minSid对应的pair是否完成，如果完成，则将minSid向后移动，直到遇到一个未完成的pair为止。
 // 这样就能高效地维护一个水印，表示已经完成的最大事务号。
+
+// 目前这个watermark是给Aria的流式执行用的
 #include <vector>
 #include <utility>
 #include <algorithm>

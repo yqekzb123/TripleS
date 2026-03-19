@@ -28,7 +28,6 @@ public:
     void setup();
     void statqueue(uint64_t thd_id, Message * msg, uint64_t starttime);
     void process(Message * msg);
-    void fakeprocess(Message * msg);
     void check_if_done(RC rc);
     void release_txn_man();
     void commit();

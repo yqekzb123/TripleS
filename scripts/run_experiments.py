@@ -169,34 +169,13 @@ for exp in exps:
 
             os.chdir('..')
             for m, n in zip(machines, range(cfgs["NODE_CNT"])):
-                cmd = 'scp {}@{}:/{}/dbresults.out {}/{}_{}.out'.format(uname, m, location, experiment_dir, n, output_f)
+                cmd = 'scp {}@{}:/{}/dbresults{}.out {}/{}_{}.out'.format(uname, m, location, n, experiment_dir, n, output_f)
                 print(cmd)
                 os.system(cmd)
             for m,n in zip(machines[len(machines)//2:], range(cfgs["NODE_CNT"])):
-                cmd = 'scp {}@{}:/{}/clresults.out {}/{}_{}.out'.format(uname, m, location, experiment_dir, n+cfgs["NODE_CNT"], output_f)
+                cmd = 'scp {}@{}:/{}/clresults{}.out {}/{}_{}.out'.format(uname, m, location, n, experiment_dir, n+cfgs["NODE_CNT"], output_f)
                 print(cmd)
                 os.system(cmd)
-
-        else:
-            nnodes = cfgs["NODE_CNT"]
-            nclnodes = cfgs["NODE_CNT"]
-            pids = []
-            print("Deploying: {}".format(output_f))
-            env = os.environ.copy()
-            env['LD_LIBRARY_PATH'] = '/home/zhy/.local/lib:' + env.get('LD_LIBRARY_PATH', '')
-            for n in range(nnodes+nclnodes):
-                if n < nnodes:
-                    cmd = "./rundb -nid{}".format(n)
-                else:
-                    cmd = "./runcl -nid{}".format(n)
-                print(cmd)
-                cmd = shlex.split(cmd)
-                ofile_n = "{}{}_{}.out".format(experiment_dir,n,output_f)
-                ofile = open(ofile_n,'w')
-                p = subprocess.Popen(cmd,stdout=ofile,stderr=ofile,env=env)
-                pids.insert(0,p)
-            for n in range(nnodes + nclnodes):
-                pids[n].wait()
 
         tmp_path = os.getcwd()
         os.chdir(experiment_dir)
