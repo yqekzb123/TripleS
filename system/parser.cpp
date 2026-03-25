@@ -127,8 +127,6 @@ void parser(int argc, char * argv[]) {
       g_send_thread_cnt = atoi( &argv[i][3] );
     else if (argv[i][1] == 'c' && argv[i][2] == 't')
       g_client_thread_cnt = atoi( &argv[i][3] );
-    else if (argv[i][1] == 't' && argv[i][2] == 'c')
-      g_calvin_thread_cnt = atoi( &argv[i][3] );
     else if (argv[i][1] == 'w' && argv[i][2] == 'h')
       g_num_wh = atoi( &argv[i][3] );
     else if (argv[i][1] == 'c' && argv[i][2] == 'f')
@@ -193,14 +191,8 @@ void parser(int argc, char * argv[]) {
   g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
   g_abort_thread_cnt = 0;
   g_total_thread_cnt -= 1;
-  #if LONG_TXN_SORT || LONG_TXN_SPLIT
-    g_total_thread_cnt += 1; // reorder thread
-  #endif
 #else
   g_total_thread_cnt += 2; // sequencer + scheduler thread
-  #if LONG_TXN_SORT || LONG_TXN_SPLIT
-    g_total_thread_cnt += 1; // reorder thread
-  #endif
   // Remove abort thread
   g_abort_thread_cnt = 0;
   g_total_thread_cnt -= 1;
@@ -291,5 +283,4 @@ void parser(int argc, char * argv[]) {
 
     // Initialize client-specific globals
   if (g_node_id >= g_node_cnt) init_client_globals();
-    init_globals();
 }

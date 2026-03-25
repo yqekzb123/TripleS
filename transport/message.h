@@ -48,11 +48,6 @@ public:
   uint64_t txn_id;
   uint64_t batch_id;
   uint64_t return_node_id;
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-  uint64_t original_return_node_id;
-  int algo;
-  uint64_t orig_txn_id, orig_batch_id;
-#endif
 
 #if LONG_TXN_WORKLOAD
   // 对于子事务来说，原本的大事务事务号
@@ -201,23 +196,12 @@ public:
   void release();
 
   RC rc;
-#if CC_ALG == MAAT || CC_ALG == WOOKONG || CC_ALG == DTA || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3
-  uint64_t lower;
-  uint64_t upper;
-#endif
 #if CC_ALG == SILO
   uint64_t max_tid;
-#endif
-#if CC_ALG == HDCC
-  bool isCommit;
 #endif
 #if CC_ALG == ARIA
   bool raw;
   bool war;
-#endif
-#if CC_ALG == SNAPPER
-  set<uint64_t> dependOn;
-  set<uint64_t> dependBy;
 #endif
 
   // For Calvin PPS: part keys from secondary lookup for sequencer response
@@ -240,23 +224,6 @@ public:
   uint64_t _min_commit_ts;
 #endif
   uint64_t txn_id;
-};
-
-class ValidationMessage : public Message {
-public:
-  void copy_from_buf(char * buf);
-  void copy_to_buf(char * buf);
-  void copy_from_txn(TxnManager * txn);
-  void copy_to_txn(TxnManager * txn);
-  uint64_t get_size();
-  void init() {}
-  void release() {}
-
-  RC rc;
-#if CC_ALG == HDCC
-  uint64_t max_calvin_tid;
-  uint64_t max_calvin_bid;
-#endif
 };
 
 class ForwardMessage : public Message {
@@ -286,19 +253,6 @@ public:
   void init() {}
   void release() {}
   uint64_t batch_id;
-};
-
-class ConflictStaticsMessage : public Message {
-public:
-  void copy_from_buf(char * buf);
-  void copy_to_buf(char * buf);
-  void copy_from_txn(TxnManager * txn);
-  void copy_to_txn(TxnManager * txn);
-  uint64_t get_size();
-  void init();
-  void release();
-  
-  Array<bool> conflict_statics;
 };
 
 class ClientResponseMessage : public Message {
@@ -345,35 +299,6 @@ public:
   // --------------- 父事务的原本信息 ---------------------
   uint64_t sub_reqs_size;
   Message* parent_msg;
-
-  // --------------- 依赖事务部分 --------------------
-  // 用来记录当前子事务依赖于谁
-  vector<Message*> depends_on_messages;
-  // 依赖计数（还有多少依赖事务未完成
-  std::atomic<int> deps_left;
-  // --------------- 依赖事务部分 --------------------
-
-  // --------------- 被依赖事务部分 --------------------
-  // 记录依赖于本子事务的子事务 key 列表（父完成时会通知这些依赖者）
-  std::vector<uint64_t> dependents_ids;
-  // 保护 dependents_ids 的锁（写入远少于读取/通知）
-  pthread_mutex_t dependents_lock;
-  // --------------- 被依赖事务部分 --------------------
-
-  // --------------- 入队/通知字段（用于 reorder -> sequencer 协作） --------------------
-  // 表示该消息是否已经被送入 Sequencer（Sequencer 负责分配 txn_id）
-  std::atomic<bool> enqueued{false};
-  // 当使用 Message* 级别的依赖通知时，记录还有多少依赖尚未被入队（用于 reorder 判断依赖是否满足）
-  std::atomic<int> enqueue_left{0};
-  // 直接的依赖者指针列表（消息就地通知，避免全局哈希查找）
-  std::vector<Message*> dependents_ptrs;
-  // 父事务分组标记（由 reorder 生成，Sequencer 使用它将同一父事务的子消息映射到首个子 txn_id）
-  uint64_t parent_marker = INVALID_ID;
-  // --------------- 入队/通知字段（用于 reorder -> sequencer 协作） --------------------
-
-  // --------------- 重排序部分 --------------------
-  uint64_t delay_counts; // 记录当前子消息被延迟的次数
-  // --------------- 重排序部分 --------------------
 
   #if CC_ALG == ARIA
   ARIA_PHASE aria_phase;
@@ -459,26 +384,6 @@ public:
   Array<uint64_t> part_keys;
 
   bool recon;
-};
-class DAClientQueryMessage : public ClientQueryMessage {
- public:
-  void copy_from_buf(char* buf);//ok
-  void copy_to_buf(char* buf);//ok
-  void copy_from_query(BaseQuery* query);//ok
-  void copy_from_txn(TxnManager* txn);//ok
-  void copy_to_txn(TxnManager* txn);
-  uint64_t get_size();
-  void init();
-  void release();
-
-  DATxnType txn_type;
-	uint64_t trans_id;
-	uint64_t item_id;
-	uint64_t seq_id;
-	uint64_t write_version;
-	uint64_t state;
-	uint64_t next_state;
-	uint64_t last_state;
 };
 
 class QueryMessage : public Message {
@@ -585,24 +490,5 @@ public:
   Array<uint64_t> part_keys;
 };
 
-class DAQueryMessage : public QueryMessage {
- public:
-  void copy_from_buf(char* buf);
-  void copy_to_buf(char* buf);
-  void copy_from_txn(TxnManager* txn);
-  void copy_to_txn(TxnManager* txn);
-  uint64_t get_size();
-  void init();
-  void release();
-
-  DATxnType txn_type;
-	uint64_t trans_id;
-	uint64_t item_id;
-	uint64_t seq_id;
-	uint64_t write_version;
-	uint64_t state;
-	uint64_t next_state;
-	uint64_t last_state;
-};
 
 #endif

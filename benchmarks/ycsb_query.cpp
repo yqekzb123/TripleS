@@ -115,15 +115,6 @@ void YCSBQuery::release_requests() {
 
 }
 
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-void YCSBQuery::reset(int algo) {
-	BaseQuery::clear();
-	if (algo != CALVIN) {
-		release_requests();
-	}
-	requests.clear();
-}
-#else
 void YCSBQuery::reset() {
 	BaseQuery::clear();
 #if CC_ALG != CALVIN
@@ -131,7 +122,6 @@ void YCSBQuery::reset() {
 #endif
 	requests.clear();
 }
-#endif
 
 void YCSBQuery::release() {
 	BaseQuery::release();

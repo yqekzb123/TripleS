@@ -48,7 +48,7 @@ void InputThread::setup() {
 			} else {
 				assert(ISSERVER || ISREPLICA);
 				//printf("Received Msg %d from node %ld\n",msg->rtype,msg->return_node_id);
-#if CC_ALG == CALVIN || CC_ALG == HDCC || CC_ALG == SNAPPER
+#if CC_ALG == CALVIN
 			if(msg->rtype == CALVIN_ACK ||(msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id())) ||
 				(msg->rtype == CL_QRY_O && ISCLIENTN(msg->get_return_id()))) {
 				work_queue.sequencer_enqueue(get_thd_id(),msg);
@@ -170,31 +170,10 @@ RC InputThread::server_recv_loop() {
 				msgs->erase(msgs->begin());
 				continue;
 			}
-#if CC_ALG == CALVIN||CC_ALG==HDCC || CC_ALG == SNAPPER
-			if(msg->rtype==CONF_STAT){
-				assert(CC_ALG==HDCC);
-				g_conflict_queue.push((ConflictStaticsMessage*)msg);
-				msgs->erase(msgs->begin());
-				continue;
-			}
+#if CC_ALG == CALVIN
 			if(msg->rtype == CALVIN_ACK ||(msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id())) ||
 			(msg->rtype == CL_QRY_O && ISCLIENTN(msg->get_return_id()))) {
-			#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
-				#if WORKLOAD == YCSB
-					if (msg->rtype == CL_QRY && ((YCSBClientQueryMessage*)msg)->requests.size() == g_req_per_query) {
-						split_long_transaction(msg);
-					}
-				#endif
-			#endif
-			#if LONG_TXN_WORKLOAD && (LONG_TXN_SORT || LONG_TXN_SPLIT)
-				if (msg->rtype == CL_QRY) {
-					work_queue.order_enqueue(get_thd_id(),msg);
-				} else {
-					work_queue.sequencer_enqueue(get_thd_id(),msg);
-				}
-			#else
 				work_queue.sequencer_enqueue(get_thd_id(),msg);
-			#endif
 				msgs->erase(msgs->begin());
 				continue;
 			}

@@ -26,8 +26,6 @@
 #include "catalog.h"
 #include "manager.h"
 #include "row_lock.h"
-#include "row_ts.h"
-#include "row_mvcc.h"
 #include "mem_alloc.h"
 #include "query.h"
 
@@ -71,13 +69,6 @@ YCSBWorkload::key_to_part(uint64_t key) {
 	//uint64_t rows_per_part = g_synth_table_size / g_part_cnt;
 	//return key / rows_per_part;
   return key % g_part_cnt;
-}
-
-int
-YCSBWorkload::key_to_shard(uint64_t key) {
-	int node_num=key_to_part(key);
-	int shard_number_in_node=key/(g_node_cnt*g_data_shard_size);
-	return shard_number_in_node*g_node_cnt+node_num;
 }
 
 RC YCSBWorkload::init_table() {

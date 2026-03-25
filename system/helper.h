@@ -332,7 +332,6 @@ int get_thdid_from_txnid(uint64_t txnid);
 
 // key_to_part() is only for ycsb
 uint64_t key_to_part(uint64_t key);
-uint64_t key_to_shard(uint64_t key);
 uint64_t get_part_id(void * addr);
 // TODO can the following two functions be merged?
 uint64_t merge_idx_key(uint64_t key_cnt, uint64_t * keys);
@@ -343,7 +342,6 @@ uint64_t get_calvin_key(uint64_t batch_id, uint64_t return_id, uint64_t txn_id);
 std::vector<uint64_t> split_calvin_key(uint64_t calvin_key);
 
 void init_client_globals();
-void init_globals();
 
 extern timespec * res;
 uint64_t get_wall_clock();

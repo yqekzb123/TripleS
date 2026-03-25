@@ -17,7 +17,6 @@
 #include "mem_alloc.h"
 #include "index_btree.h"
 #include "row.h"
-#include "row_hdcc.h"
 #include "txn.h"
 #include "table.h"
 
@@ -483,7 +482,7 @@ RC index_btree::find_leaf(glob_param params, idx_key_t key, idx_acc_t access_typ
       		if (key < c->keys[i]) break;
 		}
 		child = (bt_node *)c->pointers[i];
-#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == HDCC || CC_ALG == ARIA || CC_ALG == SNAPPER
+#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == ARIA 
 		if (simulation->is_setup_done() && child->is_leaf) {
 			leaf = child;
 			RC rc = RCOK;
@@ -534,7 +533,7 @@ RC index_btree::find_leaf(glob_param params, idx_key_t key, idx_acc_t access_typ
 			} else {
 				release_latch(c); // release the LATCH_SH on c
 			}
-#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == HDCC || CC_ALG == ARIA || CC_ALG == SNAPPER
+#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == ARIA 
 		}
 #endif
 		

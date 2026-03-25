@@ -38,31 +38,6 @@ struct work_queue_entry {
   uint64_t starttime;
 };
 
-struct CompareSchedEntry {
-  bool operator()(const work_queue_entry* lhs, const work_queue_entry* rhs) {
-    if (lhs->batch_id == rhs->batch_id) return lhs->starttime > rhs->starttime;
-    return lhs->batch_id < rhs->batch_id;
-  }
-};
-struct CompareWQEntry {
-#if PRIORITY == PRIORITY_FCFS
-  bool operator()(const work_queue_entry* lhs, const work_queue_entry* rhs) {
-    return lhs->starttime < rhs->starttime;
-  }
-#elif PRIORITY == PRIORITY_ACTIVE
-  bool operator()(const work_queue_entry* lhs, const work_queue_entry* rhs) {
-    if ((lhs->rtype == CL_QRY || lhs->rtype == CL_QRY_O) && (rhs->rtype != CL_QRY && rhs->rtype != CL_QRY_O)) return true;
-    if ((rhs->rtype == CL_QRY || rhs->rtype == CL_QRY_O) && (lhs->rtype != CL_QRY && lhs->rtype != CL_QRY_O)) return false;
-    return lhs->starttime < rhs->starttime;
-  }
-#elif PRIORITY == PRIORITY_HOME
-  bool operator()(const work_queue_entry* lhs, const work_queue_entry* rhs) {
-    if (ISLOCAL(lhs->txn_id) && !ISLOCAL(rhs->txn_id)) return true;
-    if (ISLOCAL(rhs->txn_id) && !ISLOCAL(lhs->txn_id)) return false;
-    return lhs->starttime < rhs->starttime;
-  }
-#endif
-};
 typedef boost::circular_buffer<work_queue_entry*> WCircularBuffer;
 class QWorkQueue {
 public:
@@ -85,10 +60,6 @@ public:
   // 用于Calvin的
   void insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn);
   TxnManager * get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t &key);
-#endif
-#if (LONG_TXN_SORT || LONG_TXN_SPLIT)
-  void order_enqueue(uint64_t thd_id, Message * msg);
-  Message * order_dequeue(uint64_t thd_id);
 #endif
 
 #if CC_ALG == ARIA
@@ -124,11 +95,6 @@ public:
   // uint64_t get_rem_wq_cnt() {return remote_op_queue.size();}
   // uint64_t get_new_wq_cnt() {return new_query_queue.size();}
 
-#if CC_ALG == HDCC
-  void calvin_enqueue(uint64_t thd_id, Message * msg, bool busy);
-  Message * calvin_dequeue(uint64_t thd_id);
-#endif
-
 #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
   bool sched_ready;
   TxnMsgLockList * calvin_scheduled_list_lockfree;
@@ -158,10 +124,6 @@ private:
   boost::lockfree::queue<work_queue_entry* > * aria_commit_queue;
 #endif
 
-#if LONG_TXN_WORKLOAD && (LONG_TXN_SORT || LONG_TXN_SPLIT)
-  boost::lockfree::queue<work_queue_entry* > * order_queue;
-#endif
-
 
   uint64_t sched_ptr;
   BaseQuery * last_sched_dq;
@@ -176,17 +138,6 @@ private:
   uint64_t txn_enqueue_size;
   uint64_t txn_dequeue_size;
 
-#if CC_ALG == HDCC
-  boost::lockfree::queue<work_queue_entry* > * calvin_txn_queue;
-  boost::lockfree::queue<work_queue_entry* > * calvin_work_queue;
-  sem_t 	_calvin_semaphore;
-  volatile uint64_t calvin_txn_queue_size;
-  uint64_t calvin_txn_enqueue_size;
-  uint64_t calvin_txn_dequeue_size;
-  volatile uint64_t calvin_work_queue_size;
-  uint64_t calvin_work_enqueue_size;
-  uint64_t calvin_work_dequeue_size;
-#endif
 
 };
 

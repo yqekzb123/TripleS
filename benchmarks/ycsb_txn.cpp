@@ -27,15 +27,10 @@
 #include "catalog.h"
 #include "manager.h"
 #include "row_lock.h"
-#include "row_ts.h"
-#include "row_mvcc.h"
 #include "mem_alloc.h"
 #include "query.h"
 #include "msg_queue.h"
 #include "message.h"
-#if CC_ALG == HDCC
-#include "row_hdcc.h"
-#endif
 #include "message.h"
 #include "aria.h"
 #include "small_lock_list.h"
@@ -54,14 +49,13 @@ void YCSBTxnManager::reset() {
 
 RC YCSBTxnManager::acquire_locks() {
   uint64_t starttime = get_sys_clock();
-  assert(CC_ALG == CALVIN || CC_ALG == HDCC || CC_ALG == SNAPPER);
+  assert(CC_ALG == CALVIN);
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
   locking_done = false;
   RC rc = RCOK;
   incr_lr();
-#if !LONG_TXN_SPLIT
   assert(ycsb_query->requests.size() == g_req_per_query || ycsb_query->requests.size() == g_req_per_short_query);
-#endif
+
   assert(phase == CALVIN_RW_ANALYSIS);
 	for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
 		ycsb_request * req = ycsb_query->requests[rid];
@@ -411,13 +405,7 @@ RC YCSBTxnManager::run_ycsb_1(access_t acctype, row_t * row_local) {
 		int fid = 0;
 	  char * data = row_local->get_data();
 	  *(uint64_t *)(&data[fid * 100]) = 0;
-#if CC_ALG == HDCC
-    if (algo == CALVIN) {
-      row_local->manager->_tid = txn->txn_id;
-      row_local->manager->max_calvin_write_tid = txn->txn_id;
-      row_local->manager->max_calvin_write_bid = txn->batch_id;
-    }
-#endif
+
 #if YCSB_ABORT_MODE
     if (data[0] == 'a') return RCOK;
 #endif
@@ -434,9 +422,6 @@ RC YCSBTxnManager::run_calvin_txn() {
   RC rc = RCOK;
   uint64_t starttime = get_sys_clock();
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
-  #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
-  YCSBClientQueryMessage* sub_txn_msg = NULL;
-  #endif
   DEBUG_WRK("[%ld] (%ld,%ld) Run calvin txn\n",get_thd_id(),txn->batch_id,txn->txn_id);
   while(!calvin_exec_phase_done() && rc == RCOK) {
     DEBUG_WRK("[%ld] (%ld,%ld) phase %d\n",get_thd_id(),txn->batch_id,txn->txn_id,this->phase);
@@ -461,32 +446,7 @@ RC YCSBTxnManager::run_calvin_txn() {
         DEBUG("[%ld] (%ld,%ld) local reads\n",get_thd_id(),txn->txn_id,txn->batch_id);
         rc = run_ycsb();
         //release_read_locks(query);
-        #if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
-          sub_txn_msg = (YCSBClientQueryMessage*) last_msg;
-          assert(sub_txn_msg != NULL);
-          sub_txn_msg->isDone = true;
-          // Notify dependents: for each dependent child txn id, decrement its deps_left.
-          {
-            pthread_mutex_lock(&sub_txn_msg->dependents_lock);
-            for (size_t di = 0; di < sub_txn_msg->dependents_ids.size(); di++) {
-              uint64_t dep_id = sub_txn_msg->dependents_ids[di];
-              std::vector<uint64_t> dep_txn_ids = split_calvin_key(dep_id);
-
-              // Try message registry first to avoid races where TxnManager isn't created yet
-              Message * maybe_msg = Manager::lookup_txn_message(dep_id);
-              if (maybe_msg) {
-                YCSBClientQueryMessage * dep_msg = (YCSBClientQueryMessage*) maybe_msg;
-                int prev = dep_msg->deps_left.fetch_sub(1);
-
-                
-                DEBUG_WRK("[%ld] (%ld,%ld) decrementing deps_left of dependent txn %ld(%ld,%ld) from %d to %d\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2], prev, prev - 1);
-              } else {
-                DEBUG_WRK("[%ld] (%ld,%ld) dependent txn %ld(%ld,%ld) not found\n", get_thd_id(), txn->txn_id, txn->batch_id, dep_id, dep_txn_ids[0],dep_txn_ids[2]);
-              }
-            }
-            pthread_mutex_unlock(&sub_txn_msg->dependents_lock);
-          }
-        #endif
+        
         this->phase = CALVIN_SERVE_RD;
         break;
       }
@@ -690,7 +650,7 @@ RC YCSBTxnManager::run_aria_txn() {
 
 RC YCSBTxnManager::run_ycsb() {
   RC rc = RCOK;
-  assert(CC_ALG == CALVIN || CC_ALG == HDCC || CC_ALG == SNAPPER);
+  assert(CC_ALG == CALVIN);
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
 
   for (uint64_t i = 0; i < ycsb_query->requests.size(); i++) {

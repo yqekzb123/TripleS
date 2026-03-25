@@ -56,19 +56,15 @@ private:
 class TPCCQuery : public BaseQuery {
 public:
 	void init(uint64_t thd_id, Workload * h_wl);
-  void init();
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-  void reset(int algo);
-#else
-  void reset();
-#endif
-  void release();
-  void release_items();
-  void print();
-  static std::set<uint64_t> participants(Message * msg, Workload * wl);
-  uint64_t participants(bool *& pps,Workload * wl);
-  uint64_t get_participants(Workload * wl);
-  bool readonly();
+  	void init();
+	void reset();
+	void release();
+	void release_items();
+	void print();
+	static std::set<uint64_t> participants(Message * msg, Workload * wl);
+	uint64_t participants(bool *& pps,Workload * wl);
+	uint64_t get_participants(Workload * wl);
+	bool readonly();
 
 	TPCCTxnType txn_type;
 	// common txn input for both payment & new-order

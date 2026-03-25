@@ -31,9 +31,6 @@ void QWorkQueue::init() {
 	seq_queue = new boost::lockfree::queue<work_queue_entry* > (0);
 	work_queue = new boost::lockfree::queue<work_queue_entry* > (0);
 	new_txn_queue = new boost::lockfree::queue<work_queue_entry* >(0);
-#if (LONG_TXN_SORT || LONG_TXN_SPLIT)
-	order_queue = new boost::lockfree::queue<work_queue_entry* > (0);
-#endif
 
 #if CC_ALG == ARIA
 	aria_read_queue = new boost::lockfree::queue<work_queue_entry* >(0);
@@ -53,17 +50,6 @@ void QWorkQueue::init() {
 	work_dequeue_size = 0;
 	txn_enqueue_size = 0;
 	txn_dequeue_size = 0;
-#if CC_ALG == HDCC
-	calvin_txn_queue = new boost::lockfree::queue<work_queue_entry* >(0);
-	calvin_work_queue = new boost::lockfree::queue<work_queue_entry* >(0);
-	calvin_txn_queue_size = 0;
-	calvin_txn_enqueue_size = 0;
-	calvin_txn_dequeue_size = 0;
-	calvin_work_queue_size = 0;
-	calvin_work_enqueue_size = 0;
-	calvin_work_dequeue_size = 0;
-	sem_init(&_calvin_semaphore, 0, 1);
-#endif
 
 #if LONG_TXN_SCHEDULE
 	sched_ready = true;
@@ -129,53 +115,6 @@ Message * QWorkQueue::sequencer_dequeue(uint64_t thd_id) {
 	return msg;
 
 }
-
-#if LONG_TXN_WORKLOAD && (LONG_TXN_SORT || LONG_TXN_SPLIT)
-void QWorkQueue::order_enqueue(uint64_t thd_id, Message * msg) {
-	uint64_t starttime = get_sys_clock();
-	assert(msg);
-	DEBUG_M("OrdQueue::enqueue work_queue_entry alloc\n");
-	work_queue_entry * entry = (work_queue_entry*)mem_allocator.align_alloc(sizeof(work_queue_entry));
-	entry->msg = msg;
-	entry->rtype = msg->rtype;
-	entry->txn_id = msg->txn_id;
-	entry->batch_id = msg->batch_id;
-	entry->starttime = get_sys_clock();
-	assert(ISSERVER);
-
-	DEBUG("Seq Enqueue (%ld,%ld)\n",entry->txn_id,entry->batch_id);
-		while (!order_queue->push(entry) && !simulation->is_done()) {
-		}
-
-	// INC_STATS(thd_id,seq_queue_enqueue_time,get_sys_clock() - starttime);
-	// INC_STATS(thd_id,seq_queue_enq_cnt,1);
-
-}
-Message * QWorkQueue::order_dequeue(uint64_t thd_id) {
-	uint64_t starttime = get_sys_clock();
-	assert(ISSERVER);
-	Message * msg = NULL;
-	work_queue_entry * entry = NULL;
-	bool valid = order_queue->pop(entry);
-
-	if(valid) {
-		msg = entry->msg;
-		assert(msg);
-		DEBUG("Ord Dequeue (%ld,%ld)\n",entry->txn_id,entry->batch_id);
-		// uint64_t queue_time = get_sys_clock() - entry->starttime;
-		// INC_STATS(thd_id,seq_queue_wait_time,queue_time);
-		// INC_STATS(thd_id,seq_queue_cnt,1);
-		// DEBUG("DEQUEUE (%ld,%ld) %ld; %ld; %d,
-		// 0x%lx\n",msg->txn_id,msg->batch_id,msg->return_node_id,queue_time,msg->rtype,(uint64_t)msg);
-		DEBUG_M("OrdQueue::dequeue work_queue_entry free\n");
-		mem_allocator.free(entry,sizeof(work_queue_entry));
-		// INC_STATS(thd_id,seq_queue_dequeue_time,get_sys_clock() - starttime);
-	}
-
-	return msg;
-
-}
-#endif
 
 #if CC_ALG == ARIA 
 Message* QWorkQueue::txn_dequeue(uint64_t thd_id) {
@@ -339,7 +278,7 @@ Message* QWorkQueue::work_dequeue(uint64_t thd_id) {
 #endif // CC_ALG == ARIA
 
 void QWorkQueue::sched_enqueue(uint64_t thd_id, Message * msg) {
-	assert(CC_ALG == CALVIN || CC_ALG == HDCC || CC_ALG == SNAPPER);
+	assert(CC_ALG == CALVIN);
 	assert(msg);
 	assert(ISSERVERN(msg->return_node_id));
 	uint64_t starttime = get_sys_clock();
@@ -365,7 +304,7 @@ void QWorkQueue::sched_enqueue(uint64_t thd_id, Message * msg) {
 Message * QWorkQueue::sched_dequeue(uint64_t thd_id) {
 	uint64_t starttime = get_sys_clock();
 
-	assert(CC_ALG == CALVIN || CC_ALG == HDCC || CC_ALG == SNAPPER);
+	assert(CC_ALG == CALVIN);
 	Message * msg = NULL;
 	work_queue_entry * entry = NULL;
 
@@ -450,87 +389,6 @@ Message * QWorkQueue::sched_dequeue(uint64_t thd_id) {
 
 	return msg;
 }
-
-#if CC_ALG == HDCC
-void QWorkQueue::calvin_enqueue(uint64_t thd_id,Message * msg, bool busy) {
-	uint64_t starttime = get_sys_clock();
-	assert(msg);
-	DEBUG_M("QWorkQueue::enqueue work_queue_entry alloc\n");
-	work_queue_entry * entry = (work_queue_entry*)mem_allocator.align_alloc(sizeof(work_queue_entry));
-	entry->msg = msg;
-	entry->rtype = msg->rtype;
-	entry->txn_id = msg->txn_id;
-	entry->batch_id = msg->batch_id;
-	entry->starttime = get_sys_clock();
-	assert(ISSERVER || ISREPLICA);
-	DEBUG("Work Enqueue (%ld,%ld) %d\n",entry->txn_id,entry->batch_id,entry->rtype);
-
-	uint64_t mtx_wait_starttime = get_sys_clock();
-	if (msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
-		while (!calvin_txn_queue->push(entry) && !simulation->is_done()) {}
-		sem_wait(&_calvin_semaphore);
-		calvin_txn_queue_size ++;
-		calvin_txn_enqueue_size ++;
-		sem_post(&_calvin_semaphore);
-	} else {
-		while (!calvin_work_queue->push(entry) && !simulation->is_done()) {}
-		sem_wait(&_calvin_semaphore);
-		calvin_work_queue_size ++;
-		calvin_work_enqueue_size ++;
-		sem_post(&_calvin_semaphore);
-	}
-	INC_STATS(thd_id,mtx[13],get_sys_clock() - mtx_wait_starttime);
-
-	if(busy) {
-		INC_STATS(thd_id,work_queue_conflict_cnt,1);
-	}
-	INC_STATS(thd_id,work_queue_enqueue_time,get_sys_clock() - starttime);
-	INC_STATS(thd_id,work_queue_enq_cnt,1);
-	INC_STATS(thd_id,trans_work_queue_item_total,txn_queue_size+work_queue_size);
-}
-
-Message * QWorkQueue::calvin_dequeue(uint64_t thd_id) {
-	uint64_t starttime = get_sys_clock();
-	assert(ISSERVER || ISREPLICA);
-	Message * msg = NULL;
-	work_queue_entry * entry = NULL;
-	uint64_t mtx_wait_starttime = get_sys_clock();
-	bool valid = false;
-
-	valid = calvin_work_queue->pop(entry);
-	if(!valid) {
-		valid = calvin_txn_queue->pop(entry);
-	}
-	INC_STATS(thd_id,mtx[14],get_sys_clock() - mtx_wait_starttime);
-
-	if(valid) {
-		msg = entry->msg;
-		assert(msg);
-		uint64_t queue_time = get_sys_clock() - entry->starttime;
-		INC_STATS(thd_id,work_queue_wait_time,queue_time);
-		INC_STATS(thd_id,work_queue_cnt,1);
-		if(msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
-			sem_wait(&_calvin_semaphore);
-			calvin_txn_queue_size --;
-			calvin_txn_dequeue_size ++;
-			sem_post(&_calvin_semaphore);
-			INC_STATS(thd_id,work_queue_new_wait_time,queue_time);
-			INC_STATS(thd_id,work_queue_new_cnt,1);
-		} else {
-			sem_wait(&_calvin_semaphore);
-			calvin_work_queue_size --;
-			calvin_work_dequeue_size ++;
-			sem_post(&_calvin_semaphore);
-			INC_STATS(thd_id,work_queue_old_wait_time,queue_time);
-			INC_STATS(thd_id,work_queue_old_cnt,1);
-		}
-		msg->wq_time = queue_time;
-		mem_allocator.free(entry,sizeof(work_queue_entry));
-		INC_STATS(thd_id,work_queue_dequeue_time,get_sys_clock() - starttime);
-	}
-	return msg;
-}
-#endif // CC_ALG == HDCC
 
 void QWorkQueue::enqueue(uint64_t thd_id, Message * msg,bool busy) {
 	uint64_t starttime = get_sys_clock();
@@ -745,16 +603,13 @@ TxnManager * QWorkQueue::get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t
 		list_node_entry * entry = arg;
 		if (!entry) return false;
 		ClientQueryMessage * last_msg = (ClientQueryMessage*)entry->txn->last_msg;
-		if (entry->key <= minSid && entry->txn->lock_ready_cnt <= 0 && last_msg->deps_left.load() <= 0) {
+		if (entry->key <= minSid && entry->txn->lock_ready_cnt <= 0) {
 			if (entry->txn->lock_ready_cnt < 0) {
 				DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree txn %p lock_ready_cnt=%d\n", entry->txn, entry->txn->lock_ready_cnt);
 			}
-			if (last_msg->deps_left.load() < 0) {
-				DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree txn %p deps_left=%d\n", entry->txn, last_msg->deps_left.load());
-			}
 			return true;
 		}
-		DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree cond2 skip txn %p key=%lu lock_ready_cnt=%d deps_left=%d\n",entry->txn, entry->key, entry->txn->lock_ready_cnt, last_msg->deps_left.load());
+		DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree cond2 skip txn %p key=%lu lock_ready_cnt=%d \n",entry->txn, entry->key, entry->txn->lock_ready_cnt);
 		return false;
 	};
 	list_node_entry * entry = NULL;

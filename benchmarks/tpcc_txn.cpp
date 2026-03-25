@@ -29,9 +29,6 @@
 #include "msg_queue.h"
 #include "message.h"
 #include "aria.h"
-#if CC_ALG == HDCC
-#include "row_hdcc.h"
-#endif
 #if CC_ALG == CALVIN
 #include "row_lock.h"
 #endif
@@ -164,7 +161,7 @@ bool TPCCTxnManager::is_done() {
 
 RC TPCCTxnManager::acquire_locks() {
 	uint64_t starttime = get_sys_clock();
-	assert(CC_ALG == CALVIN || CC_ALG == HDCC || CC_ALG == SNAPPER);
+	assert(CC_ALG == CALVIN);
 	locking_done = false;
 	RC rc = RCOK;
 	RC rc2;
@@ -992,20 +989,10 @@ inline RC TPCCTxnManager::run_payment_1(uint64_t w_id, uint64_t d_id, uint64_t d
 	uint64_t starttime = get_sys_clock();
 	double w_ytd;
 	r_wh_local->get_value(W_YTD, w_ytd);
-#if CC_ALG == HDCC
-	if (algo == CALVIN) {
-		row->manager->isIntermediateState = true;
-	}
-#endif
+
 	if (g_wh_update) {
 		r_wh_local->set_value(W_YTD, w_ytd + h_amount);
 	}
-#if CC_ALG == HDCC
-	if (algo == CALVIN) {
-		row->manager->_tid = txn->txn_id;
-		row->manager->isIntermediateState = false;
-	}
-#endif
 	INC_STATS(get_thd_id(),trans_benchmark_compute_time,get_sys_clock() - starttime);
 	return RCOK;
 }
@@ -1040,18 +1027,9 @@ inline RC TPCCTxnManager::run_payment_3(uint64_t w_id, uint64_t d_id, uint64_t d
 	+=====================================================*/
 	double d_ytd;
 	r_dist_local->get_value(D_YTD, d_ytd);
-#if CC_ALG == HDCC
-	if (algo == CALVIN) {
-		row->manager->isIntermediateState = true;
-	}
-#endif
+
 	r_dist_local->set_value(D_YTD, d_ytd + h_amount);
-#if CC_ALG == HDCC
-	if (algo == CALVIN) {
-		row->manager->_tid = txn->txn_id;
-		row->manager->isIntermediateState = false;
-	}
-#endif
+
 	INC_STATS(get_thd_id(),trans_benchmark_compute_time,get_sys_clock() - starttime);
 	return RCOK;
 }
@@ -1179,12 +1157,6 @@ inline RC TPCCTxnManager::run_payment_5(uint64_t w_id, uint64_t d_id, uint64_t c
 	r_hist->set_value(H_DATE, date);
 	r_hist->set_value(H_AMOUNT, h_amount);
 	// insert_row(r_hist, _wl->i_history);
-#if CC_ALG == HDCC
-	if (algo == CALVIN) {
-		row->manager->_tid = txn->txn_id;
-		row->manager->isIntermediateState = false;
-	}
-#endif
 	INC_STATS(get_thd_id(),trans_benchmark_compute_time,get_sys_clock() - starttime);
 	return RCOK;
 }
@@ -1324,10 +1296,6 @@ inline RC TPCCTxnManager::new_order_5_1(uint64_t w_id, uint64_t d_id, uint64_t c
 #if TXN_TYPE == TPCC_ALL
 #if CC_ALG == CALVIN
 	rc = get_lock(r_order, WR);
-#elif CC_ALG == HDCC || CC_ALG == SNAPPER
-	if (algo == CALVIN) {
-		rc = get_lock(r_order, WR);
-	}
 #endif
 	row_t * temp;
 	rc = get_row(r_order, WR, temp);
@@ -1387,10 +1355,6 @@ inline RC TPCCTxnManager::new_order_5_2(uint64_t w_id, uint64_t d_id, uint64_t c
 #if TXN_TYPE == TPCC_ALL
 #if CC_ALG == CALVIN
 	rc = get_lock(r_no, WR);
-#elif CC_ALG == HDCC || CC_ALG == SNAPPER
-	if (algo == CALVIN) {
-		rc = get_lock(r_no, WR);
-	}
 #endif
 	row_t * temp;
 	rc = get_row(r_no, WR, temp);
@@ -1400,12 +1364,7 @@ inline RC TPCCTxnManager::new_order_5_2(uint64_t w_id, uint64_t d_id, uint64_t c
 #else
 	insert_row(r_no, _wl->t_neworder);
 #endif
-#if CC_ALG == HDCC
-	if (algo == CALVIN) {
-		row->manager->_tid = txn->txn_id;
-		row->manager->isIntermediateState = false;
-	}
-#endif
+
 	INC_STATS(get_thd_id(),trans_benchmark_compute_time,get_sys_clock() - starttime);
 	return rc;
 }
@@ -1568,12 +1527,7 @@ inline RC TPCCTxnManager::new_order_9_1(uint64_t w_id, uint64_t d_id, bool remot
 #else
 	insert_item(r_ol_last, _wl->i_orderline);
 #endif
-#if CC_ALG == HDCC
-	if (algo == CALVIN) {
-		row->manager->_tid = txn->txn_id;
-		row->manager->isIntermediateState = false;
-	}
-#endif
+
 	INC_STATS(get_thd_id(),trans_benchmark_compute_time,get_sys_clock() - starttime);
 	return rc;
 }
@@ -2270,7 +2224,7 @@ RC TPCCTxnManager::process_aria_remote(ARIA_PHASE aria_phase) {
 RC TPCCTxnManager::run_tpcc_phase2() {
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
 	RC rc = RCOK;
-	assert(CC_ALG == CALVIN || CC_ALG == HDCC || CC_ALG == SNAPPER);
+	assert(CC_ALG == CALVIN);
 
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;
@@ -2369,7 +2323,7 @@ RC TPCCTxnManager::run_tpcc_phase2() {
 RC TPCCTxnManager::run_tpcc_phase5() {
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
 	RC rc = RCOK;
-	assert(CC_ALG == CALVIN || CC_ALG == HDCC || CC_ALG == SNAPPER);
+	assert(CC_ALG == CALVIN);
 
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;

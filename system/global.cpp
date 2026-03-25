@@ -22,44 +22,30 @@
 #include "query.h"
 #include "client_query.h"
 #include "occ.h"
-#include "bocc.h"
-#include "focc.h"
-#include "ssi.h"
-#include "wsi.h"
 #include "transport.h"
 #include "work_queue.h"
 #include "abort_queue.h"
 #include "client_query.h"
 #include "client_txn.h"
 #include "logger.h"
-#include "maat.h"
 #include "manager.h"
 #include "mem_alloc.h"
 #include "msg_queue.h"
 #include "pool.h"
 #include "query.h"
 #include "sequencer.h"
-#include "dli.h"
 #include "sim_manager.h"
 #include "stats.h"
 #include "transport.h"
 #include "txn_table.h"
 #include "work_queue.h"
-#include "dta.h"
 #include "client_txn.h"
 #include "sequencer.h"
 #include "logger.h"
-#include "maat.h"
-#include "wkdb.h"
-#include "tictoc.h"
-#include "key_xid.h"
-#include "rts_cache.h"
-#include "cc_selector.h"
 #include "aria_sequencer.h"
 #include "water_mark.h"
 
 #include <boost/lockfree/queue.hpp>
-#include "da_block_queue.h"
 #include<queue>
 
 mem_alloc mem_allocator;
@@ -69,15 +55,6 @@ Manager glob_manager;
 Query_queue query_queue;
 Client_query_queue client_query_queue;
 OptCC occ_man;
-Dli dli_man;
-Focc focc_man;
-Bocc bocc_man;
-Maat maat_man;
-Dta dta_man;
-Wkdb wkdb_man;
-ssi ssi_man;
-wsi wsi_man;
-Tictoc tictoc_man;
 Transport tport_man;
 TxnManPool txn_man_pool;
 TxnPool txn_pool;
@@ -96,19 +73,7 @@ Sequencer seq_man;
 AriaSequencer aria_seq;
 #endif
 Logger logger;
-TimeTable time_table;
-DtaTimeTable dta_time_table;
-KeyXidCache dta_key_xid_cache;
-RtsCache dta_rts_cache;
-InOutTable inout_table;
-WkdbTimeTable wkdb_time_table;
-KeyXidCache wkdb_key_xid_cache;
-RtsCache wkdb_rts_cache;
-CCSelector cc_selector;
 // QTcpQueue tcp_queue;
-
-boost::lockfree::queue<DAQuery*, boost::lockfree::fixed_sized<true>> da_query_queue{100};
-DABlockQueue da_gen_qry_queue(50);
 bool is_server=false;
 map<uint64_t, ts_t> da_start_stamp_tab;
 set<uint64_t> da_start_trans_tab;
@@ -199,17 +164,12 @@ UInt32 g_stats_per_interval_thread_cnt = STATS_EVERY_INTERVAL;
 UInt32 g_send_thread_cnt = SEND_THREAD_CNT;
 
 #if CC_ALG == CALVIN
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
-UInt32 g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1 + LONG_TXN_SORT | LONG_TXN_SPLIT;
-#else
-// sequencer + scheduler thread
-UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2 + LONG_TXN_SORT | LONG_TXN_SPLIT;
-#endif
-#elif CC_ALG == SNAPPER
-// sequencer + scheduler thread + snapper_check_thread
-UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 3;
-#elif CC_ALG == HDCC
-UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 3;
+    #if LONG_TXN_SCHEDULE
+    UInt32 g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
+    #else
+    // sequencer + scheduler thread
+    UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2 ;
+    #endif
 #else
 UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt;
 #endif
@@ -249,29 +209,12 @@ UInt64 g_msg_time_limit = MSG_TIME_LIMIT;
 UInt64 g_log_buf_max = LOG_BUF_MAX;
 UInt64 g_log_flush_timeout = LOG_BUF_TIMEOUT;
 
-// MVCC
-UInt64 g_max_read_req = MAX_READ_REQ;
-UInt64 g_max_pre_req = MAX_PRE_REQ;
-UInt64 g_his_recycle_len = HIS_RECYCLE_LEN;
-
 // CALVIN
 UInt32 g_seq_thread_cnt = SEQ_THREAD_CNT;
 
-// HDCC
-UInt32 g_calvin_thread_cnt = CALVIN_THREAD_CNT;
-UInt64 g_data_shard_size = SHARD_SIZE;
-UInt64 g_lower_bound=LOWER_BOUND;
-UInt64 g_upper_bound=UPPER_BOUND;
-#if WORKLOAD == YCSB
-UInt64 g_total_shard_num=g_synth_table_size/g_data_shard_size+g_node_cnt;
-#elif WORKLOAD == TPCC
-//max key plus corresponding offest
-UInt64 g_total_shard_num = (TPCCTableKey::CUST_BY_NAME_END + TPCCTableKey::CUST_BY_NAME_OFFSET) / g_data_shard_size + g_node_cnt;
-#endif
 UInt64 g_conflict_send_interval = CONFLICT_SEND_INTERVAL;
 double g_prorate_ratio = PRORATE_RATIO;
 double g_deterministic_abort_ratio = DETERMINISTIC_ABORT_RATIO;
-queue<ConflictStaticsMessage*> g_conflict_queue;
 std::vector<double> dy_write;
 std::vector<double> dy_skew;
 uint32_t g_dy_Nbatch;
@@ -279,9 +222,6 @@ uint32_t g_dy_batch_id = 0;
 
 // ARIA
 UInt32 g_aria_batch_size = ARIA_BATCH_SIZE;
-
-// TICTOC
-uint32_t g_max_num_waits = MAX_NUM_WAITS;
 
 double g_mpr = MPR;
 double g_mpr_neworder = MPR_NEWORDER;

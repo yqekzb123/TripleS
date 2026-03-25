@@ -1,46 +1,6 @@
 #ifndef _CONFIG_H_
 
 #define _CONFIG_H_
-
-/***tictoc****/
-/*
-#define WRITE_PERMISSION_LOCK         false
-#define MULTI_VERSION                 false
-#define ENABLE_LOCAL_CACHING          false
-#define OCC_LOCK_TYPE                 WAIT_DIE
-#define TICTOC_MV                     false
-#define OCC_WAW_LOCK                  true
-#define RO_LEASE                      false
-#define ATOMIC_WORD                   false
-#define TRACK_LAST                    false
-#define UPDATE_TABLE_TS               true
-#define WRITE_PERMISSION_LOCK         false
-#define LOCK_ALL_BEFORE_COMMIT        false
-#define LOCK_ALL_DEBUG                false
-#define PAUSE __asm__ ( "pause;" );
-#define COMPILER_BARRIER asm volatile("" ::: "memory");
-*/
-
-/***********************************************/
-// DA Trans Creator
-/***********************************************/
-//which creator to use
-#define CREATOR_USE_T false
-
-//TraversalActionSequenceCreator
-#define TRANS_CNT 2
-#define ITEM_CNT 4
-#define SUBTASK_NUM 1
-#define SUBTASK_ID 0
-#define MAX_DML 4
-#define WITH_ABORT false
-#define TAIL_DTL false
-#define SAVE_HISTROY_WITH_EMPTY_OPT false
-#define DYNAMIC_SEQ_LEN false
-
-//InputActionSequenceCreator
-#define INPUT_FILE_PATH "./input.txt"
-
 // ! Parameters used to locate distributed performance bottlenecks.
 
 #define SECOND 130 // Set the queue monitoring time.
@@ -148,7 +108,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG CALVIN
+#define CC_ALG ARIA
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -239,13 +199,8 @@
 #define GEN_BY_MPR false
 
 #define LONG_TXN_WORKLOAD true
-#define LONG_TXN_SCHEDULE true
-#define LONG_TXN_SPLIT false
-#define LONG_TXN_SORT false
+#define LONG_TXN_SCHEDULE false
 #define SCHEDULER_CNT 8
-// ==== LONG_TXN_SORT ====
-// 冲突衰减因子lambda
-#define LONG_SORT_MAX_DELAY 10
 
 // ==== [YCSB] ====
 // SKEW_METHOD:
@@ -431,39 +386,20 @@ enum PPSTxnType {
 #define TPCC            2
 #define PPS             3
 #define TEST            4
-#define DA 5
 // Concurrency Control Algorithm
 #define NO_WAIT           1
 #define WAIT_DIE          2
 #define DL_DETECT         3
-#define TIMESTAMP         4
-#define MVCC            5
 #define HSTORE            6
 #define HSTORE_SPEC           7
 #define OCC             8
 #define VLL             9
 #define CALVIN      10
-#define MAAT      11
-#define WDL           12
-#define WOOKONG     13
-#define TICTOC     14
-#define FOCC       15
-#define BOCC       16
-#define SSI        17
-#define WSI        18
-#define DLI_BASE 19
-#define DLI_OCC 20
-#define DLI_MVCC_OCC 21
-#define DTA 22
-#define DLI_DTA 23
-#define DLI_MVCC 24
-#define DLI_DTA2 25
-#define DLI_DTA3 26
 #define SILO 27
 #define CNULL 28
-#define HDCC 29
-#define SNAPPER 30
 #define ARIA 31
+#define SDOCC 32
+#define SDPCC 33
 // TIMESTAMP allocation method.
 #define TS_MUTEX          1
 #define TS_CAS            2

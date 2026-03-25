@@ -415,15 +415,6 @@ uint64_t TPCCQuery::get_participants(Workload * wl) {
   return participant_cnt;
 }
 
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-void TPCCQuery::reset(int algo){
-  BaseQuery::clear();
-  if(algo != CALVIN){
-    release_items();
-  }
-  items.clear();
-}
-#else
 void TPCCQuery::reset() {
   BaseQuery::clear();
 #if CC_ALG != CALVIN
@@ -431,7 +422,6 @@ void TPCCQuery::reset() {
 #endif
   items.clear();
 }
-#endif
 
 void TPCCQuery::release() {
   BaseQuery::release();

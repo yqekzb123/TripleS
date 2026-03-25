@@ -18,24 +18,17 @@
 #include "aria_sequencer.h"
 #include "aria_thread.h"
 #include "calvin_thread.h"
-#include "conflict_thread.h"
-#include "snapper_check_thread.h"
 #include "client_query.h"
-#include "dli.h"
-#include "dta.h"
 #include "global.h"
 #include "io_thread.h"
-#include "key_xid.h"
 #include "log_thread.h"
 #include "logger.h"
-#include "maat.h"
 #include "manager.h"
 #include "math.h"
 #include "msg_queue.h"
 #include "occ.h"
 #include "pps.h"
 #include "query.h"
-#include "rts_cache.h"
 #include "sequencer.h"
 #include "sim_manager.h"
 #include "abort_queue.h"
@@ -46,18 +39,7 @@
 #include "worker_thread.h"
 #include "ycsb.h"
 #include "ycsb_query.h"
-#include "da.h"
-#include "maat.h"
-#include "ssi.h"
-#include "wsi.h"
-#include "focc.h"
-#include "bocc.h"
 #include "client_query.h"
-#include "wkdb.h"
-#include "tictoc.h"
-#include "key_xid.h"
-#include "rts_cache.h"
-#include "reorder.h"
 #include "water_mark.h"
 
 void network_test();
@@ -75,25 +57,11 @@ WorkerNumThread * worker_num_thds;
 CalvinLockThread * calvin_lock_thds;
 CalvinSequencerThread * calvin_seq_thds;
 #endif
-#if CC_ALG == SNAPPER
-CalvinLockThread * calvin_lock_thds;
-CalvinSequencerThread * calvin_seq_thds;
-SnapperCheckThread * snapper_check_thd;
-#endif
-#if CC_ALG == HDCC
-CalvinLockThread * calvin_lock_thds;
-CalvinSequencerThread * calvin_seq_thds;
-#endif
-
-#if CC_ALG == HDCC || LONG_TXN_SCHEDULE
-ConflictThread * conflict_thd;
-#endif
-#if CC_ALG == HDCC || LONG_TXN_SORT || LONG_TXN_SPLIT
-ReorderThread * reorder_thd;
-#endif
-
 #if CC_ALG == ARIA
 AriaSequencerThread * aria_seq_thds;
+#endif
+#if CC_ALG == SDOCC
+
 #endif
 
 // defined in parser.cpp
@@ -144,10 +112,6 @@ int main(int argc, char *argv[]) {
 		case PPS :
 			m_wl = new PPSWorkload;
 			break;
-		case DA:
-			m_wl = new DAWorkload;
-			is_server=true;
-			break;
 		default:
 			assert(false);
 	}
@@ -173,16 +137,6 @@ int main(int argc, char *argv[]) {
 	#if CC_ALG == ARIA
 	reservation_check_water_mark = new WaterMarkList("reservation_check_water_mark");
 	check_commit_water_mark = new WaterMarkList("check_commit_water_mark");
-
-	// read_reservation_sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_thread_cnt);
-	// memset(read_reservation_sids, 0, sizeof(uint64_t) * g_thread_cnt);
-	// reservation_check_sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_thread_cnt);
-	// memset(reservation_check_sids, 0, sizeof(uint64_t) * g_thread_cnt);
-	// check_commit_sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_thread_cnt);
-	// memset(check_commit_sids, 0, sizeof(uint64_t) * g_thread_cnt);
-
-	// commit_read_sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t));
-	// memset(commit_read_sids, 0, sizeof(uint64_t));
 	#endif
 #endif
 
@@ -237,81 +191,13 @@ int main(int argc, char *argv[]) {
 	aria_seq.init(m_wl);
 	printf("Done\n");
 #endif
-#if CC_ALG == CALVIN || CC_ALG == HDCC || CC_ALG == SNAPPER
+#if CC_ALG == CALVIN
 	printf("Initializing sequencer... ");
 	fflush(stdout);
 	seq_man.init(m_wl);
 	printf("Done\n");
 #endif
-#if CC_ALG == HDCC
-	printf("Initializing cc selector... ");
-	fflush(stdout);
-	cc_selector.init();
-	printf("Done\n");
-#endif
-#if CC_ALG == MAAT
-	printf("Initializing Time Table... ");
-	fflush(stdout);
-	time_table.init();
-	printf("Done\n");
-	printf("Initializing MaaT manager... ");
-	fflush(stdout);
-	maat_man.init();
-	printf("Done\n");
-#endif
-#if CC_ALG == SSI
-	printf("Initializing In Out Table... ");
-	fflush(stdout);
-	inout_table.init();
-	printf("Done\n");
-	printf("Initializing SSI manager... ");
-	fflush(stdout);
-	ssi_man.init();
-	printf("Done\n");
-#endif
-#if CC_ALG == WSI
-	printf("Initializing WSI manager... ");
-	fflush(stdout);
-	wsi_man.init();
-	printf("Done\n");
-#endif
-#if CC_ALG == WOOKONG
-	printf("Initializing WKDB Time Table... ");
-	fflush(stdout);
-	wkdb_time_table.init();
-	printf("Done\n");
-	// printf("Initializing WKDB KeyxidCache and RtsCache... ");
-	// fflush(stdout);
-	// wkdb_key_xid_cache.init();
-	// wkdb_rts_cache.init();
-	// printf("Done\n");
-	printf("Initializing WKDB manager... ");
-	fflush(stdout);
-	wkdb_man.init();
-	printf("Done\n");
-#endif
 
-#if CC_ALG == TICTOC
-	printf("Initializing MaaT manager... ");
-	fflush(stdout);
-	tictoc_man.init();
-	printf("Done\n");
-#endif
-#if CC_ALG == DTA || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3
-	printf("Initializing DTA Time Table... ");
-	fflush(stdout);
-	dta_time_table.init();
-	printf("Done\n");
-	// printf("Initializing DTA KeyxidCache and RtsCache... ");
-	// fflush(stdout);
-	// dta_key_xid_cache.init();
-	// dta_rts_cache.init();
-	// printf("Done\n");
-	printf("Initializing DTA manager... ");
-	fflush(stdout);
-	dta_man.init();
-	printf("Done\n");
-#endif
 #if LOGGING
 	printf("Initializing logger... ");
 	fflush(stdout);
@@ -327,11 +213,6 @@ int main(int argc, char *argv[]) {
 	fflush(stdout);
 #endif
 
-#if WORKLOAD==DA
-	commit_file.open("commit_histroy.txt",ios::app);
-	abort_file.open("abort_histroy.txt",ios::app);
-#endif
-
 	// 2. spawn multiple threads
 	uint64_t thd_cnt = g_thread_cnt;
 	uint64_t wthd_cnt = thd_cnt;
@@ -342,24 +223,16 @@ int main(int argc, char *argv[]) {
 		all_thd_cnt += g_logger_thread_cnt;
 #endif
 #if CC_ALG == CALVIN
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
 		all_thd_cnt += (g_scheduler_thread_cnt + 1);
 #else
 		all_thd_cnt += 2; // sequencer + scheduler thread
 #endif
 #endif
-#if CC_ALG == SNAPPER
-	all_thd_cnt += 3;	// sequencer + scheduler thread + sanpper_check_thread
-#endif
-#if CC_ALG == HDCC
-		all_thd_cnt += 3; //sequencer + scheduler thread + conflict thread
-#endif
+
 #if CC_ALG == ARIA
 	all_thd_cnt += 1;	//sequencer thread
 	all_thd_cnt -= 1; 	//abort thread
-#endif
-#if LONG_TXN_SORT || LONG_TXN_SPLIT
-	all_thd_cnt += 1; // reorder thread
 #endif
 
 
@@ -383,7 +256,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if CC_ALG == CALVIN
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
 	calvin_lock_thds = new CalvinLockThread[g_scheduler_thread_cnt];
 	calvin_seq_thds = new CalvinSequencerThread[1];
 #else
@@ -391,22 +264,7 @@ int main(int argc, char *argv[]) {
 	calvin_seq_thds = new CalvinSequencerThread[1];
 #endif
 #endif
-#if CC_ALG == SNAPPER
-	calvin_lock_thds = new CalvinLockThread[1];
-	calvin_seq_thds = new CalvinSequencerThread[1];
-	snapper_check_thd = new SnapperCheckThread;
-#endif
-#if CC_ALG == HDCC
-	calvin_lock_thds = new CalvinLockThread[1];
-	calvin_seq_thds = new CalvinSequencerThread[1];
-	// conflict_thds=new ConflictThread[1];
-#endif
-#if CC_ALG == HDCC
-	conflict_thd=new ConflictThread[1];
-#endif
-#if LONG_TXN_SORT || LONG_TXN_SPLIT
-	reorder_thd=new ReorderThread[1];
-#endif
+
 #if CC_ALG == ARIA
 	aria_seq_thds = new AriaSequencerThread[1];
 #endif
@@ -418,25 +276,6 @@ int main(int argc, char *argv[]) {
 #if CC_ALG == OCC
 	printf("Initializing occ lock manager... ");
 	occ_man.init();
-	printf("Done\n");
-#endif
-
-#if CC_ALG == BOCC
-	printf("Initializing occ lock manager... ");
-	bocc_man.init();
-	printf("Done\n");
-#endif
-
-#if CC_ALG == FOCC
-	printf("Initializing occ lock manager... ");
-	focc_man.init();
-	printf("Done\n");
-#endif
-
-#if CC_ALG == DLI_BASE || CC_ALG == DLI_OCC || CC_ALG == DLI_MVCC_OCC || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3 || \
-		CC_ALG == DLI_MVCC
-	printf("Initializing si manager... ");
-	dli_man.init();
 	printf("Done\n");
 #endif
 	/*
@@ -539,73 +378,6 @@ int main(int argc, char *argv[]) {
 
 	calvin_seq_thds[0].init(id,g_node_id,m_wl);
 	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_seq_thds[0]);
-#if LONG_TXN_SORT || LONG_TXN_SPLIT
-	#if SET_AFFINITY
-		CPU_ZERO(&cpus);
-		CPU_SET(cpu_cnt, &cpus);
-		pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-		cpu_cnt++;
-	#endif
-	reorder_thd[0].init(id, g_node_id, m_wl);
-	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&reorder_thd[0]);
-#endif
-#endif
-#if CC_ALG == SNAPPER
-#if SET_AFFINITY
-	CPU_ZERO(&cpus);
-	CPU_SET(cpu_cnt, &cpus);
-	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-	cpu_cnt++;
-#endif
-
-	calvin_lock_thds[0].init(id,g_node_id,m_wl);
-	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_lock_thds[0]);
-#if SET_AFFINITY
-	CPU_ZERO(&cpus);
-	CPU_SET(cpu_cnt, &cpus);
-	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-	cpu_cnt++;
-#endif
-
-	calvin_seq_thds[0].init(id,g_node_id,m_wl);
-	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_seq_thds[0]);
-#if SET_AFFINITY
-	CPU_ZERO(&cpus);
-	CPU_SET(cpu_cnt, &cpus);
-	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-	cpu_cnt++;
-#endif
-	snapper_check_thd->init(id, g_node_id, m_wl);
-	pthread_create(&p_thds[id++], &attr, run_thread, (void *)snapper_check_thd);
-#endif
-
-#if CC_ALG == HDCC
-#if SET_AFFINITY
-	CPU_ZERO(&cpus);
-	CPU_SET(cpu_cnt, &cpus);
-	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-	cpu_cnt++;
-#endif
-
-	calvin_lock_thds[0].init(id,g_node_id,m_wl);
-	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_lock_thds[0]);
-#if SET_AFFINITY
-	CPU_ZERO(&cpus);
-	CPU_SET(cpu_cnt, &cpus);
-	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-	cpu_cnt++;
-#endif
-
-	calvin_seq_thds[0].init(id,g_node_id,m_wl);
-	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_seq_thds[0]);
-#if SET_AFFINITY
-	CPU_ZERO(&cpus);
-	CPU_SET(cpu_cnt, &cpus);
-	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-	cpu_cnt++;
-#endif
-	conflict_thds[0].init(id,g_node_id,m_wl);
-	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&conflict_thds[0]);
 #endif
 
 #if CC_ALG == ARIA

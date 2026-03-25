@@ -49,12 +49,7 @@ public:
 	row_t * 	data;
 	row_t * 	orig_data;
 	uint64_t version;
-#if CC_ALG == TICTOC
-	uint64_t    orig_wts;
-	uint64_t    orig_rts;
-	bool         locked;
-#endif
-#if CC_ALG == SILO || CC_ALG == HDCC
+#if CC_ALG == SILO
 	ts_t 		tid;
 	bool isIntermediateState;
 	// ts_t 		epoch;
@@ -227,29 +222,6 @@ public:
 	int volatile    ready_part;
 	int volatile    ready_ulk;
 
-#if CC_ALG == HDCC
-	int algo; 	//calvin or silo
-	uint64_t original_return_id;
-	uint64_t        num_locks;
-	int             write_set[100];
-    int*            read_set;
-	RC              finish(RC rc);
-	uint64_t		max_calvin_tid;
-	uint64_t		max_calvin_bid;
-#endif
-
-#if CC_ALG == SNAPPER
-	set<row_t *> wait_for_locks;
-	vector<pair<row_t *, access_t>> read_write_set;
-	int algo;
-	bool isTimeout;
-	row_t * wait_row;
-	set<uint64_t> dependOn;
-	set<uint64_t> dependBy;
-	bool wait_for_locks_ready;
-	uint64_t last_lock_ts;
-#endif
-
 #if CC_ALG == ARIA
 	vector<vector<ycsb_request *>> read_set;
 	vector<vector<ycsb_request *>> write_set;
@@ -279,7 +251,6 @@ public:
 	bool aborted;
 	uint64_t return_id;
 	RC        validate();
-	RC        validate_c();
 	void            cleanup(RC rc);
 	void            cleanup_row(RC rc,uint64_t rid);
 	void release_last_row_lock();
@@ -407,16 +378,6 @@ protected:
 	bool 			_validation_no_wait;
 	ts_t 			_cur_tid;
 	RC				validate_silo();
-#endif
-
-#if CC_ALG == HDCC
-	bool 			_pre_abort=false;
-	RC				validate_once();
-	RC				validate_lock();
-	RC				validate_cont();
-#endif
-#if CC_ALG == SNAPPER
-	RC				validate_snapper();
 #endif
 
 #if CC_ALG == ARIA

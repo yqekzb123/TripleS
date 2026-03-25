@@ -20,7 +20,6 @@
 #include "global.h"
 #include "sequencer.h"
 #include "ycsb_query.h"
-#include "da_query.h"
 #include "tpcc_query.h"
 #include "pps_query.h"
 #include "mem_alloc.h"
@@ -33,11 +32,7 @@
 #include "message.h"
 #include "stats.h"
 #include <boost/lockfree/queue.hpp>
-#include "reorder.h"
 #include "manager.h"
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-#include "cc_selector.h"
-#endif
 
 void Sequencer::init(Workload * wl) {
 	next_txn_id = 0;
@@ -47,12 +42,7 @@ void Sequencer::init(Workload * wl) {
 	wl_head = NULL;
 	wl_tail = NULL;
 	fill_queue = new boost::lockfree::queue<Message*, boost::lockfree::capacity<65526> > [g_node_cnt];
-	
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-	last_epoch_max_id = 0;
-	blocked = false;
-	validationCount = 0;
-#endif
+
 }
 
 // Simple registry: txn_id -> TxnManager* (used to find dependent txn manager by id)
@@ -72,20 +62,7 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 	assert(wait_list != NULL);
 	assert(en->txns_left > 0);
 
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-	uint64_t id = (msg->get_txn_id() - en->start_txn_id) / g_node_cnt;
-#else
-#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
-	uint64_t id = 0;
-	if (msg->original_txn_id != INVALID_ID) {
-		id = msg->original_txn_id / g_node_cnt;
-	} else {
-		id = msg->get_txn_id() / g_node_cnt;
-	}
-#else
 	uint64_t id = msg->get_txn_id() / g_node_cnt;
-#endif
-#endif
 
 	uint64_t prof_stat = get_sys_clock();
 	assert(wait_list[id].server_ack_cnt > 0);
@@ -266,20 +243,7 @@ void Sequencer::process_abort(Message *msg, uint64_t thd_id) {
 	assert(wait_list != NULL);
 	assert(en->txns_left > 0);
 
-#if CC_ALG == HDCC
-	uint64_t id = (msg->get_txn_id() - en->start_txn_id) / g_node_cnt;
-#else
-#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
-	uint64_t id = 0;
-	if (msg->original_txn_id != INVALID_ID) {
-		id = msg->original_txn_id / g_node_cnt;
-	} else {
-		id = msg->get_txn_id() / g_node_cnt;
-	}
-#else
 	uint64_t id = msg->get_txn_id() / g_node_cnt;
-#endif
-#endif
 	// recover "return node id"
 	msg->return_node_id = wait_list[id].client_id;
 
@@ -326,9 +290,6 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 		en->size = 0;
 		en->txns_left = 0;
 		en->list = (qlite *) mem_allocator.alloc(sizeof(qlite) * en->max_size);
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-		en->start_txn_id = g_node_id + g_node_cnt * next_txn_id;
-#endif
 		LIST_PUT_TAIL(wl_head,wl_tail,en)
 	}
 	if(en->size == en->max_size) {
@@ -337,17 +298,9 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 	}
 
 	txnid_t txn_id = g_node_id + g_node_cnt * next_txn_id;
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-	uint64_t id = next_txn_id - last_epoch_max_id;
-	next_txn_id++;
-	if (id >= en->max_size) {
-		en->max_size *= 2;
-		en->list = (qlite *) mem_allocator.realloc(en->list,sizeof(qlite) * en->max_size);
-	}
-#else
 	next_txn_id++;
 	uint64_t id = txn_id / g_node_cnt;
-#endif
+
 	msg->batch_id = en->epoch;
 	msg->txn_id = txn_id;
 	assert(txn_id != UINT64_MAX);
@@ -358,61 +311,11 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 		Manager::register_txn_message(reg_key, msg);
 	}
 
-	// 如果是被拆分的子事务，就需要记录original_txn_id和original_batch_id
-	if (msg->rtype == CL_QRY && ((ClientQueryMessage*)msg)->parent_marker != INVALID_ID) {
-		auto it = parent_first_child_map.find(((ClientQueryMessage*)msg)->parent_marker);
-		if (it == parent_first_child_map.end()) {
-			// first child we see for this parent
-			parent_first_child_map[((ClientQueryMessage*)msg)->parent_marker] = std::make_pair(msg->batch_id, msg->get_txn_id());
-			msg->original_batch_id = msg->batch_id;
-			msg->original_txn_id = msg->get_txn_id();
-		} else {
-			msg->original_batch_id = it->second.first;
-			msg->original_txn_id = it->second.second;
-		}
-
-		id = msg->original_txn_id / g_node_cnt;
-		DEBUG_SEQ("Sequencer::process_txn() child msg %p txn=[%ld-%ld] parent_marker %ld original_txn=[%ld-%ld]\n",
-				msg, 
-				msg->get_batch_id(),
-				msg->get_txn_id(),
-				((ClientQueryMessage*)msg)->parent_marker,
-				msg->original_batch_id,
-				msg->original_txn_id);
-	} 
 
 #if LONG_TXN_WORKLOAD
 	if (id >= en->max_size) {
 		en->max_size *= 2;
 		en->list = (qlite *) mem_allocator.realloc(en->list,sizeof(qlite) * en->max_size);
-	}
-#endif
-
-#if CC_ALG == HDCC
-	if (cc_selector.get_best_cc(msg) == SILO) {
-		msg->algo = SILO;
-		if(msg->rtype == RTXN){
-			msg->txn_id = msg->orig_txn_id;
-			msg->batch_id = msg->orig_batch_id;
-		}
-		work_queue.enqueue(thd_id, msg, false);
-		return;
-	} else {
-		msg->algo = CALVIN;
-		msg->rtype = CL_QRY;
-	}
-#elif CC_ALG == SNAPPER
-	if (cc_selector.get_best_cc(msg) == WAIT_DIE) {
-		msg->algo = WAIT_DIE;
-		if(msg->rtype == RTXN){
-			msg->txn_id = msg->orig_txn_id;
-			msg->batch_id = msg->orig_batch_id;
-		}
-		work_queue.enqueue(thd_id, msg, false);
-		return;
-	} else {
-		msg->algo = CALVIN;
-		msg->rtype = CL_QRY;
 	}
 #endif
 
@@ -422,75 +325,16 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 	std::set<uint64_t> participants = TPCCQuery::participants(msg,_wl);
 #elif WORKLOAD == PPS
 	std::set<uint64_t> participants = PPSQuery::participants(msg,_wl);
-#elif WORKLOAD == DA
-	std::set<uint64_t> participants = DAQuery::participants(msg,_wl);
 #endif
-#if LONG_TXN_WORKLOAD && LONG_TXN_SPLIT
-		uint32_t server_ack_cnt = 0;
-	#if WORKLOAD == YCSB
-		YCSBClientQueryMessage * cl_msg = (YCSBClientQueryMessage *) msg;
-		if (cl_msg->parent_marker == INVALID_ID) {
-			// Unsplittable full message or already a child produced by reorder
-			server_ack_cnt = participants.size();
-		} else {
-			server_ack_cnt = cl_msg->sub_reqs_size;
-		}
-	#elif WORKLOAD == TPCC
-	#else
-	#endif
-#else
+
 	uint32_t server_ack_cnt = participants.size();
-#endif
 	assert(server_ack_cnt > 0);
 	assert(ISCLIENTN(msg->get_return_id()) || 
 			(ISCLIENTN(msg->origin_return_node_id) && msg->original_txn_id != INVALID_ID));
 
-	#if LONG_TXN_SPLIT
-	if ((msg->original_batch_id != INVALID_ID && msg->original_batch_id != en->epoch) ||
-		// 如果不在同一个batch中，就不处理
-		(msg->original_batch_id == en->epoch && msg->original_txn_id != INVALID_ID && en->list[id].msg == ((ClientQueryMessage*)msg)->parent_msg)
-		// 如果在同一个batch中，是子事务，但已经被添加过，就不处理
-	) {
-		// 不需要重复添加
-		// Note: Modifying msg!
-		msg->return_node_id = g_node_id;
-		msg->lat_network_time = 0;
-		msg->lat_other_time = 0;
+	en->list[id].client_id = msg->get_return_id();
+	en->list[id].msg = msg;
 
-		DEBUG_SEQ("INSERT !SKIP! txn=[%ld-%ld] origin_txn=[%ld-%ld] from BATCH %ld, because its BATCH is %ld; en->list[%ld].msg=%p, orig_msg=%p\n", msg->get_batch_id(),msg->get_txn_id(),msg->original_batch_id,msg->original_txn_id, en->epoch, msg->original_batch_id,id,en->list[id].msg, ((ClientQueryMessage*)msg)->parent_msg);
-
-		for(auto participant = participants.begin(); participant != participants.end(); participant++) {
-			DEBUG("SEQ adding (%ld,%ld) to fill queue (recon: %d)\n", msg->get_txn_id(),
-				msg->get_batch_id(), ((PPSClientQueryMessage *)msg)->recon);
-			while (!fill_queue[*participant].push(msg) && !simulation->is_done()) {
-			}
-		}
-		#if LOGGING
-			char * data = (char *)malloc(sizeof(char) * 10);
-			logger.writeToBuffer(thd_id, data, sizeof(data));
-		#endif
-		// 一些统计信息
-		INC_STATS(thd_id,seq_process_cnt,1);
-		INC_STATS(thd_id,seq_process_time,get_sys_clock() - starttime);
-		ATOM_ADD(total_txns_received,1);
-		return;
-	} else {
-		// 如果是被拆分的子事务，使用original_txn_id和original_batch_id
-		if (msg->rtype == CL_QRY && ((ClientQueryMessage*)msg)->parent_marker != INVALID_ID) {
-			// 如果是reorder产生的子事务，使用origin_return_node_id
-			assert(msg->original_batch_id == en->epoch);
-			en->list[id].client_id = msg->origin_return_node_id;
-			en->list[id].msg = ((ClientQueryMessage*)msg)->parent_msg;
-		} else {
-			// 正常的事务，使用return_id
-			en->list[id].client_id = msg->get_return_id();
-			en->list[id].msg = msg;
-		}
-	} 
-	#else
-		en->list[id].client_id = msg->get_return_id();
-		en->list[id].msg = msg;
-	#endif
 	en->list[id].client_startts = ((ClientQueryMessage*)msg)->client_startts;
 	//en->list[id].seq_startts = get_sys_clock();
 

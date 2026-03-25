@@ -273,11 +273,7 @@ public:
   uint64_t sched_epoch_cnt;
   double sched_epoch_diff;
   double order_idle_time;
-  // DLI_MVCC_OCC
-  double dli_mvcc_occ_validate_time;
-  uint64_t dli_mvcc_occ_check_cnt;
-  uint64_t dli_mvcc_occ_abort_check_cnt;
-  uint64_t dli_mvcc_occ_ts_abort_cnt;
+
   // OCC
   double occ_validate_time;
   double occ_cs_wait_time;
@@ -290,72 +286,6 @@ public:
   uint64_t occ_abort_check_cnt;
   uint64_t occ_ts_abort_cnt;
   double occ_finish_time;
-
-  // WSI
-  double wsi_validate_time;
-  double wsi_cs_wait_time;
-  uint64_t wsi_check_cnt;
-  uint64_t wsi_abort_check_cnt;
-
-  // MAAT
-  uint64_t maat_validate_cnt;
-  double maat_validate_time;
-  double maat_cs_wait_time;
-  uint64_t maat_case1_cnt;
-  uint64_t maat_case2_cnt;
-  uint64_t maat_case3_cnt;
-  uint64_t maat_case4_cnt;
-  uint64_t maat_case5_cnt;
-  double maat_range;
-  uint64_t maat_commit_cnt;
-
-  // // SSI
-  // uint64_t ssi_validate_cnt;
-  // double ssi_validate_time;
-  // uint64_t ssi_commit_cnt;
-
-  // WKDB
-  uint64_t wkdb_validate_cnt;
-  double wkdb_validate_time;
-  double wkdb_cs_wait_time;
-  uint64_t wkdb_case1_cnt;
-  uint64_t wkdb_case2_cnt;
-  uint64_t wkdb_case3_cnt;
-  uint64_t wkdb_case4_cnt;
-  uint64_t wkdb_case5_cnt;
-  double wkdb_range;
-  uint64_t wkdb_commit_cnt;
-
-  // DTA
-  uint64_t dta_validate_cnt;
-  double dta_validate_time;
-  double dta_cs_wait_time;
-  uint64_t dta_case1_cnt;
-  uint64_t dta_case2_cnt;
-  uint64_t dta_case3_cnt;
-  uint64_t dta_case4_cnt;
-  uint64_t dta_case5_cnt;
-  double dta_range;
-  uint64_t dta_commit_cnt;
-
-  //HDCC
-  uint64_t hdcc_silo_cnt;
-  uint64_t hdcc_silo_local_cnt;
-  uint64_t hdcc_calvin_cnt;
-  uint64_t hdcc_calvin_local_cnt;
-  double extreme_mode_wait_time;
-  uint64_t saved_txn_cnt;
-  uint64_t deterministic_abort_cnt_silo;
-  uint64_t deterministic_abort_cnt_calvin;
-
-
-  //SNAPPER
-  uint64_t snapper_false_deadlock;
-  uint64_t snapper_calvin_cnt;
-  uint64_t snapper_lock_cnt;
-  uint64_t snapper_txn_timeout_cnt;
-  uint64_t snapper_row_timeout_cnt;
-  uint64_t snapper_validate_abort_cnt;
 
   // Logging
   uint64_t log_write_cnt;

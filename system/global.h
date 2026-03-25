@@ -49,7 +49,6 @@
 #include "sim_manager.h"
 
 #include <boost/lockfree/queue.hpp>
-#include "da_block_queue.h"
 //#include "maat.h"
 
 using namespace std;
@@ -60,15 +59,6 @@ class SimManager;
 class Manager;
 class Query_queue;
 class OptCC;
-class Dli;
-class Focc;
-class Bocc;
-class ssi;
-class wsi;
-class Maat;
-class Dta;
-class Wkdb;
-class Tictoc;
 class Transport;
 class Remote_query;
 class TxnManPool;
@@ -87,16 +77,6 @@ class Client_txn;
 class Sequencer;
 class AriaSequencer;
 class Logger;
-class TimeTable;
-class InOutTable;
-class WkdbTimeTable;
-class DAQuery;
-class DABlockQueue;
-class DtaTimeTable;
-class KeyXidCache;
-class RtsCache;
-class CCSelector;
-class ConflictStaticsMessage;
 class WaterMarkList;
 // class QTcpQueue;
 
@@ -117,15 +97,6 @@ extern Manager glob_manager;
 extern Query_queue query_queue;
 extern Client_query_queue client_query_queue;
 extern OptCC occ_man;
-extern Dli dli_man;
-extern Focc focc_man;
-extern Bocc bocc_man;
-extern ssi ssi_man;
-extern wsi wsi_man;
-extern Maat maat_man;
-extern Dta dta_man;
-extern Wkdb wkdb_man;
-extern Tictoc tictoc_man;
 extern Transport tport_man;
 extern TxnManPool txn_man_pool;
 extern TxnPool txn_pool;
@@ -142,15 +113,6 @@ extern Client_txn client_man;
 extern Sequencer seq_man;
 extern AriaSequencer aria_seq;
 extern Logger logger;
-extern TimeTable time_table;
-extern DtaTimeTable dta_time_table;
-extern KeyXidCache dta_key_xid_cache;
-extern RtsCache dta_rts_cache;
-extern InOutTable inout_table;
-extern WkdbTimeTable wkdb_time_table;
-extern KeyXidCache wkdb_key_xid_cache;
-extern RtsCache wkdb_rts_cache;
-extern CCSelector cc_selector;
 // extern QTcpQueue tcp_queue;
 
 extern map<string, string> g_params;
@@ -238,11 +200,6 @@ extern UInt64 g_prog_timer;
 extern UInt64 g_warmup_timer;
 extern UInt64 g_msg_time_limit;
 
-// MVCC
-extern UInt64 g_max_read_req;
-extern UInt64 g_max_pre_req;
-extern UInt64 g_his_recycle_len;
-
 // YCSB
 extern UInt32 g_cc_alg;
 extern ts_t g_query_intvl;
@@ -292,8 +249,6 @@ extern double g_perc_orderproduct;
 extern double g_perc_updateproductpart;
 extern double g_perc_updatepart;
 
-extern boost::lockfree::queue<DAQuery*, boost::lockfree::fixed_sized<true>> da_query_queue;
-extern DABlockQueue da_gen_qry_queue;
 extern bool is_server;
 extern map<uint64_t, ts_t> da_start_stamp_tab;
 extern set<uint64_t> da_start_trans_tab;
@@ -306,16 +261,8 @@ extern ofstream abort_file;
 // CALVIN
 extern UInt32 g_seq_thread_cnt;
 
-//HDCC
-extern UInt32 g_calvin_thread_cnt; // number of calvin threads in the thread pool
-extern UInt64 g_data_shard_size; // number of tuples in each data shard
-extern UInt64 g_lower_bound;
-extern UInt64 g_upper_bound;
-extern UInt64 g_total_shard_num;
-extern UInt64 g_conflict_send_interval;
-extern double g_prorate_ratio;
+//dynamic workload
 extern double g_deterministic_abort_ratio;
-extern queue<ConflictStaticsMessage*> g_conflict_queue;
 extern std::vector<double> dy_write;
 extern std::vector<double> dy_skew;
 extern uint32_t g_dy_Nbatch;
@@ -361,8 +308,6 @@ enum RemReqType {
     CALVIN_ACK,
     CALVIN_ABORT,
     ARIA_ACK,
-    CONF_STAT,
-    REQ_VALID,
     VALID,
   NO_MSG
 };

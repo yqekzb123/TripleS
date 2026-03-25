@@ -53,35 +53,6 @@ uint64_t key_to_part(uint64_t key) {
 	// 	return 0;
 }
 
-/*
-	key_to_shard(uint64_t key)
-	node_num indicates which node the record lies in
-	shard_number_in_node indicates the natural shard number in the node,
-	for example, we have 9 records numberd from 0-8, 
-	g_node_cnt=2, g_data_shard_size=3
-	then we should have 4 shards like this
-	NODE	|			SHARD_CONTENT
-	---------------------------------------
-	node 0	|			0,2,4		6,8
-	node 1	|			1,3,5		7
-	Globally, shard(0,2,4) is 0th shard, shard(1,3,5) is 1st shard, 
-			  shard(6,8) is 2nd shard and shard(7) is 3rd shard
-	Locally, the shard_number_in_node of shard(0,2,4) is 0, of shard(6,8) is 1 in node zero
-			 the shard_number_in_node of shard(1,3,5) is 0, of shard(7) is 1 in node one
-
-	NOTE: how to determine the total number of shards?
-	total_number_of_shards=key_to_shard(max_key)+g_node_cnt
-	for the previous example, max_key is 8, key_to_shard(8)=2, g_node_cnt=2
-	so total_number_of_shards=2+2=4
-
-	NOTE: last two steps cannot be merged into one step, that is
-	key/(g_node_cnt*g_data_shard_size)*g_node_cnt DOES NOT EQUAL TO key/(g_data_shard_size)
-*/
-uint64_t key_to_shard(uint64_t key) {
-	int node_num=key%g_part_cnt;
-	int shard_number_in_node=key/(g_node_cnt*g_data_shard_size);
-	return shard_number_in_node*g_node_cnt+node_num;
-}
 
 uint64_t merge_idx_key(UInt64 key_cnt, UInt64 * keys) {
 	UInt64 len = 64 / key_cnt;
@@ -117,10 +88,6 @@ std::vector<uint64_t> split_calvin_key(uint64_t calvin_key) {
 	return parts;
 }
 
-void init_globals() {
-  g_max_read_req = g_node_cnt * g_inflight_max;
-  g_max_pre_req = g_node_cnt * g_inflight_max;
-}
 
 void init_client_globals() {
   if(g_node_cnt > g_client_node_cnt) {

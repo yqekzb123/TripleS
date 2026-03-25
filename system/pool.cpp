@@ -24,8 +24,6 @@
 #include "ycsb.h"
 #include "tpcc_query.h"
 #include "pps_query.h"
-#include "da.h"
-#include "da_query.h"
 #include "query.h"
 #include "msg_queue.h"
 #include "row.h"

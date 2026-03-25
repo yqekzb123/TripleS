@@ -18,7 +18,6 @@
 #include "ycsb.h"
 #include "tpcc.h"
 #include "pps.h"
-#include "da.h"
 #include "thread.h"
 #include "io_thread.h"
 #include "client_thread.h"
@@ -81,8 +80,6 @@ int main(int argc, char *argv[]) {
 			m_wl = new TPCCWorkload; break;
 		case PPS :
 			m_wl = new PPSWorkload; break;
-		case DA :
-			m_wl = new DAWorkload; break;
 		default:
 			assert(false);
 	}

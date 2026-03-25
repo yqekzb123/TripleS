@@ -52,15 +52,12 @@ public:
     RC process_aria_ack(Message * msg);
 #endif
     RC process_rtxn_cont(Message * msg);
-    RC process_req_valid(Message * msg);
-    RC process_valid(Message * msg);
     RC process_log_msg(Message * msg);
     RC process_log_msg_rsp(Message * msg);
     RC process_log_flushed(Message * msg);
     RC init_phase();
     uint64_t get_next_txn_id();
     bool is_cc_new_timestamp();
-  bool is_mine(Message* msg);
 private:
     uint64_t _thd_txn_id;
     ts_t        _curr_ts;

@@ -306,11 +306,7 @@ void Stats_thd::clear() {
   sched_epoch_cnt=0;
   sched_epoch_diff=0;
   order_idle_time=0;
-  // DLI_MVCC_OCC
-  dli_mvcc_occ_validate_time = 0;
-  dli_mvcc_occ_check_cnt = 0;
-  dli_mvcc_occ_abort_check_cnt = 0;
-  dli_mvcc_occ_ts_abort_cnt = 0;
+
   //OCC
   occ_validate_time=0;
   occ_cs_wait_time=0;
@@ -324,65 +320,6 @@ void Stats_thd::clear() {
   occ_ts_abort_cnt=0;
   occ_finish_time=0;
 
-  // WSI
-  wsi_validate_time=0;
-  wsi_cs_wait_time=0;
-  wsi_check_cnt=0;
-  wsi_abort_check_cnt=0;
-
-  // MAAT
-  maat_validate_cnt=0;
-  maat_validate_time=0;
-  maat_cs_wait_time=0;
-  maat_case1_cnt=0;
-  maat_case2_cnt=0;
-  maat_case3_cnt=0;
-  maat_case4_cnt=0;
-  maat_case5_cnt=0;
-  maat_range=0;
-  maat_commit_cnt=0;
-
-  // DTA
-  dta_validate_cnt = 0;
-  dta_validate_time = 0;
-  dta_cs_wait_time = 0;
-  dta_case1_cnt = 0;
-  dta_case2_cnt = 0;
-  dta_case3_cnt = 0;
-  dta_case4_cnt = 0;
-  dta_case5_cnt = 0;
-  dta_range = 0;
-  dta_commit_cnt = 0;
-
-  // WKDB
-  wkdb_validate_cnt=0;
-  wkdb_validate_time=0;
-  wkdb_cs_wait_time=0;
-  wkdb_case1_cnt=0;
-  wkdb_case2_cnt=0;
-  wkdb_case3_cnt=0;
-  wkdb_case4_cnt=0;
-  wkdb_case5_cnt=0;
-  wkdb_range=0;
-  wkdb_commit_cnt=0;
-
-  //HDCC
-  hdcc_silo_cnt=0;
-  hdcc_silo_local_cnt=0;
-  hdcc_calvin_cnt=0;
-  hdcc_calvin_local_cnt=0;
-  extreme_mode_wait_time = 0;
-  saved_txn_cnt = 0;
-  deterministic_abort_cnt_silo = 0;
-  deterministic_abort_cnt_calvin = 0;
-
-  //SNAPPER
-  snapper_false_deadlock = 0;
-  snapper_calvin_cnt = 0;
-  snapper_lock_cnt = 0;
-  snapper_txn_timeout_cnt = 0;
-  snapper_row_timeout_cnt = 0;
-  snapper_validate_abort_cnt = 0;
   // Logging
   log_write_cnt=0;
   log_write_time=0;
@@ -1057,14 +994,7 @@ void Stats_thd::print(FILE * outf, bool prog) {
           sched_queue_dequeue_time / BILLION, calvin_sched_time / BILLION,
           sched_idle_time / BILLION, sched_txn_table_time / BILLION, sched_epoch_cnt,
           sched_epoch_diff / BILLION, order_idle_time / BILLION);
-  // DLI_MVCC_OCC
-  fprintf(outf,
-          ",dli_mvcc_occ_validate_time=%f"
-          ",dli_mvcc_occ_check_cnt=%ld"
-          ",dli_mvcc_occ_abort_check_cnt=%ld"
-          ",dli_mvcc_occ_ts_abort_cnt=%ld",
-          dli_mvcc_occ_validate_time / BILLION, dli_mvcc_occ_check_cnt,
-          dli_mvcc_occ_abort_check_cnt, dli_mvcc_occ_ts_abort_cnt);
+
   //OCC
   fprintf(outf,
   ",occ_validate_time=%f"
@@ -1083,88 +1013,6 @@ void Stats_thd::print(FILE * outf, bool prog) {
           occ_hist_validate_fail_time / BILLION, occ_act_validate_fail_time / BILLION,
           occ_check_cnt, occ_abort_check_cnt, occ_ts_abort_cnt, occ_finish_time / BILLION);
 
-  //MAAT
-  double maat_range_avg = 0;
-  double maat_validate_avg = 0;
-  double maat_cs_wait_avg = 0;
-  uint64_t maat_commit_avg = 0;
-  if (maat_commit_cnt > 0) maat_range_avg = maat_range / maat_commit_cnt;
-  if(maat_validate_cnt > 0) {
-    maat_validate_avg = maat_validate_time / maat_validate_cnt;
-    maat_cs_wait_avg = maat_cs_wait_time / maat_validate_cnt;
-    maat_commit_avg = maat_commit_cnt / maat_validate_cnt;
-  }
-  fprintf(outf,
-  ",maat_validate_cnt=%ld"
-  ",maat_validate_time=%f"
-  ",maat_validate_avg=%f"
-  ",maat_cs_wait_time=%f"
-  ",maat_cs_wait_avg=%f"
-  ",maat_case1_cnt=%ld"
-  ",maat_case2_cnt=%ld"
-  ",maat_case3_cnt=%ld"
-  ",maat_case4_cnt=%ld"
-  ",maat_case5_cnt=%ld"
-  ",maat_range=%f"
-  ",maat_commit_cnt=%ld"
-  ",maat_commit_avg=%ld"
-          ",maat_range_avg=%f",
-          maat_validate_cnt, maat_validate_time / BILLION, maat_validate_avg / BILLION,
-          maat_cs_wait_time / BILLION, maat_cs_wait_avg / BILLION, maat_case1_cnt, maat_case2_cnt,
-          maat_case3_cnt, maat_case4_cnt, maat_case5_cnt, maat_range / BILLION, maat_commit_cnt,
-          maat_commit_avg, maat_range_avg);
-  // DTA
-  double dta_range_avg = 0;
-  double dta_validate_avg = 0;
-  double dta_cs_wait_avg = 0;
-  uint64_t dta_commit_avg = 0;
-  if (dta_commit_cnt > 0) dta_range_avg = dta_range / dta_commit_cnt;
-  if (dta_validate_cnt > 0) {
-    dta_validate_avg = dta_validate_time / dta_validate_cnt;
-    dta_cs_wait_avg = dta_cs_wait_time / dta_validate_cnt;
-    dta_commit_avg = dta_commit_cnt / dta_validate_cnt;
-  }
-  fprintf(outf,
-          ",dta_validate_cnt=%ld"
-          ",dta_validate_time=%f"
-          ",dta_validate_avg=%f"
-          ",dta_cs_wait_time=%f"
-          ",dta_cs_wait_avg=%f"
-          ",dta_case1_cnt=%ld"
-          ",dta_case2_cnt=%ld"
-          ",dta_case3_cnt=%ld"
-          ",dta_case4_cnt=%ld"
-          ",dta_case5_cnt=%ld"
-          ",dta_range=%f"
-          ",dta_commit_cnt=%ld"
-          ",dta_commit_avg=%ld"
-          ",dta_range_avg=%f",
-          dta_validate_cnt, dta_validate_time / BILLION, dta_validate_avg / BILLION,
-          dta_cs_wait_time / BILLION, dta_cs_wait_avg / BILLION, dta_case1_cnt, dta_case2_cnt,
-          dta_case3_cnt, dta_case4_cnt, dta_case5_cnt, dta_range / BILLION, dta_commit_cnt,
-          dta_commit_avg, dta_range_avg);
-  //HDCC
-  fprintf(outf,
-          ",extreme_mode_wait_time=%f"
-          ",saved_txn_cnt=%ld"
-          ",deterministic_abort_cnt_silo=%ld"
-          ",deterministic_abort_cnt_calvin=%ld"
-          ",hdcc_calvin_cnt=%ld"
-          ",hdcc_calvin_local_cnt=%ld"
-          ",hdcc_silo_cnt=%ld"
-          ",hdcc_silo_local_cnt=%ld",
-          extreme_mode_wait_time / BILLION, saved_txn_cnt, deterministic_abort_cnt_silo,deterministic_abort_cnt_calvin, hdcc_calvin_cnt, 
-          hdcc_calvin_local_cnt, hdcc_silo_cnt, hdcc_silo_local_cnt);
-  //SNAPPER
-  fprintf(outf,
-          ",snapper_false_deadlock=%ld"
-          ",snapper_calvin_cnt=%ld"
-          ",snapper_lock_cnt=%ld"
-          ",snapper_txn_timeout_cnt=%ld"
-          ",snapper_row_timeout_cnt=%ld"
-          ",snapper_validate_abort_cnt=%ld",
-          snapper_false_deadlock, snapper_calvin_cnt, snapper_lock_cnt,snapper_txn_timeout_cnt,
-          snapper_row_timeout_cnt, snapper_validate_abort_cnt);
   // Logging
   double log_write_avg_time = 0;
   if (log_write_cnt > 0) log_write_avg_time = log_write_time / log_write_cnt;
@@ -1650,11 +1498,7 @@ void Stats_thd::combine(Stats_thd * stats) {
   sched_epoch_cnt+=stats->sched_epoch_cnt;
   sched_epoch_diff+=stats->sched_epoch_diff;
   order_idle_time+=stats->order_idle_time;
-  // DLI_MVCC_OCC
-  dli_mvcc_occ_validate_time += stats->dli_mvcc_occ_validate_time;
-  dli_mvcc_occ_check_cnt += stats->dli_mvcc_occ_check_cnt;
-  dli_mvcc_occ_abort_check_cnt += stats->dli_mvcc_occ_abort_check_cnt;
-  dli_mvcc_occ_ts_abort_cnt += stats->dli_mvcc_occ_ts_abort_cnt;
+
   //OCC
   occ_validate_time+=stats->occ_validate_time;
   occ_cs_wait_time+=stats->occ_cs_wait_time;
@@ -1667,60 +1511,6 @@ void Stats_thd::combine(Stats_thd * stats) {
   occ_abort_check_cnt+=stats->occ_abort_check_cnt;
   occ_ts_abort_cnt+=stats->occ_ts_abort_cnt;
   occ_finish_time+=stats->occ_finish_time;
-
-  // MAAT
-  maat_validate_cnt+=stats->maat_validate_cnt;
-  maat_validate_time+=stats->maat_validate_time;
-  maat_cs_wait_time+=stats->maat_cs_wait_time;
-  maat_case1_cnt+=stats->maat_case1_cnt;
-  maat_case2_cnt+=stats->maat_case2_cnt;
-  maat_case3_cnt+=stats->maat_case3_cnt;
-  maat_case4_cnt+=stats->maat_case4_cnt;
-  maat_case5_cnt+=stats->maat_case5_cnt;
-  maat_range+=stats->maat_range;
-  maat_commit_cnt+=stats->maat_commit_cnt;
-
-  // DTA
-  dta_validate_cnt += stats->dta_validate_cnt;
-  dta_validate_time += stats->dta_validate_time;
-  dta_cs_wait_time += stats->dta_cs_wait_time;
-  dta_case1_cnt += stats->dta_case1_cnt;
-  dta_case2_cnt += stats->dta_case2_cnt;
-  dta_case3_cnt += stats->dta_case3_cnt;
-  dta_case4_cnt += stats->dta_case4_cnt;
-  dta_case5_cnt += stats->dta_case5_cnt;
-  dta_range += stats->dta_range;
-  dta_commit_cnt += stats->dta_commit_cnt;
-
-  // WKDB
-  wkdb_validate_cnt+=stats->wkdb_validate_cnt;
-  wkdb_validate_time+=stats->wkdb_validate_time;
-  wkdb_cs_wait_time+=stats->wkdb_cs_wait_time;
-  wkdb_case1_cnt+=stats->wkdb_case1_cnt;
-  wkdb_case2_cnt+=stats->wkdb_case2_cnt;
-  wkdb_case3_cnt+=stats->wkdb_case3_cnt;
-  wkdb_case4_cnt+=stats->wkdb_case4_cnt;
-  wkdb_case5_cnt+=stats->wkdb_case5_cnt;
-  wkdb_range+=stats->wkdb_range;
-  wkdb_commit_cnt+=stats->wkdb_commit_cnt;
-
-  //HDCC
-  hdcc_calvin_cnt+=stats->hdcc_calvin_cnt;
-  hdcc_calvin_local_cnt+=stats->hdcc_calvin_local_cnt;
-  hdcc_silo_cnt+=stats->hdcc_silo_cnt;
-  hdcc_silo_local_cnt+=stats->hdcc_silo_local_cnt;
-  extreme_mode_wait_time += stats->extreme_mode_wait_time;
-  saved_txn_cnt += stats->saved_txn_cnt;
-  deterministic_abort_cnt_silo += stats->deterministic_abort_cnt_silo;
-  deterministic_abort_cnt_calvin += stats->deterministic_abort_cnt_calvin;
-
-  //SNAPPER
-  snapper_calvin_cnt+=stats->snapper_calvin_cnt;
-  snapper_false_deadlock+=stats->snapper_false_deadlock;
-  snapper_lock_cnt+=stats->snapper_lock_cnt;
-  snapper_txn_timeout_cnt += stats->snapper_txn_timeout_cnt;
-  snapper_row_timeout_cnt += stats->snapper_row_timeout_cnt;
-  snapper_validate_abort_cnt += stats->snapper_validate_abort_cnt;
 
   // Logging
   log_write_cnt+=stats->log_write_cnt;

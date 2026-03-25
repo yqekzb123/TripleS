@@ -21,7 +21,6 @@
 #include "ycsb_query.h"
 #include "tpcc_query.h"
 #include "pps_query.h"
-#include "da_query.h"
 
 /*************************************************/
 //     class Query_queue

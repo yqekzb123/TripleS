@@ -73,12 +73,8 @@ RC CalvinLockThread::run() {
 		assert(msg->get_txn_id() != UINT64_MAX);
 		txn_man =
 				txn_table.get_transaction_manager(get_thd_id(), msg->get_txn_id(), msg->get_batch_id());
-#if CC_ALG != HDCC && CC_ALG != SNAPPER
 		assert(msg->get_rtype() == CL_QRY || msg->get_rtype() == CL_QRY_O);
-		
-#else
-		txn_man->algo = msg->algo;
-#endif
+
 		while (!txn_man->unset_ready()) {
 		}
 		assert(ISSERVERN(msg->get_return_id()));
@@ -199,9 +195,6 @@ RC CalvinSequencerThread::run() {
 		switch (rtype) {
 			case CL_QRY:
 			case CL_QRY_O:
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-			case RTXN:
-#endif
 				// Query from client
 				DEBUG("SEQ process_txn\n");
 				seq_man.process_txn(msg,get_thd_id(),0,0,0,0);
