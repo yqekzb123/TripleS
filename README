@@ -24,8 +24,6 @@ DBMS BENCHMARK
   1. Seven different concurrency control algorithms are supported.
 	NO_WAIT[1]		: no wait two phase locking
 	WAIT_DIE[1]		: wait and die two phase locking
-	TIMESTAMP[1]	: basic T/O
-	MVCC[2]			: multi-version T/O
 	OCC[3]			: optimistic concurrency control (MaaT)
 	CALVIN[4]		: Calvin
 
@@ -63,8 +61,7 @@ dbms benchmark has the following parameters in the config file. Parameters with 
   WARMUP_TIMER		: number of nanoseconds to run for warmup
   SEQ_BATCH_TIMER : number of nanoseconds between CALVIN batches
   WORKLOAD		: workload supported (TPCC, YCSB, or PPS)
-  CC_ALG		: concurrency control algorithm (WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, or MAAT)
-  ISOLATION_LEVEL : system isolation level (SERIALIZABLE, READ_COMMITTED, READ_UNCOMMITTED, or NOLOCK)
+  CC_ALG		: concurrency control algorithm (WAIT_DIE, NO_WAIT, CALVIN)
 
   THREAD_ALLOC	: per thread allocator.
   * MEM_PAD		: enable memory padding to avoid false sharing.
@@ -79,7 +76,6 @@ dbms benchmark has the following parameters in the config file. Parameters with 
   BTREE_ORDER	: fanout of each B-tree node
 
   TS_TWR		: enable Thomas Write Rule (TWR) in TIMESTAMP
-  HIS_RECYCLE_LEN	: in MVCC, history will be recycled if they are too long.
   MAX_WRITE_SET	: the max size of a write set in OCC.
 
   MAX_ROW_PER_TXN	: max number of rows touched per transaction.

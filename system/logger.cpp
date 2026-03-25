@@ -39,21 +39,6 @@ LogRecord* Logger::createRecord(uint64_t txn_id, LogIUD iud, uint64_t table_id, 
   return record;
 }
 
-#if CC_ALG == HDCC
-LogRecord* Logger::createRecord(uint64_t txn_id, LogIUD iud, uint64_t table_id, uint64_t key,
-                                uint64_t max_calvin_tid) {
-  LogRecord * record = (LogRecord*)mem_allocator.alloc(sizeof(LogRecord));
-  record->rcd.init();
-  record->rcd.lsn = ATOM_FETCH_ADD(lsn,1);
-  record->rcd.iud = iud;
-  record->rcd.txn_id = txn_id;
-  record->rcd.table_id = table_id;
-  record->rcd.key = key;
-  record->rcd.max_calvin_tid = max_calvin_tid;
-  return record;
-}
-#endif
-
 LogRecord* Logger::createRecord(LogRecord* record) {
   LogRecord * my_record = (LogRecord*)mem_allocator.alloc(sizeof(LogRecord));
   my_record->rcd.init();

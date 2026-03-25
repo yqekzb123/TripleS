@@ -197,10 +197,6 @@ void parser(int argc, char * argv[]) {
   g_abort_thread_cnt = 0;
   g_total_thread_cnt -= 1;
 #endif
-#elif CC_ALG == HDCC
-  g_total_thread_cnt += 3; // sequencer + scheduler thread + confilict stat thread
-#elif CC_ALG == SNAPPER
-  g_total_thread_cnt += 3; // sequencer + scheduler thread + snapper check thread
 #elif CC_ALG == ARIA
   g_total_thread_cnt += 1; // sequencer thread
   g_total_thread_cnt -= 1; // abort thread
@@ -277,9 +273,6 @@ void parser(int argc, char * argv[]) {
       printf("g_total_client_thread_cnt %d\n",g_total_client_thread_cnt);
       printf("g_total_node_cnt %d\n",g_total_node_cnt);
       printf("g_seq_batch_time_limit %ld\n",g_seq_batch_time_limit);
-#if CC_ALG == HDCC
-      printf("g_calvin_thread_cnt %d\n",g_calvin_thread_cnt);
-#endif
 
     // Initialize client-specific globals
   if (g_node_id >= g_node_cnt) init_client_globals();

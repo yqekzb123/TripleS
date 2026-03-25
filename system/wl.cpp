@@ -159,10 +159,6 @@ RC Workload::init_schema(const char * schema_file) {
         } else if (!tname.compare(1, 4, "USES")) {
           table_size = MAX_PPS_SUPPLIER_KEY;
         }
-#elif WORKLOAD == DA
-        if (!tname.compare(1, 5, "DAtab")) {
-          table_size = MAX_DA_TABLE_SIZE;
-        }
 #else
         table_size = g_synth_table_size / g_part_cnt;
 #endif
@@ -182,11 +178,6 @@ RC Workload::init_schema(const char * schema_file) {
 }
 //add by ym origin function mark
 void Workload::index_delete_all() {
-  #if WORKLOAD ==DA
-    for (auto index :indexes) {
-      index.second->index_reset();
-    }
-  #endif
   /*for (auto index_name = indexes.keys(); index_name = index_name.next()) {
     INDEX * index = (INDEX *) indexes[index_name];
     index->index_delete();

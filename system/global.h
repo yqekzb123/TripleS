@@ -271,9 +271,6 @@ extern uint32_t g_dy_batch_id;
 // ARIA
 extern UInt32 g_aria_batch_size;
 
-// TICTOC
-extern uint32_t g_max_num_waits;
-
 // Replication
 extern UInt32 g_repl_type;
 extern UInt32 g_repl_cnt;
@@ -281,15 +278,10 @@ extern UInt32 g_repl_cnt;
 enum RC { RCOK=0, Commit, Abort, WAIT, WAIT_REM, ERROR, FINISH, NONE};
 enum RemReqType {
   INIT_DONE = 0,
-    RLK,
-    RULK,
     CL_QRY,
-    CL_QRY_O,//one server but use the msg queue
     RQRY,
     RQRY_CONT,
     RFIN,
-    RLK_RSP,
-    RULK_RSP,
     RQRY_RSP,
     RACK,
     RACK_PREP,
@@ -298,7 +290,6 @@ enum RemReqType {
     RTXN_CONT,
     RINIT,
     RPREPARE,
-    RPASS,
     RFWD,
     RDONE,
     CL_RSP,
@@ -348,11 +339,6 @@ enum access_t {RD, WR, XP, SCAN};
 enum lock_t {LOCK_EX = 0, LOCK_SH, LOCK_NONE };
 /* TIMESTAMP */
 enum TsType {R_REQ = 0, W_REQ, P_REQ, XP_REQ};
-
-/*DA query build queue*/
-//queue<DAQuery> query_build_queue;
-
-
 
 #define GET_THREAD_ID(id)	(id % g_thread_cnt)
 #define GET_NODE_ID(id)	(id % g_node_cnt)

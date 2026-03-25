@@ -58,29 +58,28 @@ void TxnStats::init() {
 	abort_cnt = 0;
 	copy_request_counts = 0;
 
-	 total_work_queue_time = 0;
-	 work_queue_time = 0;
-	 total_cc_block_time = 0;
-	 cc_block_time = 0;
-	 total_cc_time = 0;
-	 cc_time = 0;
-	 total_work_queue_cnt = 0;
-	 work_queue_cnt = 0;
-	 total_msg_queue_time = 0;
-	 msg_queue_time = 0;
-	 total_abort_time = 0;
+	total_work_queue_time = 0;
+	work_queue_time = 0;
+	total_cc_block_time = 0;
+	cc_block_time = 0;
+	total_cc_time = 0;
+	cc_time = 0;
+	total_work_queue_cnt = 0;
+	work_queue_cnt = 0;
+	total_msg_queue_time = 0;
+	msg_queue_time = 0;
+	total_abort_time = 0;
 
-	 clear_short();
+	clear_short();
 }
 
 void TxnStats::clear_short() {
-
-	 work_queue_time_short = 0;
-	 cc_block_time_short = 0;
-	 cc_time_short = 0;
-	 msg_queue_time_short = 0;
-	 process_time_short = 0;
-	 network_time_short = 0;
+	work_queue_time_short = 0;
+	cc_block_time_short = 0;
+	cc_time_short = 0;
+	msg_queue_time_short = 0;
+	process_time_short = 0;
+	network_time_short = 0;
 }
 
 void TxnStats::reset() {
@@ -288,10 +287,7 @@ void Transaction::release_accesses(uint64_t thd_id) {
 void Transaction::release_inserts(uint64_t thd_id) {
 	for(uint64_t i = 0; i < insert_rows.size(); i++) {
 		row_t * row = insert_rows[i].first;
-#if CC_ALG != MAAT && CC_ALG != OCC && CC_ALG != WOOKONG && \
-		CC_ALG != TICTOC && CC_ALG != BOCC && CC_ALG != FOCC && CC_ALG != DTA && CC_ALG != DLI_MVCC_OCC && \
-		CC_ALG != DLI_MVCC_BASE && CC_ALG != DLI_DTA && CC_ALG != DLI_DTA2 && CC_ALG != DLI_DTA3 && \
-		CC_ALG != DLI_BASE && CC_ALG != DLI_OCC
+#if CC_ALG != OCC
 		DEBUG_M("TxnManager::cleanup row->manager free\n");
 		mem_allocator.free(row->manager, 0);
 #endif
@@ -313,10 +309,7 @@ void Transaction::release_inserts(uint64_t thd_id) {
 void Transaction::release_inserts(uint64_t thd_id) {
 	for(uint64_t i = 0; i < insert_rows.size(); i++) {
 		row_t * row = insert_rows[i];
-#if CC_ALG != MAAT && CC_ALG != OCC && CC_ALG != WOOKONG && \
-		CC_ALG != TICTOC && CC_ALG != BOCC && CC_ALG != FOCC && CC_ALG != DTA && CC_ALG != DLI_MVCC_OCC && \
-		CC_ALG != DLI_MVCC_BASE && CC_ALG != DLI_DTA && CC_ALG != DLI_DTA2 && CC_ALG != DLI_DTA3 && \
-		CC_ALG != DLI_BASE && CC_ALG != DLI_OCC
+#if CC_ALG != OCC
 		DEBUG_M("TxnManager::cleanup row->manager free\n");
 		mem_allocator.free(row->manager, 0);
 #endif
@@ -399,28 +392,15 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 
 // reset after abort
 void TxnManager::reset() {
-#if CC_ALG == SNAPPER
-	lock_ready = (algo == WAIT_DIE)? true: false;
-#else
 	lock_ready = false;
-#endif
 	lock_ready_cnt = 0;
 	locking_done = true;
-#if CC_ALG == DLI_MVCC || CC_ALG == DLI_MVCC_OCC
-	is_abort = nullptr;
-#endif
-	ready_part = 0;
+
 	rsp_cnt = 0;
 	aborted = false;
 	return_id = UINT64_MAX;
 	twopl_wait_start = 0;
 	log_flushed = false;
-
-#if LONG_TXN_WORKLOAD
-	original_txn_id = INVALID_ID;
-	original_batch_id = INVALID_ID;
-	origin_return_node_id = INVALID_ID;
-#endif
 
 	//ready = true;
 
@@ -658,18 +638,6 @@ void TxnManager::send_prepare_messages() {
 	}
 }
 
-void TxnManager::send_validation_messages() {
-	rsp_cnt = query->partitions_touched.size() - 1;
-	DEBUG("%ld Send PREPARE messages to %d\n",get_txn_id(),rsp_cnt);
-	for(uint64_t i = 0; i < query->partitions_touched.size(); i++) {
-		if(GET_NODE_ID(query->partitions_touched[i]) == g_node_id) {
-			continue;
-		}
-		msg_queue.enqueue(get_thd_id(), Message::create_message(this, VALID),
-											GET_NODE_ID(query->partitions_touched[i]));
-	}
-}
-
 void TxnManager::send_finish_messages() {
 	rsp_cnt = query->partitions_touched.size() - 1;
 	assert(IS_LOCAL(get_txn_id()));
@@ -755,9 +723,6 @@ void TxnManager::commit_stats() {
 
 void TxnManager::register_thread(Thread * h_thd) {
 	this->h_thd = h_thd;
-#if CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC
-	this->active_part = GET_PART_ID_FROM_IDX(get_thd_id());
-#endif
 }
 
 void TxnManager::set_txn_id(txnid_t txn_id) {
@@ -772,9 +737,9 @@ Workload *TxnManager::get_wl() { return h_wl; }
 
 uint64_t TxnManager::get_thd_id() {
 	if(h_thd)
-	return h_thd->get_thd_id();
+		return h_thd->get_thd_id();
 	else
-	return 0;
+		return 0;
 }
 
 BaseQuery *TxnManager::get_query() { return query; }
@@ -846,8 +811,7 @@ void TxnManager::cleanup_row(RC rc, uint64_t rid) {
 #if ISOLATION_LEVEL != READ_UNCOMMITTED
 	row_t * orig_r = txn->accesses[rid]->orig_row;
 	if (ROLL_BACK && type == XP &&
-			(CC_ALG == DL_DETECT || CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE || CC_ALG == HSTORE ||
-			 CC_ALG == HSTORE_SPEC)) {
+			(CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE)) {
 		orig_r->return_row(rc,type, this, txn->accesses[rid]->orig_data);
 	} else {
 #if ISOLATION_LEVEL == READ_COMMITTED
@@ -861,7 +825,7 @@ void TxnManager::cleanup_row(RC rc, uint64_t rid) {
 #endif
 
 #if ROLL_BACK && \
-		(CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE || CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC)
+		(CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE)
 	if (type == WR) {
 		//printf("free 10 %ld\n",get_txn_id());
 				txn->accesses[rid]->orig_data->free_row();
@@ -875,10 +839,6 @@ void TxnManager::cleanup_row(RC rc, uint64_t rid) {
 #endif
 #endif
 	if (type == WR) txn->accesses[rid]->version = version;
-#if CC_ALG == TICTOC
-	if (_min_commit_ts > glob_manager.get_max_cts())
-		glob_manager.set_max_cts(_min_commit_ts);
-#endif
 
 #if CC_ALG != SILO
   txn->accesses[rid]->data = NULL;
@@ -973,8 +933,7 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 	access->tid = last_tid;
 #endif
 
-#if ROLL_BACK && (CC_ALG == DL_DETECT || CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE || \
-									CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC)
+#if ROLL_BACK && (CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE)
 	if (type == WR) {
 		//printf("alloc 10 %ld\n",get_txn_id());
 		uint64_t part_id = row->get_part_id();
@@ -1021,14 +980,12 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 	INC_STATS(get_thd_id(), txn_manager_time, timespan);
 	row_rtn  = access->data;
 
-	if (CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC || CC_ALG == CALVIN) assert(rc == RCOK);
+	if (CC_ALG == CALVIN) assert(rc == RCOK);
 	assert(rc == RCOK);
 	return rc;
 }
 
 RC TxnManager::get_row_post_wait(row_t *& row_rtn) {
-	assert(CC_ALG != HSTORE && CC_ALG != HSTORE_SPEC);
-
 	uint64_t starttime = get_sys_clock();
 	row_t * row = this->last_row;
 	access_t type = this->last_type;
@@ -1042,7 +999,7 @@ RC TxnManager::get_row_post_wait(row_t *& row_rtn) {
 	access->type = type;
 	access->orig_row = row;
 
-#if ROLL_BACK && (CC_ALG == DL_DETECT || CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE)
+#if ROLL_BACK && (CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE)
 	if (type == WR) {
 		uint64_t part_id = row->get_part_id();
 	//printf("alloc 10 %ld\n",get_txn_id());
@@ -1068,22 +1025,6 @@ RC TxnManager::insert_item(itemid_t * item, index_btree * index) {
 // #if CC_ALG == CALVIN
 // 	row_t * row = (row_t *) item->location;
 // 	index->index_insert(row->get_primary_key(), item, row->get_part_id(), this);
-// #elif CC_ALG == HDCC
-// 	if (algo == CALVIN) {
-// 		row_t * row = (row_t *) item->location;
-// 		index->index_insert(row->get_primary_key(), item, row->get_part_id(), this);
-// 	} else {
-// 		txn->insert_items = item;
-// 	}
-// #elif CC_ALG == SILO
-// 	txn->insert_items = item;
-// #elif CC_ALG == SNAPPER
-// 	if (algo == CALVIN) {
-// 		row_t * row = (row_t *) item->location;
-// 		index->index_insert(row->get_primary_key(), item, row->get_part_id(), this);
-// 	} else {
-// 		txn->insert_items = item;
-// 	}
 // #else
 	txn->insert_items = item;
 // #endif
@@ -1106,36 +1047,6 @@ RC TxnManager::insert_row(row_t * row, index_btree * index) {
 // 	m_item->location = row;
 // 	m_item->valid = true;
 // 	index->index_insert(row->get_primary_key(), m_item, row->get_part_id(), this);
-// #elif CC_ALG == HDCC
-// 	if (algo == CALVIN) {
-// 		itemid_t *m_item = (itemid_t *)mem_allocator.alloc(sizeof(itemid_t));
-// 		m_item->init();
-// 		m_item->type = DT_row;
-// 		m_item->location = row;
-// 		m_item->valid = true;
-// 		index->index_insert(row->get_primary_key(), m_item, row->get_part_id(), this);
-// 	} else {
-// 		bt_node * leaf;
-// 		row_t * temp1, * temp2;
-// 		index->leaf_row_access(UINT64_MAX, LF_LAST, row->get_part_id(), this, leaf, temp1);
-// 		rc = this->get_row(temp1, WR, temp2);
-// 		txn->insert_rows.add(std::pair<row_t*, index_btree*>(row, index));
-// 	}
-// #elif CC_ALG == SNAPPER
-// 	if (algo == CALVIN) {
-// 		itemid_t *m_item = (itemid_t *)mem_allocator.alloc(sizeof(itemid_t));
-// 		m_item->init();
-// 		m_item->type = DT_row;
-// 		m_item->location = row;
-// 		m_item->valid = true;
-// 		index->index_insert(row->get_primary_key(), m_item, row->get_part_id(), this);
-// 	} else {
-// 		bt_node * leaf;
-// 		row_t * temp1, * temp2;
-// 		index->leaf_row_access(UINT64_MAX, LF_LAST, row->get_part_id(), this, leaf, temp1);
-// 		rc = this->get_row(temp1, WR, temp2);
-// 		txn->insert_rows.add(std::pair<row_t*, index_btree*>(row, index));
-// 	}
 // #else
 	bt_node * leaf;
 	row_t * temp1, * temp2;

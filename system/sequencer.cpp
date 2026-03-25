@@ -52,7 +52,7 @@ void Sequencer::init(Workload * wl) {
 // Assumes 1 thread does sequencer work
 void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 	qlite_ll * en = wl_head;
-	uint64_t batch_id = msg->original_batch_id == INVALID_ID ? msg->get_batch_id() : msg->original_batch_id;
+	uint64_t batch_id = msg->get_batch_id();
 	// uint64_t batch_id = msg->get_batch_id();
 	while(en != NULL && en->epoch != batch_id) {
 		en = en->next;
@@ -70,8 +70,8 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 	// Decrement the number of acks needed for this txn
 	uint32_t query_acks_left = ATOM_SUB_FETCH(wait_list[id].server_ack_cnt, 1);
 	// 打印目前事务还差多少ack
-	DEBUG_SEQ("Sequencer::process_ack() txn=[%ld-%ld] id=%ld original_txn=[%ld-%ld] ack_left=%d\n",
-			 batch_id,msg->get_txn_id(), id, msg->original_batch_id,msg->original_txn_id, query_acks_left);
+	// DEBUG_SEQ("Sequencer::process_ack() txn=[%ld-%ld] id=%ld original_txn=[%ld-%ld] ack_left=%d\n",
+			//  batch_id,msg->get_txn_id(), id, msg->original_batch_id,msg->original_txn_id, query_acks_left);
 
 	if (wait_list[id].skew_startts == 0) {
 		wait_list[id].skew_startts = get_sys_clock();
@@ -84,40 +84,22 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 		// free msg, queries
 #if WORKLOAD == YCSB
 		YCSBClientQueryMessage* cl_msg = (YCSBClientQueryMessage*)wait_list[id].msg;
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-		if (msg->algo == CALVIN) {
-#endif
-			for(uint64_t i = 0; i < cl_msg->requests.size(); i++) {
-				DEBUG_M("Sequencer::process_ack() ycsb_request free\n");
-				mem_allocator.free(cl_msg->requests[i],sizeof(ycsb_request));
-			}
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
+		for(uint64_t i = 0; i < cl_msg->requests.size(); i++) {
+			DEBUG_M("Sequencer::process_ack() ycsb_request free\n");
+			mem_allocator.free(cl_msg->requests[i],sizeof(ycsb_request));
 		}
-#endif
 #elif WORKLOAD == TPCC
-			TPCCClientQueryMessage* cl_msg = (TPCCClientQueryMessage*)wait_list[id].msg;
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-		if(msg->algo == CALVIN){
-			if(cl_msg->txn_type == TPCC_NEW_ORDER) {
-				for(uint64_t i = 0; i < cl_msg->items.size(); i++) {
-						DEBUG_M("Sequencer::process_ack() items free\n");
-						mem_allocator.free(cl_msg->items[i],sizeof(Item_no));
-				}
-			}
-		}
-#elif CC_ALG==CALVIN
+		TPCCClientQueryMessage* cl_msg = (TPCCClientQueryMessage*)wait_list[id].msg;
+#if CC_ALG==CALVIN
 		if(cl_msg->txn_type == TPCC_NEW_ORDER) {
-				for(uint64_t i = 0; i < cl_msg->items.size(); i++) {
-						DEBUG_M("Sequencer::process_ack() items free\n");
-						mem_allocator.free(cl_msg->items[i],sizeof(Item_no));
-				}
+			for(uint64_t i = 0; i < cl_msg->items.size(); i++) {
+					DEBUG_M("Sequencer::process_ack() items free\n");
+					mem_allocator.free(cl_msg->items[i],sizeof(Item_no));
+			}
 		}
 #endif
 #elif WORKLOAD == PPS
 		PPSClientQueryMessage* cl_msg = (PPSClientQueryMessage*)wait_list[id].msg;
-
-#elif WORKLOAD == DA
-		DAClientQueryMessage* cl_msg = (DAClientQueryMessage*)wait_list[id].msg;
 #endif
 #if WORKLOAD == PPS
 		if (WORKLOAD == PPS && CC_ALG == CALVIN &&
@@ -187,53 +169,34 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 										(double)skew_timespan / BILLION,
 										(double)wait_list[id].total_batch_time / BILLION);
 
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-			if (msg->algo == CALVIN) {
-#endif
 				cl_msg->release();
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-			}
-#endif
 
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-			if (msg->algo == CALVIN) {
-#endif
 			ClientResponseMessage *rsp_msg =
 					(ClientResponseMessage *)Message::create_message(msg->get_txn_id(), CL_RSP);
 					rsp_msg->client_startts = wait_list[id].client_startts;
 					msg_queue.enqueue(thd_id,rsp_msg,wait_list[id].client_id);
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-			}
-#endif
 #if WORKLOAD == PPS
 			}
 #endif
 
 		INC_STATS(thd_id,seq_complete_cnt,1);
 
-		DEBUG_SEQ("FINISHED txn=[%ld,%ld] origin_txn=[%ld,%ld] in BATCH %ld, left txn %d\n", msg->get_batch_id(),msg->get_txn_id(),msg->original_batch_id,msg->original_txn_id, en->epoch,en->txns_left);
+		// DEBUG_SEQ("FINISHED txn=[%ld,%ld] origin_txn=[%ld,%ld] in BATCH %ld, left txn %d\n", msg->get_batch_id(),msg->get_txn_id(),msg->original_batch_id,msg->original_txn_id, en->epoch,en->txns_left);
 	}
 
 	// If we have all acks for this batch, send qry responses to all clients
 	if (en->txns_left == 0) {
 		DEBUG_SEQ("FINISHED BATCH %ld\n",en->epoch);
 		LIST_REMOVE_HT(en,wl_head,wl_tail);
-#if CC_ALG == HDCC
-		blocked = true;
-		while(validationCount > 0) {}
-#endif
 		mem_allocator.free(en->list,sizeof(qlite) * en->max_size);
 		mem_allocator.free(en,sizeof(qlite_ll));
-#if CC_ALG == HDCC
-		blocked = false;
-#endif
 	}
 	INC_STATS(thd_id,seq_ack_time,get_sys_clock() - prof_stat);
 }
 
 void Sequencer::process_abort(Message *msg, uint64_t thd_id) {
 	qlite_ll * en = wl_head;
-	uint64_t batch_id = msg->original_batch_id == INVALID_ID ? msg->get_batch_id() : msg->original_batch_id;
+	uint64_t batch_id = msg->get_batch_id();
 	// uint64_t batch_id = msg->get_batch_id();
 	while(en != NULL && en->epoch != batch_id) {
 		en = en->next;
@@ -255,15 +218,8 @@ void Sequencer::process_abort(Message *msg, uint64_t thd_id) {
 	if (en->txns_left == 0) {
 		DEBUG("FINISHED BATCH %ld\n",en->epoch);
 		LIST_REMOVE_HT(en,wl_head,wl_tail);
-#if CC_ALG == HDCC
-		blocked = true;
-		while(validationCount > 0) {}
-#endif
 		mem_allocator.free(en->list, sizeof(qlite) * en->max_size);
 		mem_allocator.free(en, sizeof(qlite_ll));
-#if CC_ALG == HDCC
-		blocked = false;
-#endif
 	}
 	INC_STATS(thd_id, seq_ack_time, get_sys_clock() - prof_stat);
 	
@@ -329,8 +285,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 
 	uint32_t server_ack_cnt = participants.size();
 	assert(server_ack_cnt > 0);
-	assert(ISCLIENTN(msg->get_return_id()) || 
-			(ISCLIENTN(msg->origin_return_node_id) && msg->original_txn_id != INVALID_ID));
+	assert(ISCLIENTN(msg->get_return_id()));
 
 	en->list[id].client_id = msg->get_return_id();
 	en->list[id].msg = msg;
@@ -377,7 +332,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 	assert(en->size == en->txns_left);
 	assert(en->size <= ((uint64_t)g_inflight_max * g_node_cnt));
 
-	DEBUG_SEQ("INSERT txn=[%ld,%ld] origin_txn=[%ld,%ld] in BATCH %ld, left txn %d\n", msg->get_batch_id(),msg->get_txn_id(),msg->original_batch_id,msg->original_txn_id, en->epoch,en->txns_left);
+	// DEBUG_SEQ("INSERT txn=[%ld,%ld] origin_txn=[%ld,%ld] in BATCH %ld, left txn %d\n", msg->get_batch_id(),msg->get_txn_id(),msg->original_batch_id,msg->original_txn_id, en->epoch,en->txns_left);
 
 	for(auto participant = participants.begin(); participant != participants.end(); participant++) {
 		// DEBUG("SEQ adding (%ld,%ld) to fill queue (recon: %d)\n", msg->get_txn_id(),
@@ -403,29 +358,14 @@ void Sequencer::send_next_batch(uint64_t thd_id) {
 	uint64_t prof_stat = get_sys_clock();
 	qlite_ll * en = wl_tail;
 #if LOGGING
-#if CC_ALG == HDCC
-	logger.enqueueRecord(logger.createRecord(thd_id, L_C_FLUSH, 0, 0, 0));
-#else
 	logger.enqueueRecord(logger.createRecord(thd_id, L_C_FLUSH, 0, 0));
-#endif
 #endif
 	bool empty = true;
 	if(en && en->epoch == simulation->get_seq_epoch()) {
 		DEBUG("SEND NEXT BATCH %ld [%ld,%ld] %ld\n", thd_id, simulation->get_seq_epoch(), en->epoch,
 					en->size);
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-		if (en->txns_left == 0) {
-			DEBUG("FINISHED BATCH %ld\n",en->epoch);
-			LIST_REMOVE_HT(en,wl_head,wl_tail);
-			mem_allocator.free(en->list,sizeof(qlite) * en->max_size);
-			mem_allocator.free(en,sizeof(qlite_ll));
-		}else{
-#endif
 			empty = false;
 			en->batch_send_time = prof_stat;
-#if CC_ALG == HDCC || CC_ALG == SNAPPER
-		}
-#endif
 	}
 
 	Message * msg;
@@ -461,41 +401,5 @@ void Sequencer::send_next_batch(uint64_t thd_id) {
 	INC_STATS(thd_id,seq_prep_time,get_sys_clock() - prof_stat);
 #if CC_ALG == CALVIN
 	next_txn_id = 0;
-#elif CC_ALG == HDCC || CC_ALG == SNAPPER
-	last_epoch_max_id = next_txn_id;
 #endif
 }
-
-#if CC_ALG == HDCC
-bool Sequencer::checkDependency(uint64_t batch_id, uint64_t txn_id) {
-	qlite_ll * en = wl_head;
-	if (!en || en->epoch > batch_id) {
-		return true;
-	}
-	else if (en->epoch < batch_id) {
-		return false;
-	} else {
-		if (txn_id % g_node_cnt < g_node_id) {
-			return true;
-		} else if (txn_id %g_node_cnt > g_node_id) {
-			return false;
-		} else {
-			uint64_t id = (txn_id - en->start_txn_id) / g_node_cnt;
-			while(blocked) {}
-			ATOM_ADD(validationCount, 1);
-			if (!en || !en->list || en->txns_left == 0) {
-				ATOM_SUB(validationCount, 1);
-				return true;
-			}
-			for (uint64_t i = 0; i < id || i < en->max_size; i++) {
-				if (en->list[i].server_ack_cnt > 0) {
-					ATOM_SUB(validationCount, 1);
-					return false;
-				}
-			}
-			ATOM_SUB(validationCount, 1);
-		}
-	}
-	return true;
-}
-#endif

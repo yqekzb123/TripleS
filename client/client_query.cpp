@@ -77,14 +77,6 @@ Client_query_queue::init(Workload * h_wl) {
 	next_tid = 0;
 #endif
 
-#if WORKLOAD == DA
-	FUNC_ARGS *arg=(FUNC_ARGS*)mem_allocator.align_alloc(sizeof(FUNC_ARGS));
-	arg->context=this;
-	arg->thd_id=g_init_parallelism - 1;
-	pthread_t  p_thds_main;
-	pthread_create(&p_thds_main, NULL, initQueriesHelper, (void*)arg );
-	pthread_detach(p_thds_main);
-#else
 	pthread_t * p_thds = new pthread_t[g_init_parallelism - 1];
 	for (uint64_t i = 0; i < g_init_parallelism - 1; i++) {
 		FUNC_ARGS *arg=(FUNC_ARGS*)mem_allocator.align_alloc(sizeof(FUNC_ARGS));
@@ -101,7 +93,6 @@ Client_query_queue::init(Workload * h_wl) {
 	for (uint32_t i = 0; i < g_init_parallelism - 1; i++) {
 		pthread_join(p_thds[i], NULL);
 	}
-#endif
 
 }
 
@@ -114,26 +105,18 @@ Client_query_queue::initQueriesHelper(void * args) {
 
 void
 Client_query_queue::initQueriesParallel(uint64_t thd_id) {
-#if WORKLOAD != DA
 	UInt32 tid = ATOM_FETCH_ADD(next_tid, 1);
-  uint64_t request_cnt;
+  	uint64_t request_cnt;
 	request_cnt = g_max_txn_per_part + 4;
 
 	uint32_t final_request;
-#if CC_ALG == BOCC || CC_ALG == FOCC
-	if (tid == g_init_parallelism-1) {
-		final_request = request_cnt * g_servers_per_client;
-	} else {
-		final_request = request_cnt * g_servers_per_client / g_init_parallelism * (tid+1);
-	}
-#else
+
 	if (tid == g_init_parallelism-1) {
 		final_request = request_cnt;
 	} else {
 		final_request = request_cnt / g_init_parallelism * (tid+1);
 	}
-#endif
-#endif
+
 #if WORKLOAD == YCSB
 	YCSBQueryGenerator * gen = new YCSBQueryGenerator;
 	gen->init();
@@ -141,30 +124,8 @@ Client_query_queue::initQueriesParallel(uint64_t thd_id) {
 	TPCCQueryGenerator * gen = new TPCCQueryGenerator;
 #elif WORKLOAD == PPS
 	PPSQueryGenerator * gen = new PPSQueryGenerator;
-#elif WORKLOAD == DA
-	DAQueryGenerator  * gen = new DAQueryGenerator;
 #endif
-#if SERVER_GENERATE_QUERIES
-  #if CC_ALG == BOCC || CC_ALG == FOCC
-  for (UInt32 query_id = request_cnt / g_init_parallelism * tid; query_id < final_request; query_id ++) {
-	queries[thread_id][query_id] = gen->create_query(_wl,g_node_id);
-  }
-  #else
-  for ( UInt32 thread_id = 0; thread_id < g_thread_cnt; thread_id ++) {
-	for (UInt32 query_id = request_cnt / g_init_parallelism * tid; query_id < final_request;
-		 query_id++) {
-	  queries[thread_id][query_id] = gen->create_query(_wl,g_node_id);
-	}
-  }
-  #endif
-#elif WORKLOAD == DA
-  gen->create_query(_wl,thd_id);
-#else
-#if CC_ALG == BOCC || CC_ALG == FOCC
-  for (UInt32 query_id = request_cnt / g_init_parallelism * tid; query_id < final_request; query_id ++) {
-	queries[0][query_id] = gen->create_query(_wl,g_server_start_node);
-  }
-#else
+
 	#if DYNAMIC_FLAG
 		for(uint32_t batch_id = 0; batch_id < g_dy_Nbatch; batch_id++){
 			for(uint32_t server_id = 0; server_id < g_servers_per_client; server_id++){
@@ -187,8 +148,8 @@ Client_query_queue::initQueriesParallel(uint64_t thd_id) {
 			}
 		}
 	#endif
-#endif
-#endif
+
+
 }
 
 bool Client_query_queue::done() { return false; }
@@ -200,12 +161,6 @@ void Client_query_queue::setDeterministicAbort(BaseQuery *query) {
 
 BaseQuery *
 Client_query_queue::get_next_query(uint64_t server_id,uint64_t thread_id) {
-#if WORKLOAD == DA
-  BaseQuery * query;
-  query=da_gen_qry_queue.pop_data();
-  //while(!da_query_queue.pop(query));
-  return query;
-#else
 	#if DYNAMIC_FLAG
 		assert(server_id < size);
 		uint64_t query_id = __sync_fetch_and_add(query_cnt[g_dy_batch_id][server_id], 1);//return query_cnt[g_dy_batch_id][server_id]，then query_cnt[g_dy_batch_id][server_id]++
@@ -216,14 +171,14 @@ Client_query_queue::get_next_query(uint64_t server_id,uint64_t thread_id) {
 		BaseQuery * query = queries[g_dy_batch_id][server_id][query_id];
 		return query;
 	#else
-  assert(server_id < size);
-  uint64_t query_id = __sync_fetch_and_add(query_cnt[server_id], 1);//return query_cnt[server_id]，then query_cnt[server_id]++
-  if(query_id > g_max_txn_per_part) {
-	__sync_bool_compare_and_swap(query_cnt[server_id],query_id+1,0);//if query_cnt[server_id]==query_id+1, then set query_cnt[server_id] to 0
-	query_id = __sync_fetch_and_add(query_cnt[server_id], 1);
-  }
+	assert(server_id < size);
+	uint64_t query_id = __sync_fetch_and_add(query_cnt[server_id], 1);//return query_cnt[server_id]，then query_cnt[server_id]++
+	if(query_id > g_max_txn_per_part) {
+		__sync_bool_compare_and_swap(query_cnt[server_id],query_id+1,0);//if query_cnt[server_id]==query_id+1, then set query_cnt[server_id] to 0
+		query_id = __sync_fetch_and_add(query_cnt[server_id], 1);
+	}
 	BaseQuery * query = queries[server_id][query_id];
 	return query;
 	#endif
-#endif
+
 }

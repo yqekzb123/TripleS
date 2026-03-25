@@ -42,11 +42,8 @@ std::vector<Message*> * Message::create_messages(char * buf) {
     INC_STATS(0,trans_network_recv,get_sys_clock());
     INC_STATS(0,trans_network_wait,get_sys_clock()-starttime);
   }
-#ifdef NO_REMOTE
-#else
   assert(dest_id == g_node_id);
   assert(return_id != g_node_id);
-#endif
   assert(ISCLIENTN(return_id) || ISSERVERN(return_id) || ISREPLICAN(return_id));
   while(txn_cnt > 0) {
     Message * msg = create_message(&data[ptr]);
@@ -59,44 +56,42 @@ std::vector<Message*> * Message::create_messages(char * buf) {
 }
 
 Message * Message::create_message(char * buf) {
- RemReqType rtype = NO_MSG;
- uint64_t ptr = 0;
- COPY_VAL(rtype,buf,ptr);
- Message * msg = create_message(rtype);
-  //printf("buffer is:%s\n",buf);
-  //printf("msg:%lu:%lu %lu %lu\n",((DAQueryMessage*)msg)->seq_id,((DAQueryMessage*)msg)->state,((DAQueryMessage*)msg)->next_state,((DAQueryMessage*)msg)->last_state);
+  RemReqType rtype = NO_MSG;
+  uint64_t ptr = 0;
+  COPY_VAL(rtype,buf,ptr);
+  Message * msg = create_message(rtype);
   fflush(stdout);
- msg->copy_from_buf(buf);
- return msg;
+  msg->copy_from_buf(buf);
+  return msg;
 }
 
 Message * Message::create_message(TxnManager * txn, RemReqType rtype) {
- Message * msg = create_message(rtype);
- msg->mcopy_from_txn(txn);
- msg->copy_from_txn(txn);
+  Message * msg = create_message(rtype);
+  msg->mcopy_from_txn(txn);
+  msg->copy_from_txn(txn);
 
- // copy latency here
- msg->lat_work_queue_time = txn->txn_stats.work_queue_time_short;
- msg->lat_msg_queue_time = txn->txn_stats.msg_queue_time_short;
- msg->lat_cc_block_time = txn->txn_stats.cc_block_time_short;
- msg->lat_cc_time = txn->txn_stats.cc_time_short;
- msg->lat_process_time = txn->txn_stats.process_time_short;
- msg->lat_network_time = txn->txn_stats.lat_network_time_start;
- msg->lat_other_time = txn->txn_stats.lat_other_time_start;
+  // copy latency here
+  msg->lat_work_queue_time = txn->txn_stats.work_queue_time_short;
+  msg->lat_msg_queue_time = txn->txn_stats.msg_queue_time_short;
+  msg->lat_cc_block_time = txn->txn_stats.cc_block_time_short;
+  msg->lat_cc_time = txn->txn_stats.cc_time_short;
+  msg->lat_process_time = txn->txn_stats.process_time_short;
+  msg->lat_network_time = txn->txn_stats.lat_network_time_start;
+  msg->lat_other_time = txn->txn_stats.lat_other_time_start;
 
- return msg;
+  return msg;
 }
 
 Message * Message::create_message(LogRecord * record, RemReqType rtype) {
- Message * msg = create_message(rtype);
- ((LogMessage*)msg)->copy_from_record(record);
- msg->txn_id = record->rcd.txn_id;
- return msg;
+  Message * msg = create_message(rtype);
+  ((LogMessage*)msg)->copy_from_record(record);
+  msg->txn_id = record->rcd.txn_id;
+  return msg;
 }
 
 
 Message * Message::create_message(BaseQuery * query, RemReqType rtype) {
- assert(rtype == RQRY || rtype == CL_QRY || rtype == CL_QRY_O);
+ assert(rtype == RQRY || rtype == CL_QRY);
  Message * msg = create_message(rtype);
 #if WORKLOAD == YCSB
  ((YCSBClientQueryMessage*)msg)->copy_from_query(query);
@@ -104,23 +99,21 @@ Message * Message::create_message(BaseQuery * query, RemReqType rtype) {
  ((TPCCClientQueryMessage*)msg)->copy_from_query(query);
 #elif WORKLOAD == PPS
  ((PPSClientQueryMessage*)msg)->copy_from_query(query);
-#elif  WORKLOAD == DA
-  ((DAClientQueryMessage*)msg)->copy_from_query(query);
 #endif
  return msg;
 }
 
 Message * Message::create_message(uint64_t txn_id, RemReqType rtype) {
- Message * msg = create_message(rtype);
- msg->txn_id = txn_id;
- return msg;
-}
+  Message * msg = create_message(rtype);
+  msg->txn_id = txn_id;
+  return msg;
+  }
 
 Message * Message::create_message(uint64_t txn_id, uint64_t batch_id, RemReqType rtype) {
- Message * msg = create_message(rtype);
- msg->txn_id = txn_id;
- msg->batch_id = batch_id;
- return msg;
+  Message * msg = create_message(rtype);
+  msg->txn_id = txn_id;
+  msg->batch_id = batch_id;
+  return msg;
 }
 
 Message * Message::create_message(RemReqType rtype) {
@@ -137,8 +130,6 @@ Message * Message::create_message(RemReqType rtype) {
       msg = new TPCCQueryMessage;
 #elif WORKLOAD == PPS
       msg = new PPSQueryMessage;
-#elif WORKLOAD == DA
-      msg = new DAQueryMessage;
 #endif
       msg->init();
       break;
@@ -164,7 +155,6 @@ Message * Message::create_message(RemReqType rtype) {
       msg = new AckMessage;
       break;
     case CL_QRY:
-    case CL_QRY_O:
     case RTXN:
     case RTXN_CONT:
     case CALVIN_ABORT:
@@ -220,11 +210,6 @@ uint64_t Message::mget_size() {
 #if CC_ALG == CALVIN
   size += sizeof(uint64_t);
 #endif
-#if LONG_TXN_WORKLOAD
-  size += sizeof(uint64_t); // original_txn_id
-  size += sizeof(uint64_t); // original_batch_id
-  size += sizeof(uint64_t); // origin_return_node_id
-#endif 
   // for stats, send message queue time
   size += sizeof(uint64_t);
 
@@ -239,20 +224,10 @@ void Message::mcopy_from_txn(TxnManager * txn) {
 #if CC_ALG == CALVIN || CC_ALG == ARIA
   batch_id = txn->get_batch_id();
 #endif
-#if LONG_TXN_WORKLOAD
-  original_txn_id = txn->original_txn_id;
-  original_batch_id = txn->original_batch_id;
-  origin_return_node_id = txn->origin_return_node_id;
-#endif
 }
 
 void Message::mcopy_to_txn(TxnManager* txn) {
   txn->return_id = return_node_id;
-#if LONG_TXN_WORKLOAD
-  txn->original_txn_id = original_txn_id;
-  txn->original_batch_id = original_batch_id;
-  txn->origin_return_node_id = origin_return_node_id;
-#endif
 }
 
 void Message::mcopy_from_buf(char * buf) {
@@ -261,11 +236,6 @@ void Message::mcopy_from_buf(char * buf) {
   COPY_VAL(txn_id,buf,ptr);
 #if CC_ALG == CALVIN || CC_ALG == ARIA
   COPY_VAL(batch_id,buf,ptr);
-#endif
-#if LONG_TXN_WORKLOAD
-  COPY_VAL(original_txn_id,buf,ptr);
-  COPY_VAL(original_batch_id,buf,ptr);
-  COPY_VAL(origin_return_node_id,buf,ptr);
 #endif
   COPY_VAL(mq_time,buf,ptr);
 
@@ -292,11 +262,6 @@ void Message::mcopy_to_buf(char * buf) {
 #if CC_ALG == CALVIN || CC_ALG == ARIA
   COPY_BUF(buf,batch_id,ptr);
 #endif
-#if LONG_TXN_WORKLOAD
-  COPY_BUF(buf,original_txn_id,ptr);
-  COPY_BUF(buf,original_batch_id,ptr);
-  COPY_BUF(buf,origin_return_node_id,ptr);
-#endif
   COPY_BUF(buf,mq_time,ptr);
 
   COPY_BUF(buf,lat_work_queue_time,ptr);
@@ -304,7 +269,7 @@ void Message::mcopy_to_buf(char * buf) {
   COPY_BUF(buf,lat_cc_block_time,ptr);
   COPY_BUF(buf,lat_cc_time,ptr);
   COPY_BUF(buf,lat_process_time,ptr);
-  if ((CC_ALG == CALVIN && (rtype == CL_QRY||rtype == CL_QRY_O) && txn_id % g_node_cnt == g_node_id) ||
+  if ((CC_ALG == CALVIN && (rtype == CL_QRY) && txn_id % g_node_cnt == g_node_id) ||
       (CC_ALG != CALVIN && IS_LOCAL(txn_id))) {
     lat_network_time = get_sys_clock();
   } else {
@@ -331,8 +296,6 @@ void Message::release_message(Message * msg) {
       TPCCQueryMessage * m_msg = (TPCCQueryMessage*)msg;
 #elif WORKLOAD == PPS
       PPSQueryMessage * m_msg = (PPSQueryMessage*)msg;
-#elif WORKLOAD == DA
-      DAQueryMessage* m_msg = (DAQueryMessage*)msg;
 #endif
       m_msg->release();
       delete m_msg;
@@ -378,7 +341,6 @@ void Message::release_message(Message * msg) {
       break;
                    }
     case CL_QRY:
-    case CL_QRY_O:
     case RTXN:
     case RTXN_CONT: {
 #if WORKLOAD == YCSB
@@ -387,8 +349,6 @@ void Message::release_message(Message * msg) {
       TPCCClientQueryMessage * m_msg = (TPCCClientQueryMessage*)msg;
 #elif WORKLOAD == PPS
       PPSClientQueryMessage * m_msg = (PPSClientQueryMessage*)msg;
-#elif WORKLOAD == DA
-      DAClientQueryMessage* m_msg = (DAClientQueryMessage*)msg;
 #endif
       m_msg->release();
       delete m_msg;
@@ -427,12 +387,10 @@ void Message::release_message(Message * msg) {
 
 uint64_t QueryMessage::get_size() {
   uint64_t size = Message::mget_size();
-#if CC_ALG == WAIT_DIE || CC_ALG == TIMESTAMP || CC_ALG == MVCC || CC_ALG == WOOKONG || CC_ALG == DTA || CC_ALG == SNAPPER
+#if CC_ALG == WAIT_DIE 
   size += sizeof(ts);
 #endif
-#if CC_ALG == OCC || CC_ALG == FOCC || CC_ALG == BOCC || CC_ALG == SSI || CC_ALG == WSI || \
-    CC_ALG == DLI_BASE || CC_ALG == DLI_OCC || CC_ALG == DLI_MVCC_OCC || \
-    CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3 || CC_ALG == DLI_MVCC
+#if CC_ALG == OCC
   size += sizeof(start_ts);
 #endif
 #if CC_ALG == ARIA
@@ -936,10 +894,6 @@ void ClientQueryMessage::init() {
   first_startts = 0; 
   isDone = false;
 
-  original_txn_id = INVALID_ID;
-  original_batch_id = INVALID_ID;
-  origin_return_node_id = INVALID_ID;
-
   #if CC_ALG == ARIA
   aria_phase = ARIA_READ;
   rld_pointer = NULL;
@@ -1146,17 +1100,11 @@ void ForwardMessage::copy_to_buf(char * buf) {
 uint64_t PrepareMessage::get_size() {
   uint64_t size = Message::mget_size();
   //size += sizeof(uint64_t);
-#if CC_ALG == TICTOC
-  size += sizeof(uint64_t);
-#endif
   return size;
 }
 
 void PrepareMessage::copy_from_txn(TxnManager * txn) {
   Message::mcopy_from_txn(txn);
-#if CC_ALG == TICTOC
-  _min_commit_ts = txn->_min_commit_ts;
-#endif
 }
 void PrepareMessage::copy_to_txn(TxnManager * txn) {
   Message::mcopy_to_txn(txn);
@@ -1164,18 +1112,12 @@ void PrepareMessage::copy_to_txn(TxnManager * txn) {
 void PrepareMessage::copy_from_buf(char * buf) {
   Message::mcopy_from_buf(buf);
   uint64_t ptr = Message::mget_size();
-#if CC_ALG == TICTOC
-  COPY_VAL(_min_commit_ts,buf,ptr);
-#endif
   assert(ptr == get_size());
 }
 
 void PrepareMessage::copy_to_buf(char * buf) {
   Message::mcopy_to_buf(buf);
   uint64_t ptr = Message::mget_size();
-#if CC_ALG == TICTOC
-  COPY_BUF(buf,_min_commit_ts,ptr);
-#endif
   assert(ptr == get_size());
 }
 
@@ -1390,14 +1332,14 @@ void LogMessage::copy_from_buf(char * buf) {
   Message::mcopy_from_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_VAL(record,buf,ptr);
- assert(ptr == get_size());
+  assert(ptr == get_size());
 }
 
 void LogMessage::copy_to_buf(char * buf) {
   Message::mcopy_to_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_BUF(buf,record,ptr);
- assert(ptr == get_size());
+  assert(ptr == get_size());
 }
 
 /************************/
@@ -1470,15 +1412,9 @@ void YCSBQueryMessage::copy_from_txn(TxnManager * txn) {
 
 void YCSBQueryMessage::copy_to_txn(TxnManager * txn) {
   QueryMessage::copy_to_txn(txn);
-#if CC_ALG==TICTOC
-  ((YCSBQuery*)(txn->query))->requests.clear();
-#endif
   //((YCSBQuery*)(txn->query))->requests.copy(requests);
-#ifdef NO_REMOTE 
-#else
   ((YCSBQuery*)(txn->query))->requests.append(requests);
   ((YCSBQuery*)(txn->query))->orig_request = &requests;
-#endif
 }
 
 void YCSBQueryMessage::copy_from_buf(char * buf) {

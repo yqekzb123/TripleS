@@ -456,7 +456,7 @@ RC index_btree::find_leaf(glob_param params, idx_key_t key, idx_acc_t access_typ
 		leaf = c;
 		return RCOK;
 	}
-// #if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == HDCC
+// #if CC_ALG == CALVIN || CC_ALG == SILO
 // 	if (simulation->is_setup_done() && c->is_leaf) {
 // 		leaf = c;
 // 		RC rc;

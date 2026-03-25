@@ -47,7 +47,7 @@
 
 // # of transactions to run for warmup
 #define WARMUP            0
-// YCSB or TPCC or PPS or DA
+// YCSB or TPCC or PPS
 #define WORKLOAD YCSB
 // print the transaction latency distribution
 #define PRT_LAT_DISTR false
@@ -56,8 +56,6 @@
 
 #define FIN_BY_TIME true
 #define MAX_TXN_IN_FLIGHT 10000
-
-#define SERVER_GENERATE_QUERIES false
 
 /***********************************************/
 // Memory System
@@ -137,13 +135,8 @@
 // [OCC]
 #define MAX_WRITE_SET       10
 #define PER_ROW_VALID       false
-// [VLL]
-#define TXN_QUEUE_SIZE_LIMIT    THREAD_CNT
 // [CALVIN]
 #define SEQ_THREAD_CNT 4
-// [HDCC]
-#define CALVIN_THREAD_CNT 1
-#define SHARD_SIZE 100000
 // tpcc payment
 // #define LOWER_BOUND 700
 // #define UPPER_BOUND 11000
@@ -198,7 +191,7 @@
 #define MAX_TUPLE_SIZE        1024 // in bytes
 #define GEN_BY_MPR false
 
-#define LONG_TXN_WORKLOAD true
+#define LONG_TXN_WORKLOAD false
 #define LONG_TXN_SCHEDULE false
 #define SCHEDULER_CNT 8
 
@@ -389,17 +382,16 @@ enum PPSTxnType {
 // Concurrency Control Algorithm
 #define NO_WAIT           1
 #define WAIT_DIE          2
-#define DL_DETECT         3
-#define HSTORE            6
-#define HSTORE_SPEC           7
+// #define DL_DETECT         3
+// #define HSTORE            6
+// #define HSTORE_SPEC           7
 #define OCC             8
-#define VLL             9
 #define CALVIN      10
 #define SILO 27
-#define CNULL 28
+#define CNULL 28  //不跑事务
 #define ARIA 31
-#define SDOCC 32
-#define SDPCC 33
+#define SDOCC 32  // 流水线OCC
+#define SDPCC 33  // 流水线PCC
 // TIMESTAMP allocation method.
 #define TS_MUTEX          1
 #define TS_CAS            2

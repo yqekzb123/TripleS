@@ -60,8 +60,6 @@ void row_t::init_manager(row_t * row) {
 	DEBUG_M("row_t::init_manager alloc \n");
 #if CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE || CC_ALG == CALVIN
 	manager = (Row_lock *) mem_allocator.align_alloc(sizeof(Row_lock));
-	// lead to tput improvement, this change aims to let tput of original CALVIN catch up with HDCC's CALVIN
-	// manager = new Row_lock();
 #elif CC_ALG == OCC
 	manager = (Row_occ *) mem_allocator.align_alloc(sizeof(Row_occ));
 #elif CC_ALG == CNULL
@@ -361,10 +359,6 @@ RC row_t::get_row_post_wait(access_t type, TxnManager * txn, row_t *& row) {
 // the "row" is the row read out in get_row(). For locking based CC_ALG,
 // the "row" is the same as "this". For timestamp based CC_ALG, the
 // "row" != "this", and the "row" must be freed.
-// For MVCC, the row will simply serve as a version. The version will be
-// delete during history cleanup.
-// For TIMESTAMP, the row will be explicity deleted at the end of access().
-// (c.f. row_ts.cpp)
 uint64_t row_t::return_row(RC rc, access_t type, TxnManager *txn, row_t *row) {
 #if MODE==NOCC_MODE || MODE==QRY_ONLY_MODE
 	return 0;

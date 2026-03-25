@@ -64,8 +64,6 @@ public:
 	TPCCQuery * queries;
 #elif WORKLOAD == PPS
 	PPSQuery * queries;
-#elif WORKLOAD == DA
-	DAQuery * queries;
 #endif
 	char pad[CL_SIZE - sizeof(void *) - sizeof(int)];
 };

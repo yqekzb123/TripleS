@@ -28,8 +28,6 @@ class lock_man;
 class TxnManager;
 class Thread;
 class index_base;
-class Timestamp;
-class Mvcc;
 
 class Workload
 {

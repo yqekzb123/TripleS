@@ -103,24 +103,18 @@ int main(int argc, char *argv[]) {
 #endif
 
 
-  fflush(stdout);
-  client_man.init();
-  printf("Done\n");
-  printf("Initializing work queue... ");
-  fflush(stdout);
-  work_queue.init();
-  printf("Done\n");
-  printf("Initializing msg pool... ");
-  fflush(stdout);
-  msg_pool.init(m_wl,g_inflight_max);
-  printf("Done\n");
-  fflush(stdout);
-/*
-	#if WORKLOAD==DA
-  	g_client_rem_thread_cnt=1;
-  	g_client_send_thread_cnt=1;
-  	#endif
-*/
+  	fflush(stdout);
+	client_man.init();
+	printf("Done\n");
+	printf("Initializing work queue... ");
+	fflush(stdout);
+	work_queue.init();
+	printf("Done\n");
+	printf("Initializing msg pool... ");
+	fflush(stdout);
+	msg_pool.init(m_wl,g_inflight_max);
+	printf("Done\n");
+	fflush(stdout);
 
 	// 2. spawn multiple threads
 	uint64_t thd_cnt = g_client_thread_cnt;
@@ -131,37 +125,37 @@ int main(int argc, char *argv[]) {
   	uint64_t all_thd_cnt = thd_cnt + rthd_cnt + sthd_cnt + dythd_cnt;
   	printf("all_thd_cnt = %ld, g_this_total_thread_cnt = %d\n", all_thd_cnt, g_this_total_thread_cnt);
 
-  assert(all_thd_cnt == g_this_total_thread_cnt);
+	assert(all_thd_cnt == g_this_total_thread_cnt);
 
-  pthread_t *p_thds = (pthread_t *)malloc(sizeof(pthread_t) * (all_thd_cnt));
+	pthread_t *p_thds = (pthread_t *)malloc(sizeof(pthread_t) * (all_thd_cnt));
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 
-  client_thds = new ClientThread[cthd_cnt];
-  input_thds = new InputThread[rthd_cnt];
-  output_thds = new OutputThread[sthd_cnt];
+	client_thds = new ClientThread[cthd_cnt];
+	input_thds = new InputThread[rthd_cnt];
+	output_thds = new OutputThread[sthd_cnt];
 #if DYNAMIC_FLAG
-  dynamic_thds = new DynamicThread[dythd_cnt];
+	dynamic_thds = new DynamicThread[dythd_cnt];
 #endif
 
 	//// query_queue should be the last one to be initialized!!!
 	// because it collects txn latency
-  printf("Initializing message queue... ");
-  msg_queue.init();
-  printf("Done\n");
-  printf("Initializing client query queue... ");
-  fflush(stdout);
-  client_query_queue.init(m_wl);
-  printf("Done\n");
-  fflush(stdout);
+	printf("Initializing message queue... ");
+	msg_queue.init();
+	printf("Done\n");
+	printf("Initializing client query queue... ");
+	fflush(stdout);
+	client_query_queue.init(m_wl);
+	printf("Done\n");
+	fflush(stdout);
 
 #if CREATE_TXN_FILE
-  return(0);
+  	return(0);
 #endif
 
-  endtime = get_server_clock();
-  printf("Initialization Time = %ld\n", endtime - starttime);
-  fflush(stdout);
+  	endtime = get_server_clock();
+	printf("Initialization Time = %ld\n", endtime - starttime);
+	fflush(stdout);
 	warmup_done = true;
 	pthread_barrier_init( &warmup_bar, NULL, all_thd_cnt);
 

@@ -60,22 +60,7 @@ void SimManager::set_starttime(uint64_t starttime) {
 }
 bool SimManager::timeout() {
 #if TIME_ENABLE
-	#if WORKLOAD == DA
-		uint64_t t=last_da_query_time;
-		uint64_t now=get_sys_clock();
-		if(now<t)
-		{
-			now=t;
-		}
-		bool res =  ((get_sys_clock() - run_starttime) >= (g_done_timer + g_warmup_timer)/12)
-		&&((now - t) >= (g_done_timer + g_warmup_timer)/6);
-		if (res) {
-			printf("123\n");
-		}
-		return res;
-	#else
 	return (get_sys_clock() - run_starttime) >= g_done_timer + g_warmup_timer;
-	#endif
 #else
 	return (get_wall_clock() - run_starttime) >= g_done_timer + g_warmup_timer;
 #endif
@@ -90,9 +75,6 @@ bool SimManager::is_done() {
 }
 
 bool SimManager::is_warmup_done() {
-	#if WORKLOAD == DA
-		return true;
-	#endif
 	if(!sim_init_done)
 		return false;
 	if(warmup)

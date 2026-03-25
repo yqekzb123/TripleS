@@ -50,7 +50,7 @@ fmt_title=["NODE_CNT","CC_ALG","ACCESS_PERC","TXN_WRITE_PERC","PERC_PAYMENT","MP
 def ycsb_once():
     wl = 'YCSB'
     nnodes = [2]
-    algos=['HDCC']
+    algos=['CNULL']
     base_table_size=1048576*8
     txn_write_perc = [1]
     tup_write_perc = [0.2]
@@ -82,7 +82,7 @@ def ycsb_prorate():
 def ycsb_scaling():
     wl = 'YCSB'
     nnodes = [1,2,4,6,8,12]
-    algos=['HDCC']
+    algos=['CNULL']
     base_table_size=1048576*8
     txn_write_perc = [1]
     tup_write_perc = [0.2]
@@ -102,7 +102,7 @@ def ycsb_skew_pip():
     wl = 'YCSB'
     nnodes = [2]
     # algos=['CALVIN','SILO','ARIA']
-    algos=['ARIA']
+    algos=['CALVIN']
     base_table_size=1048576*8
     txn_write_perc = [1]
     tup_write_perc = [0.2]
@@ -121,7 +121,7 @@ def ycsb_skew_pip():
 def ycsb_skew_origin():
     wl = 'YCSB'
     nnodes = [2]
-    # algos=['HDCC','CALVIN','SILO','ARIA']
+    # algos=['CNULL','CALVIN','SILO','ARIA']
     algos=['CALVIN']
     base_table_size=1048576*8
     txn_write_perc = [1]
@@ -141,7 +141,7 @@ def ycsb_skew_origin():
 def ycsb_writes():
     wl = 'YCSB'
     nnodes = [2]
-    algos=['HDCC']
+    algos=['CNULL']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
     tup_write_perc = [0.0,0.2,0.4,0.6,0.8,1.0]
@@ -232,7 +232,7 @@ def ycsb_long_txn2():
 def ycsb_dist_ratio():
     wl = 'YCSB'
     nnodes = [2]
-    # algos=['HDCC','CALVIN','SILO','ARIA']
+    # algos=['CNULL','CALVIN','SILO','ARIA']
     # algos=['SNAPPER']
     algos=['CALVIN', 'NO_WAIT']
     base_table_size=1048576*8
@@ -247,7 +247,7 @@ def ycsb_dist_ratio():
 def ycsb_log():
     wl = 'YCSB'
     nnodes = [2]
-    algos=['HDCC','CALVIN','SILO']
+    algos=['CNULL','CALVIN','SILO']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
     tup_write_perc = [0.2]
@@ -291,7 +291,7 @@ def ycsb_aria_batch3():
 def tpcc_once():
     wl = 'TPCC'
     nnodes = [2]
-    algos=['HDCC']
+    algos=['CNULL']
     npercpay=[0.489]
     num_wh=[128]
     load = [10000]
@@ -309,7 +309,7 @@ def tpcc_once():
 def tpcc_scaling():
     wl = 'TPCC'
     nnodes = [1,2,4,6,8,12]
-    algos=['HDCC']
+    algos=['CNULL']
     npercpay=[0.489]
     num_wh=[32]
     load = [10000]
@@ -325,7 +325,7 @@ def tpcc_scaling():
 def tpcc_prorate():
     wl = 'TPCC'
     nnodes = [2]
-    algos=['SNAPPER','HDCC']
+    algos=['SNAPPER','CNULL']
     npercpay=[0.489]
     num_wh=[32]
     load = [10000]
@@ -341,8 +341,8 @@ def tpcc_prorate():
 def tpcc_wh():
     wl = 'TPCC'
     nnodes = [2]
-    # algos=['HDCC']
-    algos=['HDCC','CALVIN','SILO','ARIA','SNAPPER']
+    # algos=['CNULL']
+    algos=['CNULL','CALVIN','SILO','ARIA','SNAPPER']
     # algos=['SNAPPER']
     npercpay=[0.489]
     num_wh=[256,128,64,32,16,8]
@@ -358,7 +358,7 @@ def tpcc_wh():
 
 def tpcc_dist_ratio():
     wl = 'TPCC'
-    algos=['HDCC','CALVIN','SILO','ARIA']
+    algos=['CNULL','CALVIN','SILO','ARIA']
     # algos=['SNAPPER']
     mpr=[0,0.2,0.4,0.6,0.8,1]
     nnodes = [2]
@@ -432,7 +432,7 @@ configs = {
     "CLIENT_SEND_THREAD_CNT" : 2,
     "MAX_TXN_PER_PART" : 500000,
     "WORKLOAD" : "YCSB",
-    "CC_ALG" : "HDCC",
+    "CC_ALG" : "CNULL",
     "MPR" : 0.2,    #分布式事务比列
     "TPORT_TYPE":"TCP",
     "TPORT_PORT":"18000",

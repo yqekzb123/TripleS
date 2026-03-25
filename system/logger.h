@@ -52,9 +52,6 @@ struct AriesLogRecord {
     txn_id = UINT64_MAX;
     table_id = 0;
     key = UINT64_MAX;
-#if CC_ALG == HDCC
-    max_calvin_tid = UINT64_MAX;
-#endif
   }
 
   uint32_t checksum;
@@ -65,9 +62,6 @@ struct AriesLogRecord {
   //uint32_t partid; // partition id
   uint32_t table_id; // table being updated
   uint64_t key; // primary key (determines the partition ID)
-#if CC_ALG == HDCC
-  uint64_t max_calvin_tid;
-#endif
   // TODO: column list
 
   /*lsn
@@ -111,9 +105,7 @@ public:
       uint64_t txn_id, LogIUD iud,
     //uint64_t partid,
       uint64_t table_id, uint64_t key);
-#if CC_ALG == HDCC
-  LogRecord * createRecord(uint64_t txn_id,LogIUD iud,uint64_t table_id,uint64_t key,uint64_t max_calvin_tid);
-#endif
+
   void enqueueRecord(LogRecord* record);
   void processRecord(uint64_t thd_id,uint64_t id);
   void writeToBuffer(uint64_t thd_id,char * data, uint64_t size);

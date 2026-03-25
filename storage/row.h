@@ -103,12 +103,10 @@ public:
 	uint64_t return_row(RC rc, access_t type, TxnManager *txn, row_t *row);
 	void return_row(RC rc, access_t type, TxnManager * txn, row_t * row, uint64_t _min_commit_ts);
 
-	#if CC_ALG == DL_DETECT || CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE || CC_ALG == CALVIN
+	#if CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE || CC_ALG == CALVIN
 	Row_lock * manager;
 	#elif CC_ALG == OCC
-			Row_occ * manager;
-	#elif CC_ALG == HSTORE_SPEC
-		Row_specex * manager;
+		Row_occ * manager;
 	#elif CC_ALG == CNULL
 		Row_null * manager;
   	#elif CC_ALG == SILO

@@ -137,21 +137,7 @@ void Stats_thd::clear() {
   trans_cur_row_init_time=0;
 
   trans_access_lock_wait_time=0;
-  // trans network
-  trans_process_network=0;
-  trans_validation_network=0;
-  trans_commit_network=0;
-  trans_abort_network=0;
-  // trans mvcc
-  trans_mvcc_clear_history=0;
-  trans_mvcc_access=0;
-  // trans dli
-  dli_init_time=0;
-  dli_lock_time=0;
-  dli_check_conflict_time=0;
-  dli_final_validate=0;
-  dli_get_rwset=0;
-  dli_push_front_time=0;
+  
   // trans queue
   trans_local_process=0;
   trans_remote_process=0;
@@ -584,19 +570,6 @@ void Stats_thd::print(FILE * outf, bool prog) {
   ",trans_validation_network=%f"
   ",trans_commit_network=%f"
   ",trans_abort_network=%f"
-  // trans mvcc
-  ",trans_mvcc_clear_history=%f"
-  ",trans_mvcc_access=%f"
-    // trans get row
-  ",trans_cur_row_copy_time=%f"
-  ",trans_cur_row_init_time=%f"
-    // trans dli
-  ",dli_init_time=%f"
-  ",dli_lock_time=%f"
-  ",dli_check_conflict_time=%f"
-  ",dli_final_validate=%f"
-  ",dli_get_rwset=%f"
-  ",dli_push_front_time=%f"
   // trans queue
   ",trans_local_process=%f"
   ",trans_remote_process=%f"
@@ -619,10 +592,6 @@ void Stats_thd::print(FILE * outf, bool prog) {
           trans_commit_time / BILLION, trans_abort_time / BILLION, trans_access_lock_wait_time / BILLION,
           // trans network
           trans_process_network / BILLION, trans_validation_network / BILLION, trans_commit_network / BILLION, trans_abort_network / BILLION, 
-          trans_mvcc_clear_history / BILLION, trans_mvcc_access / BILLION,
-          trans_cur_row_copy_time / BILLION, trans_cur_row_init_time / BILLION,
-          dli_init_time / BILLION, dli_lock_time / BILLION, dli_check_conflict_time / BILLION, dli_final_validate / BILLION,
-          dli_get_rwset / BILLION, dli_push_front_time / BILLION,
           trans_local_process / BILLION, trans_remote_process / BILLION,
           trans_work_local_wait / BILLION, trans_work_remote_wait / BILLION,
           trans_msg_local_wait / BILLION, trans_msg_remote_wait / BILLION,
@@ -1335,18 +1304,6 @@ void Stats_thd::combine(Stats_thd * stats) {
   trans_validation_network+=stats->trans_validation_network;
   trans_commit_network+=stats->trans_commit_network;
   trans_abort_network+=stats->trans_abort_network;
-  // trans mvcc
-  trans_mvcc_clear_history+=stats->trans_mvcc_clear_history;
-  trans_mvcc_access+=stats->trans_mvcc_access;
-  // trans dli
-  dli_init_time+=stats->dli_init_time;
-  dli_lock_time+=stats->dli_lock_time;
-  dli_check_conflict_time+=stats->dli_check_conflict_time;
-  dli_final_validate+=stats->dli_final_validate;
-  dli_get_rwset+=stats->dli_get_rwset;
-  dli_push_front_time+=stats->dli_push_front_time;
-  trans_work_queue_item_total+=stats->trans_work_queue_item_total;
-  trans_msg_queue_item_total+=stats->trans_msg_queue_item_total;
   // trans queue
   trans_local_process+=stats->trans_local_process;
   trans_remote_process+=stats->trans_remote_process;

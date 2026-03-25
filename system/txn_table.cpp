@@ -157,12 +157,6 @@ TxnManager * TxnTable::get_transaction_manager(uint64_t thd_id, uint64_t txn_id,
   INC_STATS(thd_id,mtx[24],get_sys_clock()-prof_starttime);
   }
 
-#if CC_ALG == MVCC || CC_ALG == WOOKONG || CC_ALG == DTA || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3
-  if(txn_man->get_timestamp() < pool[pool_id]->min_ts)
-    pool[pool_id]->min_ts = txn_man->get_timestamp();
-#endif
-
-
   // unset modify bit for this pool: txn_id % pool_size
   ATOM_CAS(pool[pool_id]->modify,true,false);
 
@@ -239,36 +233,17 @@ void TxnTable::release_transaction_manager(uint64_t thd_id, uint64_t txn_id, uin
 
   txn_node_t t_node = pool[pool_id]->head;
 
-#if CC_ALG == MVCC || CC_ALG == WOOKONG || CC_ALG == DTA || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3
-  uint64_t min_ts = UINT64_MAX;
-  txn_node_t saved_t_node = NULL;
-#endif
-
   uint64_t prof_starttime = get_sys_clock();
   while (t_node != NULL) {
     if(is_matching_txn_node(t_node,txn_id,batch_id)) {
       LIST_REMOVE_HT(t_node,pool[txn_id % pool_size]->head,pool[txn_id % pool_size]->tail);
       --pool[pool_id]->cnt;
-#if CC_ALG == MVCC || CC_ALG == WOOKONG || CC_ALG == DTA || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3
-    saved_t_node = t_node;
-    t_node = t_node->next;
-    continue;
-#else
       break;
-#endif
     }
-#if CC_ALG == MVCC || CC_ALG == WOOKONG || CC_ALG == DTA || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3
-    if (t_node->txn_man->get_timestamp() < min_ts) min_ts = t_node->txn_man->get_timestamp();
-#endif
     t_node = t_node->next;
   }
   INC_STATS(thd_id,mtx[25],get_sys_clock()-prof_starttime);
   prof_starttime = get_sys_clock();
-
-#if CC_ALG == MVCC || CC_ALG == WOOKONG || CC_ALG == DTA || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3
-  t_node = saved_t_node;
-  pool[pool_id]->min_ts = min_ts;
-#endif
 
   // unset modify bit for this pool: txn_id % pool_size
   ATOM_CAS(pool[pool_id]->modify,true,false);

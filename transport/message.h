@@ -49,14 +49,6 @@ public:
   uint64_t batch_id;
   uint64_t return_node_id;
 
-#if LONG_TXN_WORKLOAD
-  // 对于子事务来说，原本的大事务事务号
-  uint64_t original_batch_id;
-  uint64_t original_txn_id;
-  // 对于子事务来说，原本的大事务应该返回给的节点
-  uint64_t origin_return_node_id;
-#endif
-
   uint64_t wq_time;
   uint64_t mq_time;
   uint64_t ntwk_time;

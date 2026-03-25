@@ -321,7 +321,6 @@ RC OptCC::get_rw_set(TxnManager * txn, set_ent * &rset, set_ent *& wset) {
 
 	assert(n == wset->set_size);
 	assert(m == rset->set_size);
-	INC_STATS(txn->get_thd_id(),dli_get_rwset,get_sys_clock() - start_time);
 	return RCOK;
 }
 

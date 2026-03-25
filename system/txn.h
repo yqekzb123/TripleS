@@ -214,13 +214,8 @@ public:
 	RC get_row(row_t * row, access_t type, row_t *& row_rtn);
 
 	row_t * volatile cur_row;
-	// [DL_DETECT, NO_WAIT, WAIT_DIE]
+	// [NO_WAIT, WAIT_DIE]
 	int volatile   lock_ready;
-	// [TIMESTAMP, MVCC]
-	bool volatile   ts_ready;
-	// [HSTORE, HSTORE_SPEC]
-	int volatile    ready_part;
-	int volatile    ready_ulk;
 
 #if CC_ALG == ARIA
 	vector<vector<ycsb_request *>> read_set;
@@ -312,7 +307,6 @@ public:
 	//void send_rfin_messages(RC rc) {assert(false);}
 	void send_finish_messages();
 	void send_prepare_messages();
-	void send_validation_messages();
 
 	TxnStats txn_stats;
 
@@ -332,20 +326,10 @@ public:
 	int last_batch_id;
 	int last_txn_id;
 	Message* last_msg;
-#if LONG_TXN_WORKLOAD
-	uint64_t original_txn_id;
-	uint64_t original_batch_id;
-	uint64_t origin_return_node_id;
-#endif
 
     // 如果此事务被插入到 calvin_scheduled_list_lockfree 中，
     // scheduled_entry 指向其对应的 list_node_entry（用于更新 snapshot）
     struct list_node_entry* scheduled_entry = nullptr;
-
-#if CC_ALG == DLI_MVCC || CC_ALG == DLI_MVCC_OCC || CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3 || \
-	CC_ALG == DLI_OCC
-	std::atomic<bool>* is_abort = nullptr;
-#endif
 
 protected:
 

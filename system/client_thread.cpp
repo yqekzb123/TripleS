@@ -55,28 +55,19 @@ RC ClientThread::run() {
 	run_starttime = get_sys_clock();
 	while(!simulation->is_done()) {
 		heartbeat();
-#if SERVER_GENERATE_QUERIES
-		break;
-#endif
 		//uint32_t next_node = iters++ % g_node_cnt;
 		progress_stats();
 		int32_t inf_cnt;
-	#if CC_ALG == BOCC || CC_ALG == FOCC
-		uint32_t next_node = 0;
-		uint32_t next_node_id = next_node;
-	#else
+
 		uint32_t next_node = (((iters++) * g_client_thread_cnt) + _thd_id )% g_servers_per_client;
 		uint32_t next_node_id = next_node + g_server_start_node;
-	#endif
 		// uint32_t next_node_id = next_node + g_server_start_node;
 		// Just in case...
 		if (iters == UINT64_MAX)
 			iters = 0;
 #if LOAD_METHOD == LOAD_MAX
-	#if WORKLOAD != DA
 		if ((inf_cnt = client_man.inc_inflight(next_node)) < 0)
 			continue;
-	#endif
 		m_query = client_query_queue.get_next_query(next_node,_thd_id);
 		if(last_send_time > 0) {
 			INC_STATS(get_thd_id(),cl_send_intv,get_sys_clock() - last_send_time);
@@ -100,19 +91,13 @@ RC ClientThread::run() {
 
 		DEBUG("Client: thread %lu sending query to node: %u, %d, %f\n",
 				_thd_id, next_node_id,inf_cnt,simulation->seconds_from_start(get_sys_clock()));
-// #ifdef NO_REMOTE
-// 		Message * msg = Message::create_message((BaseQuery*)m_query,CL_QRY_O);
-// #else
 		Message * msg = Message::create_message((BaseQuery*)m_query,CL_QRY);
-// #endif
+
 		((ClientQueryMessage*)msg)->client_startts = get_sys_clock();
 		msg_queue.enqueue(get_thd_id(),msg,next_node_id);
 		num_txns_sent++;
 		txns_sent[next_node]++;
 		INC_STATS(get_thd_id(),txn_sent_cnt,1);
-		#if WORKLOAD==DA
-			delete m_query;
-		#endif
 	}
 
 	for (uint64_t l = 0; l < g_servers_per_client; ++l)

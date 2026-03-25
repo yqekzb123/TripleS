@@ -60,8 +60,6 @@ void Query_thd::init(Workload *h_wl, int thread_id) {
 		new(&queries[qid]) TPCCQuery();
 #elif WORKLOAD == PPS
 		new(&queries[qid]) PPSQuery();
-#elif WORKLOAD == DA
-		new(&queries[qid]) DAQuery();
 #endif
 		queries[qid].init(thread_id, h_wl);
 	}

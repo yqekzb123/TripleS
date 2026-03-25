@@ -434,7 +434,6 @@ void TPCCQuery::release() {
 
 void TPCCQuery::release_items() {
   // A bit of a hack to ensure that original requests in client query queue aren't freed
-  if (SERVER_GENERATE_QUERIES) return;
   for(uint64_t i = 0; i < items.size(); i++) {
     DEBUG_M("TPCCQuery::release() Item_no free\n");
     mem_allocator.free(items[i],sizeof(Item_no));

@@ -44,7 +44,6 @@ public:
     RC process_rqry_cont(Message * msg);
     RC process_rinit(Message * msg);
     RC process_rprepare(Message * msg);
-    RC process_rpass(Message * msg);
     RC process_rtxn(Message * msg);
     RC process_calvin_rtxn(Message * msg);
 #if CC_ALG == ARIA

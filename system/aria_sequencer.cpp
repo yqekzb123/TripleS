@@ -257,7 +257,7 @@ void AriaSequencer::fill_batch(uint64_t _thd_id) {
             INC_STATS(_thd_id, seq_idle_time, get_sys_clock() - idle_starttime); idle_starttime = 0; 
         }
         int rtype = msg->get_rtype(); 
-        assert(rtype == CL_QRY || rtype == CL_QRY_O);
+        assert(rtype == CL_QRY);
         aria_txn * en = (aria_txn *) mem_allocator.alloc(sizeof(aria_txn));
         msg->batch_id = pipeline_current_batch->id;
         msg->txn_id = g_node_id + g_node_cnt * next_txn_id; next_txn_id++;
@@ -289,7 +289,7 @@ void AriaSequencer::put_one_txn_to_batch(uint64_t _thd_id) {
     Message * msg = work_queue.txn_dequeue(_thd_id);
     if (!msg) return;
     int rtype = msg->get_rtype(); 
-    assert(rtype == CL_QRY || rtype == CL_QRY_O);
+    assert(rtype == CL_QRY);
     if (!pipeline_current_batch)
         pipeline_current_batch = new PBatch(pipeline_next_batch_id);
     aria_txn * en = (aria_txn *) mem_allocator.alloc(sizeof(aria_txn));

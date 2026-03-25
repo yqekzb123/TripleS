@@ -133,7 +133,7 @@ Message* QWorkQueue::txn_dequeue(uint64_t thd_id) {
 		INC_STATS(thd_id,work_queue_wait_time,queue_time);
 		INC_STATS(thd_id,work_queue_cnt,1);
 		statqueue(thd_id, entry);
-		if(msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
+		if(msg->rtype == CL_QRY) {
 			sem_wait(&_semaphore);
 			txn_queue_size --;
 			txn_dequeue_size ++;
@@ -250,7 +250,7 @@ Message* QWorkQueue::work_dequeue(uint64_t thd_id) {
 		INC_STATS(thd_id,work_queue_wait_time,queue_time);
 		INC_STATS(thd_id,work_queue_cnt,1);
 		statqueue(thd_id, entry);
-		if(msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
+		if(msg->rtype == CL_QRY) {
 			sem_wait(&_semaphore);
 			work_queue_size ++;
 			work_enqueue_size ++;
@@ -404,7 +404,7 @@ void QWorkQueue::enqueue(uint64_t thd_id, Message * msg,bool busy) {
 	DEBUG("Work Enqueue (%ld,%ld) %d\n",entry->txn_id,entry->batch_id,entry->rtype);
 
 	uint64_t mtx_wait_starttime = get_sys_clock();
-	if(msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
+	if(msg->rtype == CL_QRY) {
 		while (!new_txn_queue->push(entry) && !simulation->is_done()) {
 		}
 		sem_wait(&_semaphore);
@@ -442,7 +442,7 @@ void QWorkQueue::statqueue(uint64_t thd_id, work_queue_entry * entry) {
 				msg->rtype == RFWD){
 		uint64_t queue_time = get_sys_clock() - entry->starttime;
 		INC_STATS(thd_id,trans_work_remote_wait,queue_time);
-	}else if (msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
+	}else if (msg->rtype == CL_QRY) {
 		uint64_t queue_time = get_sys_clock() - entry->starttime;
 		INC_STATS(thd_id,trans_get_client_wait,queue_time);
 	}
@@ -498,7 +498,7 @@ Message * QWorkQueue::dequeue(uint64_t thd_id) {
 		INC_STATS(thd_id,work_queue_wait_time,queue_time);
 		INC_STATS(thd_id,work_queue_cnt,1);
     	statqueue(thd_id, entry);
-		if(msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
+		if(msg->rtype == CL_QRY) {
 			sem_wait(&_semaphore);
 			txn_queue_size --;
 			txn_dequeue_size ++;
@@ -701,7 +701,7 @@ void QWorkQueue::work_enqueue_lockfree_list(uint64_t thd_id, Message* msg, bool 
 	assert(ISSERVER || ISREPLICA);
 	// DEBUG("Work Enqueue (%ld,%ld) %d\n",entry->txn_id,entry->batch_id,entry->rtype);
 
-	assert(msg->rtype == CL_QRY || msg->rtype == CL_QRY_O);
+	assert(msg->rtype == CL_QRY);
 
 	if(not_ready) {
 		INC_STATS(thd_id,work_queue_conflict_cnt,1);
@@ -789,7 +789,7 @@ Message* QWorkQueue::work_dequeue_lockfree_list(uint64_t thd_id, ARIA_PHASE phas
 		INC_STATS(thd_id,work_queue_wait_time,queue_time);
 		INC_STATS(thd_id,work_queue_cnt,1);
 		statqueue(thd_id, entry);
-		if(msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
+		if(msg->rtype == CL_QRY) {
 			sem_wait(&_semaphore);
 			work_queue_size ++;
 			work_enqueue_size ++;
@@ -889,7 +889,7 @@ Message* QWorkQueue::work_dequeue_lockfree_list(uint64_t thd_id, ARIA_PHASE phas
 		INC_STATS(thd_id,work_queue_wait_time,queue_time);
 		INC_STATS(thd_id,work_queue_cnt,1);
 		statqueue(thd_id, entry);
-		if(msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
+		if(msg->rtype == CL_QRY) {
 			sem_wait(&_semaphore);
 			work_queue_size ++;
 			work_enqueue_size ++;
@@ -951,7 +951,7 @@ Message * QWorkQueue::queuetop(uint64_t thd_id)
 		uint64_t queue_time = get_sys_clock() - entry->starttime;
 		INC_STATS(thd_id,work_queue_wait_time,queue_time);
 		INC_STATS(thd_id,work_queue_cnt,1);
-		if(msg->rtype == CL_QRY || msg->rtype == CL_QRY_O) {
+		if(msg->rtype == CL_QRY) {
 			sem_wait(&_semaphore);
 			txn_queue_size --;
 			txn_dequeue_size ++;

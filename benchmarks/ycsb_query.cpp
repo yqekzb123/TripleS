@@ -107,7 +107,6 @@ void YCSBQuery::copy_request_to_msg(YCSBQuery * ycsb_query, YCSBQueryMessage * m
 
 void YCSBQuery::release_requests() {
 	// A bit of a hack to ensure that original requests in client query queue aren't freed
-	if (SERVER_GENERATE_QUERIES && requests.size() == g_req_per_query) return;
 	for(uint64_t i = 0; i < requests.size(); i++) {
 		DEBUG_M("YCSBQuery::release() ycsb_request free\n");
 		mem_allocator.free(requests[i],sizeof(ycsb_request));

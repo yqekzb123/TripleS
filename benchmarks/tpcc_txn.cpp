@@ -1309,24 +1309,6 @@ inline RC TPCCTxnManager::new_order_5_1(uint64_t w_id, uint64_t d_id, uint64_t c
 // 	m_item->location = r_order;
 // 	m_item->valid = true;
 // 	_wl->i_order_cust->index_insert(custKey(c_id, d_id, w_id), m_item);
-// #elif CC_ALG == HDCC
-// 	if (algo == CALVIN) {
-// 		itemid_t *m_item = (itemid_t *)mem_allocator.alloc(sizeof(itemid_t));
-// 		m_item->init();
-// 		m_item->type = DT_row;
-// 		m_item->location = r_order;
-// 		m_item->valid = true;
-// 		_wl->i_order_cust->index_insert(custKey(c_id, d_id, w_id), m_item);
-// 	}
-// #elif CC_ALG == SNAPPER
-// 	if (algo == CALVIN) {
-// 		itemid_t *m_item = (itemid_t *)mem_allocator.alloc(sizeof(itemid_t));
-// 		m_item->init();
-// 		m_item->type = DT_row;
-// 		m_item->location = r_order;
-// 		m_item->valid = true;
-// 		_wl->i_order_cust->index_insert(custKey(c_id, d_id, w_id), m_item);
-// 	}
 // #endif
 #else
 	insert_row(r_order, _wl->t_order);
