@@ -32,7 +32,6 @@
 #include "message.h"
 #include "stats.h"
 #include <boost/lockfree/queue.hpp>
-#include "manager.h"
 
 void Sequencer::init(Workload * wl) {
 	next_txn_id = 0;
@@ -42,12 +41,7 @@ void Sequencer::init(Workload * wl) {
 	wl_head = NULL;
 	wl_tail = NULL;
 	fill_queue = new boost::lockfree::queue<Message*, boost::lockfree::capacity<65526> > [g_node_cnt];
-
 }
-
-// Simple registry: txn_id -> TxnManager* (used to find dependent txn manager by id)
-// static std::unordered_map<uint64_t, TxnManager*> txn_registry;
-// static std::mutex txn_registry_mutex;
 
 // Assumes 1 thread does sequencer work
 void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
@@ -69,9 +63,6 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 
 	// Decrement the number of acks needed for this txn
 	uint32_t query_acks_left = ATOM_SUB_FETCH(wait_list[id].server_ack_cnt, 1);
-	// 打印目前事务还差多少ack
-	// DEBUG_SEQ("Sequencer::process_ack() txn=[%ld-%ld] id=%ld original_txn=[%ld-%ld] ack_left=%d\n",
-			//  batch_id,msg->get_txn_id(), id, msg->original_batch_id,msg->original_txn_id, query_acks_left);
 
 	if (wait_list[id].skew_startts == 0) {
 		wait_list[id].skew_startts = get_sys_clock();
@@ -261,13 +252,6 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 	msg->txn_id = txn_id;
 	assert(txn_id != UINT64_MAX);
 
-	// Register this message with Manager now that Sequencer assigned a real txn id
-	{
-		uint64_t reg_key = get_calvin_key(msg->get_batch_id(), msg->get_return_id(), msg->get_txn_id());
-		Manager::register_txn_message(reg_key, msg);
-	}
-
-
 #if LONG_TXN_WORKLOAD
 	if (id >= en->max_size) {
 		en->max_size *= 2;
@@ -297,6 +281,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 	en->list[id].abort_cnt = abort_cnt;
 	en->list[id].skew_startts = 0;
 	en->list[id].server_ack_cnt = server_ack_cnt;
+	en->list[id].msg = msg;
 	en->size++;
 	en->txns_left++;
 	

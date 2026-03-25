@@ -284,9 +284,6 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 	txn->cur_row->init(get_table(), get_part_id());
 	INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
 	txn->cur_row->copy(this);
-	#if LONG_TXN_SCHEDULE
-	rc = this->manager->access(txn, type, this);
-	#endif
 	uint64_t copy_time = get_sys_clock();
 	access->data = txn->cur_row;
 	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
@@ -320,27 +317,6 @@ RC row_t::get_ts(uint64_t &orig_wts, uint64_t &orig_rts) {
 	return rc;
 }
 
-RC row_t::get_row(access_t type, TxnManager * txn, row_t *& row, uint64_t &orig_wts, uint64_t &orig_rts) {
-		RC rc = RCOK;
-#if MODE==NOCC_MODE || MODE==QRY_ONLY_MODE
-		row = this;
-		return rc;
-#endif
-#if CC_ALG == TICTOC
-  uint64_t init_time = get_sys_clock();
-  DEBUG_M("row_t::get_row tictoc alloc \n");
-	txn->cur_row = (row_t *) mem_allocator.alloc(sizeof(row_t));
-	txn->cur_row->init(get_table(), get_part_id());
-  INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
-  rc = this->manager->access(type,txn,row,orig_wts,orig_rts);
-  uint64_t copy_time = get_sys_clock();
-  txn->cur_row->copy(this);
-	row = txn->cur_row;
-  assert(rc == RCOK);
-  INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
-#endif
-	return rc;
-}
 // Return call for get_row if waiting
 RC row_t::get_row_post_wait(access_t type, TxnManager * txn, row_t *& row) {
 	RC rc = RCOK;
@@ -401,12 +377,6 @@ uint64_t row_t::return_row(RC rc, access_t type, TxnManager *txn, row_t *row) {
 	DEBUG_M("row_t::return_row Maat free \n");
 		mem_allocator.free(row, sizeof(row_t));
 	return 0;
-#elif CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC
-	assert (row != NULL);
-	if (ROLL_BACK && type == XP) {// recover from previous writes.
-		this->copy(row);
-	}
-	return 0;
 #elif CC_ALG == SILO
 	assert (row != NULL);
 	row->free_row();
@@ -415,9 +385,6 @@ uint64_t row_t::return_row(RC rc, access_t type, TxnManager *txn, row_t *row) {
 	return 0;
 #elif CC_ALG == ARIA
 	assert(row != NULL);
-	#if LONG_TXN_SCHEDULE
-	this->manager->clean(txn, type);
-	#endif
 	row->free_row();
 	mem_allocator.free(row, sizeof(row_t));
 	return 0;

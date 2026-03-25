@@ -123,9 +123,7 @@ UInt32 g_part_cnt = PART_CNT;
 UInt32 g_virtual_part_cnt = VIRTUAL_PART_CNT;
 UInt32 g_core_cnt = CORE_CNT;
 
-#if CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC
-UInt32 g_thread_cnt = PART_CNT/NODE_CNT;
-#elif LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
 UInt32 g_scheduler_thread_cnt = SCHEDULER_CNT;
 #if CC_ALG == CALVIN
 UInt32 g_thread_cnt = THREAD_CNT + 1 - g_scheduler_thread_cnt;
@@ -140,14 +138,6 @@ uint64_t minSid = 0;
 #if CC_ALG == ARIA
 WaterMarkList* reservation_check_water_mark;
 WaterMarkList* check_commit_water_mark;
-// uint64_t * read_reservation_sids; // 从Read阶段到Reservation阶段中的水印
-// uint64_t min_read_reservation_sid = 0;
-// uint64_t * reservation_check_sids; // 从Reservation阶段到Check阶段中的水印
-// uint64_t min_reservation_check_sid = 0;
-// uint64_t * check_commit_sids; // 从Check阶段到Commit阶段中的水印
-// uint64_t min_check_commit_sid = 0;
-// uint64_t * commit_read_sids; // 从这一批次的Commit到下一批次的Read阶段的水印
-// uint64_t min_commit_read_sid = 0;
 #endif
 #else
 UInt32 g_thread_cnt = THREAD_CNT;

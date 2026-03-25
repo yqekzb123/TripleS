@@ -21,7 +21,7 @@
 #include "txn.h"
 #include "row_lock.h"
 
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
 
 void Row_lock::init(row_t * row) {
     _row = row;

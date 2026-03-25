@@ -31,8 +31,6 @@
 #include "query.h"
 #include "msg_queue.h"
 #include "message.h"
-#include "message.h"
-#include "aria.h"
 #include "small_lock_list.h"
 
 void YCSBTxnManager::init(uint64_t thd_id, Workload * h_wl) {
@@ -87,43 +85,6 @@ RC YCSBTxnManager::acquire_locks() {
   locking_done = true;
   return rc;
 }
-
-#if CC_ALG == SNAPPER
-void YCSBTxnManager::get_read_write_set() {
-  uint64_t starttime = get_sys_clock();
-  YCSBQuery* ycsb_query = (YCSBQuery*) query;
-  assert(ycsb_query->requests.size() == g_req_per_query || ycsb_query->requests.size() == g_req_per_short_query);
-  assert(phase == CALVIN_RW_ANALYSIS);
-	for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
-		ycsb_request * req = ycsb_query->requests[rid];
-		uint64_t part_id = _wl->key_to_part( req->key );
-    DEBUG("[%ld] LK Acquire (%ld,%ld) %d,%ld -> %ld\n", get_thd_id(), get_txn_id(), get_batch_id(), req->acctype,
-      req->key, GET_NODE_ID(part_id));
-    if (GET_NODE_ID(part_id) != g_node_id) continue;
-		INDEX * index = _wl->the_index;
-		itemid_t * item;
-		item = index_read(index, req->key, part_id);
-		row_t * row = ((row_t *)item->location);
-    read_write_set.emplace_back(row, req->acctype);
-    wait_for_locks.insert(row);
-  }
-  INC_STATS(get_thd_id(),calvin_sched_time,get_sys_clock() - starttime);
-}
-
-RC YCSBTxnManager::acquire_lock(row_t * row, access_t acctype) {
-  RC rc = WAIT;
-  // uint64_t starttime = get_sys_clock();
-  RC rc2 = get_lock(row,acctype);
-  if (rc2 == RCOK) {
-    if (wait_for_locks.empty()) {
-        if (ATOM_CAS(lock_ready, false, true)) {
-          rc = RCOK;
-        }
-    }
-  }
-  return rc;
-}
-#endif
 
 RC YCSBTxnManager::run_txn() {
   RC rc = RCOK;
@@ -269,33 +230,19 @@ RC YCSBTxnManager::process_aria_remote(ARIA_PHASE aria_phase) {
         assert(rc == RCOK);
       }
     }
-    #if LONG_TXN_SCHEDULE
-      assert(txn->rc != Abort);
-    #else
     rc = reserve();
     // printf("txn: %ld remote reserve rc: %d\n", txn->txn_id, rc);
     if (rc == Abort) {
       txn->rc = Abort;
     }
-    #endif  
     break;
   case ARIA_CHECK:
-    #if LONG_TXN_SCHEDULE
-    rc = check();
-    assert(txn->rc != Abort);
-    assert(rc != Abort);
-    if (rc == WAIT) {
-      // 流水线Aria需要重试
-      break;
-    }
-    #else
     assert(txn->rc != Abort);
     rc = check();
     if (rc == Abort) {
       txn->rc = Abort;
     }
     // printf("txn: %ld remote check rc: %d\n", txn->txn_id, rc);
-    #endif
     break;
   default:
     assert(false);
@@ -321,12 +268,7 @@ void YCSBTxnManager::copy_remote_requests(YCSBQueryMessage * msg) {
 }
 #else
 void YCSBTxnManager::copy_remote_requests(YCSBQueryMessage * msg) {
-  #if !LONG_TXN_SCHEDULE
-  ARIA_PHASE phase = simulation->aria_phase;
-  #else
-  ARIA_PHASE phase = aria_phase;
-  #endif
-  if (phase == ARIA_READ) {
+  if (simulation->aria_phase == ARIA_READ) {
     for (uint64_t i = 0; i < read_set[next_send_node].size(); i++) {
       msg->requests.add(read_set[next_send_node][i]);
     }
@@ -497,13 +439,8 @@ RC YCSBTxnManager::run_aria_txn() {
   RC rc = RCOK;
   uint64_t starttime = get_sys_clock();
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
-  #if !LONG_TXN_SCHEDULE
-  ARIA_PHASE phase = simulation->aria_phase;
-  #else
-  ARIA_PHASE phase = aria_phase;
-  #endif
-  DEBUG_WRK("thd [%ld] Run aria txn[%ld,%ld] phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id, get_aria_phase_str(phase).c_str());
-  switch (phase)
+  // DEBUG_WRK("thd [%ld] Run aria txn[%ld,%ld] phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id, get_aria_phase_str(phase).c_str());
+  switch (simulation->aria_phase)
   {
   case ARIA_READ:
     //analyze read/write set, do local read if key is equal to g_node_id or send remote read to remote node
@@ -529,15 +466,11 @@ RC YCSBTxnManager::run_aria_txn() {
 
     rc = send_remote_read_requests();
     assert(rc == RCOK || rc == WAIT_REM);
-    
-    
+
     assert(aria_phase == ARIA_READ);
-    #if LONG_TXN_SCHEDULE
-    txn_next_aria_phase(get_thd_id(),aria_phase,this);
-    #else
-    assert(simulation->aria_phase == ARIA_READ);
-    #endif
     aria_phase = (ARIA_PHASE) (aria_phase + 1);
+    assert(simulation->aria_phase == ARIA_READ);
+    // printf("txn: %ld read phase rc: %d\n", txn->txn_id, rc);
 
     break;
   case ARIA_RESERVATION:
@@ -549,47 +482,24 @@ RC YCSBTxnManager::run_aria_txn() {
       rc = run_ycsb_1(request->acctype,row);
       assert(rc == RCOK);
     }
-    #if LONG_TXN_SCHEDULE
-      assert(txn->rc != Abort);
-    #else
+
     rc = reserve();
     if (rc == Abort) {
       txn->rc = Abort;
     }
-    #endif  
 
     rc = send_remote_write_requests();
     assert(rc == RCOK || rc == Abort || rc == WAIT_REM);
 
     assert(aria_phase == ARIA_RESERVATION);
-    #if LONG_TXN_SCHEDULE
-    txn_next_aria_phase(get_thd_id(),aria_phase,this);
-    #else
-    assert(simulation->aria_phase == ARIA_RESERVATION);
-    #endif
     aria_phase = (ARIA_PHASE) (aria_phase + 1);
+    assert(simulation->aria_phase == ARIA_RESERVATION);
     break;
   case ARIA_CHECK:
     // If we already known that txn should be aborted, do nothing in this phase, otherwise, check if the txn should be aborted
     if (txn->rc == Abort) {
-      assert(!LONG_TXN_SCHEDULE);
     } else {
       //send check request to all participants like 2PC
-      
-      #if LONG_TXN_SCHEDULE
-      rc = check();
-      assert(txn->rc != Abort);
-      assert(rc != Abort);
-      if (rc == RCOK) {
-        send_prepare_messages();
-        if (rsp_cnt != 0) {
-          rc = WAIT_REM;
-        }
-      } else if (rc == WAIT) {
-        // 流水线Aria需要重试
-        break;
-      }
-      #else
       send_prepare_messages();
 
       rc = check();
@@ -600,23 +510,17 @@ RC YCSBTxnManager::run_aria_txn() {
       if (rsp_cnt != 0) {
         rc = WAIT_REM;
       }
-      #endif
     }
 
     assert(aria_phase == ARIA_CHECK);
-    #if LONG_TXN_SCHEDULE
-    txn_next_aria_phase(get_thd_id(),aria_phase,this);
-    #else
-    assert(simulation->aria_phase == ARIA_CHECK);
-    #endif
     aria_phase = (ARIA_PHASE) (aria_phase + 1);
+    assert(simulation->aria_phase == ARIA_CHECK);
     // printf("txn: %ld check phase rc: %d\n", txn->txn_id, rc);
     break;
   case ARIA_COMMIT:
     send_finish_messages();
 
     if (txn->rc == Abort) {
-      assert(!LONG_TXN_SCHEDULE);
       abort();
     } else {
       commit();
@@ -627,12 +531,8 @@ RC YCSBTxnManager::run_aria_txn() {
     }
 
     assert(aria_phase == ARIA_COMMIT);
-    #if LONG_TXN_SCHEDULE
-      txn_next_aria_phase(get_thd_id(),aria_phase,this);
-    #else
-    assert(simulation->aria_phase == ARIA_COMMIT);
-    #endif
     aria_phase = (ARIA_PHASE) (aria_phase + 1);
+    assert(simulation->aria_phase == ARIA_COMMIT);
     // printf("txn: %ld commit phase rc: %d\n", txn->txn_id, rc);
     break;
   default:

@@ -361,7 +361,6 @@ BaseQuery * YCSBQueryGenerator::gen_requests_zipf(uint64_t home_partition_id, Wo
 	for (UInt32 i = 0; i < req_size; i ++) {
 		double r = (double)(mrand->next() % 10000) / 10000;
 		uint64_t partition_id;
-
 	#ifdef NO_REMOTE
 		partition_id = home_partition_id;
 	#else

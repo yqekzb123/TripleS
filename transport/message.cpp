@@ -359,7 +359,7 @@ void Message::release_message(Message * msg) {
       m_msg->release();
       delete m_msg;
       break;
-                   }
+                  }
     case RFWD: {
       ForwardMessage * m_msg = (ForwardMessage*)msg;
       m_msg->release();
@@ -892,8 +892,7 @@ void PPSClientQueryMessage::copy_to_buf(char * buf) {
 
 void ClientQueryMessage::init() { 
   first_startts = 0; 
-  isDone = false;
-
+  
   #if CC_ALG == ARIA
   aria_phase = ARIA_READ;
   rld_pointer = NULL;

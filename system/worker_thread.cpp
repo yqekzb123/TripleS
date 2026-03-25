@@ -32,7 +32,6 @@
 #include "work_queue.h"
 #include "ycsb_query.h"
 #include "small_lock_list.h"
-#include "aria.h"
 #include "water_mark.h"
 
 void WorkerThread::setup() {
@@ -307,7 +306,6 @@ RC WorkerThread::run() {
       if (msg) {
         msg_orig = message_original::work_queue;
         txn_man = get_transaction_manager(msg);
-        // msg = txn_man->last_msg;
       }
     }
     // 如果没有msg，再去拿本地的事务
@@ -331,12 +329,6 @@ RC WorkerThread::run() {
     assert(msg);
     txn_man->txn_stats.clear_short();
     txn_man->txn_stats.work_queue_cnt += 1;
-
-    // 如果msg来源于无锁队列
-    // if (msg == NULL) {
-    //   msg_orig = 1;
-    //   msg = txn_man->last_msg;
-    // }
 
     ready_starttime = get_sys_clock();
     bool ready = txn_man->unset_ready();
@@ -452,13 +444,11 @@ RC WorkerThread::run() {
 #if CC_ALG == ARIA
     else if (msg->rtype == CL_QRY) {
       txn_man = get_transaction_manager(msg);
-      #if !LONG_TXN_SCHEDULE
       if (txn_man->aria_phase != simulation->aria_phase) {
         // printf("thd: %ld, txn: %ld runs twice\n", get_thd_id(), txn_man->get_txn_id());
         work_queue.work_enqueue(get_thd_id(), msg, false, txn_man->aria_phase);
         continue;
       }
-      #endif
 
       txn_man->txn_stats.clear_short();
       txn_man->txn_stats.msg_queue_time += msg->mq_time;
@@ -470,19 +460,10 @@ RC WorkerThread::run() {
       msg->wq_time = 0;
       txn_man->txn_stats.work_queue_cnt += 1;
 
-      #if LONG_TXN_SCHEDULE // !这我不懂是咋回事，感觉是。。。流水线会在消息里带上phase？
-      txn_man->aria_phase = ((ClientQueryMessage*)msg)->aria_phase;
-      #endif
-
       if (txn_man->participants_cnt != 0) {
         DEBUG_WRK("Thd %ld txn %ld in phase %d re-enqueue to list because participants_cnt %ld\n",
           get_thd_id(), txn_man->get_txn_id(), txn_man->aria_phase,txn_man->participants_cnt);
-        #if LONG_TXN_SCHEDULE
-        work_queue.work_enqueue_lockfree_list(get_thd_id(), msg, false, txn_man->aria_phase);
-        DEBUG_SCH("Worker SEND NEXT TXN %ld to queue in phase %s, txn[%ld,%ld]\n", get_thd_id(), get_aria_phase_str(txn_man->aria_phase).c_str(),txn_man->get_batch_id(), txn_man->get_txn_id());
-        #else
         work_queue.work_enqueue(get_thd_id(), msg, true, txn_man->aria_phase);
-        #endif
         continue;
       }
 
@@ -492,12 +473,7 @@ RC WorkerThread::run() {
       if(!ready) {
         DEBUG_WRK("Thd %ld txn %ld in phase %d re-enqueue to list because not ready\n",
           get_thd_id(), txn_man->get_txn_id(), txn_man->aria_phase);
-        #if LONG_TXN_SCHEDULE
-        work_queue.work_enqueue_lockfree_list(get_thd_id(), msg, false, txn_man->aria_phase);
-        DEBUG_SCH("Worker SEND NEXT TXN %ld to queue in phase %s, txn[%ld,%ld]\n", get_thd_id(), get_aria_phase_str(txn_man->aria_phase).c_str(),txn_man->get_batch_id(), txn_man->get_txn_id());
-        #else
         work_queue.work_enqueue(get_thd_id(),msg,true,txn_man->aria_phase);
-        #endif
         continue;
       }
       // printf("txn: %ld unset ready\n", txn_man->get_txn_id());
@@ -505,7 +481,6 @@ RC WorkerThread::run() {
       txn_man->register_thread(this);
     }
 #endif
-
     process(msg);
 
 #if CC_ALG == ARIA  
@@ -1043,46 +1018,14 @@ RC WorkerThread::process_calvin_rtxn(Message * msg) {
 RC WorkerThread::process_aria_rtxn(Message * msg) {
   DEBUG("START %ld %f %lu\n", txn_man->get_txn_id(),
         simulation->seconds_from_start(get_sys_clock()), txn_man->txn_stats.starttime);
-  #if LONG_TXN_SCHEDULE
-  if (txn_man->aria_phase == ARIA_READ && txn_man->txn_stats.abort_cnt == 0) {
-    // printf("txn: %ld copy msg to txn\n", txn_man->get_txn_id());
-    msg->copy_to_txn(txn_man);
-    DEBUG_WRK("txn[%ld,%ld] copy msg to txn\n", txn_man->get_batch_id(),txn_man->get_txn_id());
-    txn_man->txn_stats.copy_request_counts += 1;
-    assert(ISSERVERN(txn_man->return_id));
-  }
-  #else
   if (simulation->aria_phase == ARIA_READ && txn_man->txn_stats.abort_cnt == 0) {
     // printf("txn: %ld copy msg to txn\n", txn_man->get_txn_id());
     msg->copy_to_txn(txn_man);
     assert(ISSERVERN(txn_man->return_id));
   }
-  #endif
   txn_man->txn_stats.local_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
   // Execute
   RC rc = txn_man->run_aria_txn();
-  #if LONG_TXN_SCHEDULE
-  ARIA_PHASE phase = txn_man->aria_phase;
-  if (phase == ARIA_CHECK && rc == WAIT) {
-    // 重新入队
-    assert(phase == ARIA_CHECK);
-    work_queue.work_enqueue_lockfree_list(get_thd_id(), msg, false, phase);
-    DEBUG_SCH("Worker RE-ENQUEUE TXN %ld to queue in phase %s, txn[%ld,%ld]\n", get_thd_id(), get_aria_phase_str(phase).c_str(),txn_man->get_batch_id(), txn_man->get_txn_id());
-  } 
-  if (phase == ARIA_DONE) {
-    if (rc != WAIT_REM) {
-      DEBUG_SCH("Worker FINISH TXN %ld in phase %s, txn[%ld,%ld]\n", get_thd_id(), get_aria_phase_str(phase).c_str(),
-        txn_man->get_batch_id(), txn_man->get_txn_id());
-      work_queue.sequencer_enqueue(get_thd_id(),Message::create_message(txn_man, ARIA_ACK));
-      if (txn_man->get_rc() == Abort) {
-        assert(!LONG_TXN_SCHEDULE);
-        abort();
-      } else {
-        commit();
-      }
-    }
-  }
-  #else
   if (simulation->aria_phase == ARIA_COMMIT) {
     if (rc != WAIT_REM) {
       work_queue.sequencer_enqueue(get_thd_id(),Message::create_message(txn_man, ARIA_ACK));
@@ -1093,7 +1036,6 @@ RC WorkerThread::process_aria_rtxn(Message * msg) {
       }
     }
   }
-  #endif
   return RCOK;
 }
 
@@ -1220,8 +1162,6 @@ RC StatsPerIntervalThread::run(){
       #endif
       DEBUG_TIME("------StatsPerIntervalThread %ld seconds--------\n",loop);
       loop++;
-      // 增加清理无锁链表的操作
-      // work_queue.calvin_scheduled_list_lockfree->remove_consumed();
     }
     // if (now_time - last_millisecond > ONE_MILLISECOND) {
     #if CC_ALG == ARIA && LONG_TXN_SCHEDULE

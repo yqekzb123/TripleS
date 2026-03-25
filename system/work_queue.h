@@ -64,7 +64,7 @@ public:
 
 #if CC_ALG == ARIA
   Message * txn_dequeue(uint64_t thd_id);
-  #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+  #if LONG_TXN_SCHEDULE
   // 在流水线模式下，可以随时从任何队列里取事务。
   void work_enqueue_lockfree_list(uint64_t thd_id, Message * msg, bool not_ready, ARIA_PHASE phase);
   Message * work_dequeue_lockfree_list(uint64_t thd_id, ARIA_PHASE phase);
@@ -95,7 +95,7 @@ public:
   // uint64_t get_rem_wq_cnt() {return remote_op_queue.size();}
   // uint64_t get_new_wq_cnt() {return new_query_queue.size();}
 
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
   bool sched_ready;
   TxnMsgLockList * calvin_scheduled_list_lockfree;
 
@@ -116,7 +116,6 @@ private:
   boost::lockfree::queue<work_queue_entry* > * new_txn_queue;
   boost::lockfree::queue<work_queue_entry* > * seq_queue;
   boost::lockfree::queue<work_queue_entry* > ** sched_queue;
-
 #if CC_ALG == ARIA
   boost::lockfree::queue<work_queue_entry* > * aria_read_queue;
   boost::lockfree::queue<work_queue_entry* > * aria_reserve_queue;

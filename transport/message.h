@@ -279,19 +279,6 @@ public:
   Array<uint64_t> partitions;
   bool isDeterministicAbort;
 
-  bool isDone; // 代表当前子消息是否执行完毕
-
-  // !!For long transactions
-  // --------------- 父事务部分 ---------------------
-  // 用来拆分成多个子事务
-  vector<vector<ycsb_request * > > sub_reqs;
-  vector<uint64_t> steps;
-  // --------------- 父事务部分 ---------------------
-  
-  // --------------- 父事务的原本信息 ---------------------
-  uint64_t sub_reqs_size;
-  Message* parent_msg;
-
   #if CC_ALG == ARIA
   ARIA_PHASE aria_phase;
   ListNode<watermark_node_entry*>* rld_pointer;

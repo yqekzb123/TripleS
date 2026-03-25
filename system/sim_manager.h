@@ -26,8 +26,7 @@ enum ARIA_PHASE {
   ARIA_READ,
   ARIA_RESERVATION,
   ARIA_CHECK,
-  ARIA_COMMIT,
-  ARIA_DONE
+  ARIA_COMMIT
 };
 
 class SimManager {

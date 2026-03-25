@@ -560,31 +560,6 @@ void QWorkQueue::insert_list_lockfree(uint64_t thd_id,
 void QWorkQueue::insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn) {
 	insert_list_lockfree(thd_id, calvin_scheduled_list_lockfree, nullptr, txn);
 	return;
-	#if 0
-	uint64_t key = get_calvin_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
-	list_node_entry * entry = (list_node_entry*)mem_allocator.align_alloc(sizeof(list_node_entry));
-	entry->key = key;
-	entry->txn = txn;
-	
-	assert(txn->last_msg != NULL);
-	// if (txn->last_msg) {
-	// 	YCSBClientQueryMessage * msg = (YCSBClientQueryMessage*) txn->last_msg;
-	// 	entry->snapshot_lock_ready_cnt.store(txn->lock_ready_cnt);
-	// 	int deps = 0;
-	// 	// If msg has deps_left, use it; otherwise 0
-	// 	// msg->deps_left may not be initialized for non-split workloads
-	// 	#if LONG_TXN_WORKLOAD
-	// 		deps = msg->deps_left.load();
-	// 	#endif
-	// 	entry->snapshot_dep_count.store(deps);
-	// } else {
-	// 	entry->snapshot_lock_ready_cnt.store(txn->lock_ready_cnt);
-	// 	entry->snapshot_dep_count.store(0);
-	// }
-
-	txn->scheduled_entry = entry;
-	calvin_scheduled_list_lockfree->insert(entry, thd_id);
-	#endif 
 }
 
 TxnManager * QWorkQueue::get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t &key) {
@@ -602,7 +577,6 @@ TxnManager * QWorkQueue::get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t
 	std::function<bool(list_node_entry*)> func2 = [](list_node_entry * arg) -> bool {
 		list_node_entry * entry = arg;
 		if (!entry) return false;
-		ClientQueryMessage * last_msg = (ClientQueryMessage*)entry->txn->last_msg;
 		if (entry->key <= minSid && entry->txn->lock_ready_cnt <= 0) {
 			if (entry->txn->lock_ready_cnt < 0) {
 				DEBUG_LOCKFREE("[LockFreeList] get_from_calvin_list_lockfree txn %p lock_ready_cnt=%d\n", entry->txn, entry->txn->lock_ready_cnt);
@@ -629,55 +603,6 @@ TxnManager * QWorkQueue::get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t
 
 #if CC_ALG == ARIA
 void QWorkQueue::work_enqueue_lockfree_list(uint64_t thd_id, Message* msg, bool not_ready, ARIA_PHASE phase) {
-	#if 0
-	uint64_t starttime = get_sys_clock();
-	assert(CC_ALG == ARIA);
-	assert(msg);
-	DEBUG_M("QWorkQueue::enqueue work_queue_entry alloc\n");
-	work_queue_entry * entry = (work_queue_entry*)mem_allocator.align_alloc(sizeof(work_queue_entry));
-	entry->msg = msg;
-	entry->rtype = msg->rtype;
-	entry->txn_id = msg->txn_id;
-	entry->batch_id = msg->batch_id;
-	entry->starttime = get_sys_clock();
-	assert(ISSERVER || ISREPLICA);
-	DEBUG("Work Enqueue (%ld,%ld) %d\n",entry->txn_id,entry->batch_id,entry->rtype);
-
-	assert(msg->rtype == CL_QRY);
-
-	if(not_ready) {
-		INC_STATS(thd_id,work_queue_conflict_cnt,1);
-	}
-	switch (phase) {
-	case ARIA_READ:
-		// printf("thd_id: %ld add txn: %ld to read queue\n", thd_id, msg->txn_id);
-		while (!aria_read_queue->push(entry) && !simulation->is_done()) {}
-		break;
-	case ARIA_RESERVATION:
-		// printf("thd_id: %ld add txn: %ld to reserve queue\n", thd_id, msg->txn_id);
-		while (!aria_reserve_queue->push(entry) && !simulation->is_done()) {}
-		break;
-	case ARIA_CHECK:
-		// printf("thd_id: %ld add txn: %ld to check queue\n", thd_id, msg->txn_id);
-		while (!aria_check_queue->push(entry) && !simulation->is_done()) {}
-		break;
-	case ARIA_COMMIT:
-		// printf("thd_id: %ld add txn: %ld to commit queue\n", thd_id, msg->txn_id);
-		while (!aria_commit_queue->push(entry) && !simulation->is_done()) {}
-		break;
-	default:
-		assert(false);
-		break;
-	}
-	sem_wait(&_semaphore);
-	work_queue_size ++;
-	work_enqueue_size ++;
-	sem_post(&_semaphore);
-
-	INC_STATS(thd_id,work_queue_enqueue_time,get_sys_clock() - starttime);
-	INC_STATS(thd_id,work_queue_enq_cnt,1);
-	INC_STATS(thd_id,trans_work_queue_item_total,txn_queue_size+work_queue_size);
-	#else 
 	uint64_t starttime = get_sys_clock();
 	assert(CC_ALG == ARIA);
 	assert(msg);
@@ -737,82 +662,9 @@ void QWorkQueue::work_enqueue_lockfree_list(uint64_t thd_id, Message* msg, bool 
 	INC_STATS(thd_id,work_queue_enqueue_time,get_sys_clock() - starttime);
 	INC_STATS(thd_id,work_queue_enq_cnt,1);
 	INC_STATS(thd_id,trans_work_queue_item_total,txn_queue_size+work_queue_size);
-	#endif
 }
 
 Message* QWorkQueue::work_dequeue_lockfree_list(uint64_t thd_id, ARIA_PHASE phase) {
-	#if 0
-	uint64_t starttime = get_sys_clock();
-	assert(CC_ALG == ARIA);
-	assert(ISSERVER || ISREPLICA);
-	Message * msg = NULL;
-	work_queue_entry * entry = NULL;
-	bool valid = false;
-
-	valid = work_queue->pop(entry);
-	if (!valid) {
-		switch (simulation->aria_phase)
-		{
-		case ARIA_READ:
-			valid = aria_read_queue->pop(entry);
-			if (valid) {
-				// printf("thd_id: %ld pop txn: %ld from read queue\n", thd_id, entry->msg->txn_id);
-			}
-			break;
-		case ARIA_RESERVATION:
-			valid = aria_reserve_queue->pop(entry);
-			if (valid) {
-				// printf("thd_id: %ld pop txn: %ld from reserve queue\n", thd_id, entry->msg->txn_id);
-			}
-			break;
-		case ARIA_CHECK:
-			valid = aria_check_queue->pop(entry);
-			if (valid) {
-				// printf("thd_id: %ld pop txn: %ld from check queue\n", thd_id, entry->msg->txn_id);
-			}
-			break;
-		case ARIA_COMMIT:
-			valid = aria_commit_queue->pop(entry);
-			if (valid) {
-				// printf("thd_id: %ld pop txn: %ld from commit queue\n", thd_id, entry->msg->txn_id);
-			}
-			break;
-		default:
-			break;
-		}
-	}
-
-	if(valid) {
-		msg = entry->msg;
-		assert(msg);
-		uint64_t queue_time = get_sys_clock() - entry->starttime;
-		INC_STATS(thd_id,work_queue_wait_time,queue_time);
-		INC_STATS(thd_id,work_queue_cnt,1);
-		statqueue(thd_id, entry);
-		if(msg->rtype == CL_QRY) {
-			sem_wait(&_semaphore);
-			work_queue_size ++;
-			work_enqueue_size ++;
-			sem_post(&_semaphore);
-			INC_STATS(thd_id,work_queue_new_wait_time,queue_time);
-			INC_STATS(thd_id,work_queue_new_cnt,1);
-		} else {
-			// printf("recieve msg type: %d\n", msg->rtype);
-			sem_wait(&_semaphore);
-			work_queue_size ++;
-			work_enqueue_size ++;
-			sem_post(&_semaphore);
-			INC_STATS(thd_id,work_queue_old_wait_time,queue_time);
-			INC_STATS(thd_id,work_queue_old_cnt,1);
-		}
-		msg->wq_time = queue_time;
-		DEBUG("Work Dequeue (%ld,%ld)\n",entry->txn_id,entry->batch_id);
-		DEBUG_M("QWorkQueue::dequeue work_queue_entry free\n");
-		mem_allocator.free(entry,sizeof(work_queue_entry));
-		INC_STATS(thd_id,work_queue_dequeue_time,get_sys_clock() - starttime);
-	}
-	return msg;
-	#else
 	uint64_t starttime = get_sys_clock();
 	assert(CC_ALG == ARIA);
 	assert(ISSERVER || ISREPLICA);
@@ -915,7 +767,6 @@ Message* QWorkQueue::work_dequeue_lockfree_list(uint64_t thd_id, ARIA_PHASE phas
 		assert(msg);
 	}
 	return msg;
-	#endif 
 }
 #endif	// CC_ALG == ARIA
 #endif  // LONG_TXN_SCHEDULE
@@ -930,17 +781,7 @@ Message * QWorkQueue::queuetop(uint64_t thd_id)
 	uint64_t mtx_wait_starttime = get_sys_clock();
 		bool valid = work_queue->pop(entry);
 	if(!valid) {
-#if SERVER_GENERATE_QUERIES
-		if(ISSERVER) {
-			BaseQuery * m_query = client_query_queue.get_next_query(thd_id,thd_id);
-			if(m_query) {
-				assert(m_query);
-				msg = Message::create_message((BaseQuery*)m_query,CL_QRY);
-			}
-		}
-#else
 		valid = new_txn_queue->pop(entry);
-#endif
 	}
 	INC_STATS(thd_id,mtx[14],get_sys_clock() - mtx_wait_starttime);
 
@@ -974,12 +815,6 @@ Message * QWorkQueue::queuetop(uint64_t thd_id)
 		INC_STATS(thd_id,work_queue_dequeue_time,get_sys_clock() - starttime);
 	}
 
-#if SERVER_GENERATE_QUERIES
-	if(msg && msg->rtype == CL_QRY) {
-		INC_STATS(thd_id,work_queue_new_wait_time,get_sys_clock() - starttime);
-		INC_STATS(thd_id,work_queue_new_cnt,1);
-	}
-#endif
 	return msg;
 }
 

@@ -78,11 +78,7 @@ class Sequencer {
 	qlite_ll * wl_head;		// list of txns in batch being executed
 	qlite_ll * wl_tail;		// list of txns in batch being executed
 	volatile uint32_t next_txn_id;
-	volatile uint32_t next_sub_txn_id;
 	Workload * _wl;
-
-	// parent_marker -> first_child_txn_id mapping (used when reorder pre-splits children)
-	std::unordered_map<uint64_t, std::pair<uint64_t,uint64_t>> parent_first_child_map;
 };
 
 class Seq_thread_t {

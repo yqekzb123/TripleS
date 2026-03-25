@@ -143,9 +143,6 @@ public:
 
 	double lat_network_time_start;
 	double lat_other_time_start;
-
-	// for debug
-	uint64_t copy_request_counts;
 };
 
 /*

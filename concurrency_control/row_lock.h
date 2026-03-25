@@ -26,7 +26,7 @@ struct LockEntry {
 };
 
 class Row_lock {
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
 public:
   void init(row_t * row);
   RC lock_get(lock_t type, TxnManager * txn);

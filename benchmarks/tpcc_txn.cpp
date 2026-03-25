@@ -28,7 +28,6 @@
 #include "transport.h"
 #include "msg_queue.h"
 #include "message.h"
-#include "aria.h"
 #if CC_ALG == CALVIN
 #include "row_lock.h"
 #endif
@@ -2014,12 +2013,8 @@ RC TPCCTxnManager::run_aria_txn() {
 		assert(rc == RCOK || rc == Abort || rc == WAIT_REM);
 
 		assert(aria_phase == ARIA_RESERVATION);
-		#if LONG_TXN_SCHEDULE
-		txn_next_aria_phase(get_thd_id(),aria_phase,this);
-		#else
-		assert(simulation->aria_phase == ARIA_RESERVATION);
-		#endif
 		aria_phase = (ARIA_PHASE) (aria_phase + 1);
+		assert(simulation->aria_phase == ARIA_RESERVATION);
 		break;
 	case ARIA_CHECK:
 		if (txn->rc == Abort) {
@@ -2037,12 +2032,8 @@ RC TPCCTxnManager::run_aria_txn() {
 		}
 
 		assert(aria_phase == ARIA_CHECK);
-		#if LONG_TXN_SCHEDULE
-		txn_next_aria_phase(get_thd_id(),aria_phase,this);
-		#else
-		assert(simulation->aria_phase == ARIA_CHECK);
-		#endif
 		aria_phase = (ARIA_PHASE) (aria_phase + 1);
+		assert(simulation->aria_phase == ARIA_CHECK);
 		break;
 	case ARIA_COMMIT:
 		send_finish_messages();
@@ -2058,12 +2049,8 @@ RC TPCCTxnManager::run_aria_txn() {
 		}
 
 		assert(aria_phase == ARIA_COMMIT);
-		#if LONG_TXN_SCHEDULE
-		txn_next_aria_phase(get_thd_id(),aria_phase,this);
-		#else
-		assert(simulation->aria_phase == ARIA_COMMIT);
-		#endif
 		aria_phase = (ARIA_PHASE) (aria_phase + 1);
+		assert(simulation->aria_phase == ARIA_COMMIT);
 		break;
 	default:
 		assert(false);

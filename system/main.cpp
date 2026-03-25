@@ -303,7 +303,6 @@ int main(int argc, char *argv[]) {
 	simulation->last_da_query_time = starttime;
 
 	uint64_t id = 0;
-	
 	for (uint64_t i = 0; i < wthd_cnt; i++) {
 #if SET_AFFINITY
 		CPU_ZERO(&cpus);
@@ -346,7 +345,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if CC_ALG == CALVIN
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
 	the_first_scheduler_id = id; 
 	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
 	#if SET_AFFINITY

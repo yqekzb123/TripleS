@@ -165,34 +165,6 @@ TxnManager * TxnTable::get_transaction_manager(uint64_t thd_id, uint64_t txn_id,
   return txn_man;
 }
 
-#if CC_ALG == SNAPPER
-void TxnTable::snapper_check(){
-  for(uint64_t i = 0; i < pool_size; ++i){
-    while(!ATOM_CAS(pool[i]->modify, false, true)){};
-    auto cur = pool[i]->head;
-    while(cur){
-      auto txn_man = cur->txn_man;
-      if (txn_man->algo == WAIT_DIE && !txn_man->lock_ready && txn_man->last_lock_ts > 0) {
-        auto duration = get_sys_clock() - txn_man->last_lock_ts;
-        if(duration > SNAPPER_TXN_TIMEOUT && ATOM_CAS(txn_man->lock_ready, false, true)){
-          auto txn_id = txn_man->get_txn_id();
-          auto thd_id = txn_man->get_thd_id();
-          txn_man->isTimeout = true;
-          if(IS_LOCAL(txn_id)){
-            work_queue.enqueue(thd_id,Message::create_message(txn_man,RTXN_CONT),false);
-          }else{
-            work_queue.enqueue(thd_id,Message::create_message(txn_man,RQRY_CONT),false);
-          }
-          INC_STATS(thd_id, snapper_txn_timeout_cnt, 1);
-          }
-      }
-      cur = cur->next;
-    }
-    ATOM_CAS(pool[i]->modify, true, false);
-  }
-  
-}
-#endif
 void TxnTable::restart_txn(uint64_t thd_id, uint64_t txn_id,uint64_t batch_id){
   uint64_t pool_id = txn_id % pool_size;
   // set modify bit for this pool: txn_id % pool_size

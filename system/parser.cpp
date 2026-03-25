@@ -187,7 +187,7 @@ void parser(int argc, char * argv[]) {
   g_total_thread_cnt += g_logger_thread_cnt; // logger thread
 #endif
 #if CC_ALG == CALVIN
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
   g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
   g_abort_thread_cnt = 0;
   g_total_thread_cnt -= 1;
@@ -226,7 +226,7 @@ void parser(int argc, char * argv[]) {
       printf("CC Alg %d\n",CC_ALG);
       printf("g_done_timer %ld\n",g_done_timer);
 			printf("g_thread_cnt %d\n",g_thread_cnt );
-      #if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+      #if LONG_TXN_SCHEDULE
       printf("g_scheduler_thread_cnt %d\n",g_scheduler_thread_cnt );
       #endif
 			printf("g_abort_penalty %ld\n",g_abort_penalty);

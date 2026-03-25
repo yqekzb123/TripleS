@@ -18,63 +18,6 @@
 #include "row.h"
 #include "txn.h"
 #include "pthread.h"
-#include <unordered_map>
-
-// Simple global registry for txn_id -> msg*
-// Simple global registry for txn_id -> msg*
-static std::unordered_map<uint64_t, Message*> g_msg_registry;
-static pthread_mutex_t g_msg_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
-// // Existing txn manager registry globals (define here)
-// static std::unordered_map<uint64_t, TxnManager*> g_txn_registry;
-// static pthread_mutex_t g_txn_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-// void Manager::register_txn_manager(uint64_t txn_id, TxnManager* tm) {
-// 	pthread_mutex_lock(&g_txn_registry_mutex);
-// 	g_txn_registry[txn_id] = tm;
-// 	pthread_mutex_unlock(&g_txn_registry_mutex);
-// }
-
-// void Manager::unregister_txn_manager(uint64_t txn_id) {
-// 	pthread_mutex_lock(&g_txn_registry_mutex);
-// 	g_txn_registry.erase(txn_id);
-// 	pthread_mutex_unlock(&g_txn_registry_mutex);
-// }
-
-// TxnManager* Manager::lookup_txn_manager(uint64_t txn_id) {
-// 	pthread_mutex_lock(&g_txn_registry_mutex);
-// 	std::map<uint64_t, TxnManager*>::iterator it = g_txn_registry.find(txn_id);
-// 	if (it == g_txn_registry.end()) {
-// 		pthread_mutex_unlock(&g_txn_registry_mutex);
-// 		return NULL;
-// 	}
-// 	TxnManager* tm = it->second;
-// 	pthread_mutex_unlock(&g_txn_registry_mutex);
-// 	return tm;
-// }
-
-void Manager::register_txn_message(uint64_t txn_id, Message* msg) {
-	pthread_mutex_lock(&g_msg_registry_mutex);
-	g_msg_registry[txn_id] = msg;
-	pthread_mutex_unlock(&g_msg_registry_mutex);
-}
-
-void Manager::unregister_txn_message(uint64_t txn_id) {
-	pthread_mutex_lock(&g_msg_registry_mutex);
-	g_msg_registry.erase(txn_id);
-	pthread_mutex_unlock(&g_msg_registry_mutex);
-}
-
-Message* Manager::lookup_txn_message(uint64_t txn_id) {
-	pthread_mutex_lock(&g_msg_registry_mutex);
-	auto it = g_msg_registry.find(txn_id);
-	if (it == g_msg_registry.end()) {
-		pthread_mutex_unlock(&g_msg_registry_mutex);
-		return NULL;
-	}
-	Message* msg = it->second;
-	pthread_mutex_unlock(&g_msg_registry_mutex);
-	return msg;
-}
 
 //#include <jemallloc.h>
 __thread uint64_t Manager::_max_cts = 1;

@@ -51,7 +51,7 @@ RC CalvinLockThread::run() {
 	uint64_t prof_starttime = get_sys_clock();
 	uint64_t idle_starttime = 0;
 
-#if LONG_TXN_WORKLOAD && LONG_TXN_SCHEDULE
+#if LONG_TXN_SCHEDULE
 	uint64_t id = _thd_id % g_scheduler_thread_cnt;
 #endif
 
@@ -128,11 +128,9 @@ RC CalvinLockThread::run() {
 			#endif
 		}
 #endif
-// #if LONG_TXN_WORKLOAD
 		txn_man->last_msg = msg;
 	#if LONG_TXN_SCHEDULE
 		work_queue.insert_calvin_list_lockfree(_thd_id, txn_man);
-	// #endif
 	#else
 		if(rc == RCOK) {
 			work_queue.enqueue(_thd_id,msg,false);
@@ -169,8 +167,6 @@ RC CalvinSequencerThread::run() {
 		if(is_batch_ready()) {
 			simulation->advance_seq_epoch();
 			//last_batchtime = get_wall_clock();
-			// 在这里对batch内的事务进行排序
-			// seq_man.reorder_batch();
 			seq_man.send_next_batch(_thd_id);
 		}
 

@@ -102,20 +102,20 @@ def ycsb_skew_pip():
     wl = 'YCSB'
     nnodes = [2]
     # algos=['CALVIN','SILO','ARIA']
-    algos=['CALVIN']
+    algos=['ARIA']
+    # algos=['CALVIN']
+    # algos=['SILO']
     base_table_size=1048576*8
     txn_write_perc = [1]
     tup_write_perc = [0.2]
     load = [10000]
-    total_cnt=[24]
-    tcnt = [16]
+    total_cnt=[16]
     scnt = [8]
-    long_schedule = 'true'
     # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
     skew = [0.1]
     # skew = [0.1,0.9]
     fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt-s_cnt,s_cnt] for t_cnt,thr,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,tcnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
+    exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
     return fmt,exp
 
 def ycsb_skew_origin():
@@ -433,7 +433,7 @@ configs = {
     "MAX_TXN_PER_PART" : 500000,
     "WORKLOAD" : "YCSB",
     "CC_ALG" : "CNULL",
-    "MPR" : 0.2,    #分布式事务比列
+    "MPR" : 1,    #分布式事务比列
     "TPORT_TYPE":"TCP",
     "TPORT_PORT":"18000",
     "PART_CNT": "NODE_CNT",
@@ -454,15 +454,15 @@ configs = {
     "TXN_WRITE_PERC":1.0,
     "PRIORITY":"PRIORITY_ACTIVE",
     "TWOPL_LITE":"false",
-    "LONG_TXN_WORKLOAD":'true',
-    "LONG_QUERY_PERC":0.2,
+    "LONG_TXN_WORKLOAD":'false',
+    "LONG_QUERY_PERC":0.0,
 #YCSB
     "INIT_PARALLELISM" : 8,
     "TUP_WRITE_PERC":0.2,
     "ZIPF_THETA":0.9,
     "ACCESS_PERC":0.03,
     "DATA_PERC": 100,
-    "REQ_PER_QUERY": 50,
+    "REQ_PER_QUERY": 10,
     "SYNTH_TABLE_SIZE":"1048576*8",
 #TPCC
     "NUM_WH":32,
@@ -479,7 +479,7 @@ configs = {
     "MODE":"NORMAL_MODE",
     "SHMEM_ENV":"false",
     "STRICT_PPT":0,
-    "SET_AFFINITY":"false",
+    "SET_AFFINITY":"true",
     "SERVER_GENERATE_QUERIES":"false",
     "SKEW_METHOD":"ZIPF",
     "ENVIRONMENT_EC2":"false",

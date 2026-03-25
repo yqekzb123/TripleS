@@ -22,7 +22,6 @@
 
 class row_t;
 class TxnManager;
-class Message;
 
 class Manager {
 public:
@@ -38,23 +37,10 @@ public:
  	void 			lock_row(row_t * row);
 	void 			release_row(row_t * row);
 
-	// TICTOC, max_cts
-	void set_max_cts(uint64_t cts) { _max_cts = cts; }
-	uint64_t get_max_cts() { return _max_cts; }
-
 	TxnManager* get_txn_man(int thd_id) {
 		return _all_txns[thd_id];
 	};
 	void 			set_txn_man(TxnManager * txn);
-	// // Lightweight registry for txn_id -> TxnManager* used for cross-thread lookups
-	// static void register_txn_manager(uint64_t txn_id, TxnManager* tm);
-	// static void unregister_txn_manager(uint64_t txn_id);
-	// static TxnManager* lookup_txn_manager(uint64_t txn_id);
-
-	// Lightweight registry for txn_id -> Message* (used for child message visibility)
-	static void register_txn_message(uint64_t txn_id, Message* msg);
-	static void unregister_txn_message(uint64_t txn_id);
-	static Message* lookup_txn_message(uint64_t txn_id);
 	// For SILO
 	uint64_t 		get_epoch() { return *_epoch; };
 	void 	 		update_epoch();

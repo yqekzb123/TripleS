@@ -97,7 +97,6 @@ public:
 	// for concurrency control. can be lock, timestamp etc.
 	RC get_lock(access_t type, TxnManager * txn);
 	RC get_ts(uint64_t &orig_wts, uint64_t &orig_rts);
-	RC get_row(access_t type, TxnManager * txn, row_t *& row, uint64_t &orig_wts, uint64_t &orig_rts);
 	RC get_row(access_t type, TxnManager *txn, Access *access);
 	RC get_row_post_wait(access_t type, TxnManager * txn, row_t *& row);
 	uint64_t return_row(RC rc, access_t type, TxnManager *txn, row_t *row);

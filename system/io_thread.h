@@ -30,9 +30,6 @@ public:
   void  check_for_init_done();
   void setup();
   TxnManager * txn_man;
-
-private:
-  void split_long_transaction(Message * msg);
 };
 
 class OutputThread : public Thread {

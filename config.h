@@ -83,7 +83,7 @@
 /***********************************************/
 #define TPORT_TYPE tcp
 #define TPORT_PORT 18000
-#define SET_AFFINITY false
+#define SET_AFFINITY true
 
 #define MAX_TPORT_NAME 128
 #define MSG_SIZE 128 // in bytes
@@ -112,7 +112,7 @@
 // all transactions acquire tuples according to the primary key order.
 #define KEY_ORDER         false
 // transaction roll back changes after abort
-#define ROLL_BACK         true
+#define ROLL_BACK         false
 // per-row lock/ts management or central lock/ts management
 #define CENTRAL_MAN         false
 #define BUCKET_CNT          31
@@ -213,11 +213,11 @@
 #define PERC_MULTI_PART     MPR
 #if LONG_TXN_WORKLOAD
 // DO NOT LET PEQ_PER_QUERY <= REQ_PER_SHORT_QUERY
-#define REQ_PER_QUERY 50
+#define REQ_PER_QUERY 10
 #define REQ_PER_SHORT_QUERY 10
-#define LONG_QUERY_PERC 0.2
+#define LONG_QUERY_PERC 0.0
 #else
-#define REQ_PER_QUERY 50
+#define REQ_PER_QUERY 10
 #define REQ_PER_SHORT_QUERY 10
 #endif
 #define FIELD_PER_TUPLE       10
@@ -245,7 +245,7 @@
 #define WH_UPDATE         false
 #define NUM_WH 32
 // % of transactions that access multiple partitions
-#define MPR 0.2
+#define MPR 1
 #define MPIR 0.01
 #define MPR_NEWORDER MPR
 #if NODE_CNT == 1
