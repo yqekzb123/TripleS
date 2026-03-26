@@ -111,12 +111,10 @@ static uint64_t mget_size() {
 
 uint64_t cget_size(QueryMessage * msg) {
   uint64_t size = mget_size();
-#if CC_ALG == WAIT_DIE || CC_ALG == TIMESTAMP || CC_ALG == MVCC || CC_ALG == WOOKONG || CC_ALG == DTA
+#if CC_ALG == WAIT_DIE
   size += sizeof(msg->ts);
 #endif
-#if CC_ALG == OCC || CC_ALG == FOCC || CC_ALG == BOCC || CC_ALG == SSI || CC_ALG == WSI || \
-    CC_ALG == DLI_BASE || CC_ALG == DLI_OCC || CC_ALG == DLI_MVCC_OCC || \
-    CC_ALG == DLI_DTA || CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3 || CC_ALG == DLI_MVCC
+#if CC_ALG == OCC
   size += sizeof(msg->start_ts);
 #endif
   return size;

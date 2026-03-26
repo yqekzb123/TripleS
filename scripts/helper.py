@@ -270,21 +270,6 @@ stat_map = OrderedDict([
   ('occ_ts_abort_cnt', []),
   ('occ_finish_time', []),
 
-  # MAAT
-  ('maat_validate_cnt', []),
-  ('maat_validate_time', []),
-  ('maat_validate_avg', []),
-  ('maat_cs_wait_time', []),
-  ('maat_cs_wait_avg', []),
-  ('maat_case1_cnt', []),
-  ('maat_case2_cnt', []),
-  ('maat_case3_cnt', []),
-  ('maat_case4_cnt', []),
-  ('maat_case5_cnt', []),
-  ('maat_range', []),
-  ('maat_commit_cnt', []),
-  ('maat_range_avg', []),
-
   # Logging
   ('log_write_cnt', []),
   ('log_write_time', []),

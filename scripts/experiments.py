@@ -66,7 +66,7 @@ def ycsb_once():
 def ycsb_prorate():
     wl = 'YCSB'
     nnodes = [2]
-    algos=['SNAPPER']
+    algos=['CNULL']
     base_table_size=1048576*8
     txn_write_perc = [1]
     tup_write_perc = [0.2]
@@ -233,7 +233,7 @@ def ycsb_dist_ratio():
     wl = 'YCSB'
     nnodes = [2]
     # algos=['CNULL','CALVIN','SILO','ARIA']
-    # algos=['SNAPPER']
+    # algos=['CNULL']
     algos=['CALVIN', 'NO_WAIT']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
@@ -325,7 +325,7 @@ def tpcc_scaling():
 def tpcc_prorate():
     wl = 'TPCC'
     nnodes = [2]
-    algos=['SNAPPER','CNULL']
+    algos=['CNULL','CNULL']
     npercpay=[0.489]
     num_wh=[32]
     load = [10000]
@@ -342,8 +342,8 @@ def tpcc_wh():
     wl = 'TPCC'
     nnodes = [2]
     # algos=['CNULL']
-    algos=['CNULL','CALVIN','SILO','ARIA','SNAPPER']
-    # algos=['SNAPPER']
+    algos=['CNULL','CALVIN','SILO','ARIA','CNULL']
+    # algos=['CNULL']
     npercpay=[0.489]
     num_wh=[256,128,64,32,16,8]
     load = [10000]
@@ -359,7 +359,7 @@ def tpcc_wh():
 def tpcc_dist_ratio():
     wl = 'TPCC'
     algos=['CNULL','CALVIN','SILO','ARIA']
-    # algos=['SNAPPER']
+    # algos=['CNULL']
     mpr=[0,0.2,0.4,0.6,0.8,1]
     nnodes = [2]
     npercpay=[0.489]
@@ -479,7 +479,7 @@ configs = {
     "MODE":"NORMAL_MODE",
     "SHMEM_ENV":"false",
     "STRICT_PPT":0,
-    "SET_AFFINITY":"true",
+    "SET_AFFINITY":"false",
     "SERVER_GENERATE_QUERIES":"false",
     "SKEW_METHOD":"ZIPF",
     "ENVIRONMENT_EC2":"false",

@@ -546,8 +546,7 @@ RC WorkerThread::process_rfin(Message * msg) {
 
   M_ASSERT_V(!IS_LOCAL(msg->get_txn_id()), "RFIN local: %ld %ld/%d\n", msg->get_txn_id(),
              msg->get_txn_id() % g_node_cnt, g_node_id);
-#if CC_ALG == MAAT || CC_ALG == WOOKONG || CC_ALG == DTA || CC_ALG == DLI_DTA || \
-    CC_ALG == DLI_DTA2 || CC_ALG == DLI_DTA3 || CC_ALG == DLI_MVCC_OCC || CC_ALG == DLI_MVCC || CC_ALG == SILO
+#if CC_ALG == SILO
   txn_man->set_commit_timestamp(((FinishMessage*)msg)->commit_timestamp);
 #endif
 
@@ -686,13 +685,6 @@ RC WorkerThread::process_rqry_rsp(Message * msg) {
     txn_man->start_abort();
     return Abort;
   }
-#if CC_ALG == TICTOC
-  // Integrate bounds
-  TxnManager * txn_man = txn_table.get_transaction_manager(get_thd_id(),msg->get_txn_id(),0);
-  QueryResponseMessage* qmsg = (QueryResponseMessage*)msg;
-  txn_man->_min_commit_ts = txn_man->_min_commit_ts > qmsg->_min_commit_ts ?
-                            txn_man->_min_commit_ts : qmsg->_min_commit_ts;
-#endif
   txn_man->send_RQRY_RSP = false;
   RC rc = txn_man->run_txn();
   check_if_done(rc);
@@ -755,7 +747,6 @@ RC WorkerThread::process_rqry(Message * msg) {
 }
 #endif
 
-#if CC_ALG != SNAPPER
 RC WorkerThread::process_rqry_cont(Message * msg) {
   DEBUG("RQRY_CONT %ld\n",msg->get_txn_id());
   assert(!IS_LOCAL(msg->get_txn_id()));
@@ -771,32 +762,7 @@ RC WorkerThread::process_rqry_cont(Message * msg) {
   }
   return rc;
 }
-#else
-RC WorkerThread::process_rqry_cont(Message * msg) {
-  DEBUG("RQRY_CONT %ld\n",msg->get_txn_id());
-  assert(!IS_LOCAL(msg->get_txn_id()));
-  RC rc = RCOK;
 
-  if (txn_man->isTimeout) {
-    RC rc = txn_man->abort();
-    if(rc != WAIT) {
-      msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,RQRY_RSP),txn_man->return_id);
-    }
-  } else {
-    txn_man->run_txn_post_wait();
-    txn_man->send_RQRY_RSP = false;
-    rc = txn_man->run_txn();
-
-    // Send response
-    if(rc != WAIT) {
-      msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,RQRY_RSP),txn_man->return_id);
-    }
-  }
-  return rc;
-}
-#endif
-
-#if CC_ALG != SNAPPER
 RC WorkerThread::process_rtxn_cont(Message * msg) {
   DEBUG("RTXN_CONT %ld\n",msg->get_txn_id());
   assert(IS_LOCAL(msg->get_txn_id()));
@@ -809,26 +775,7 @@ RC WorkerThread::process_rtxn_cont(Message * msg) {
   check_if_done(rc);
   return RCOK;
 }
-#else
-RC WorkerThread::process_rtxn_cont(Message * msg) {
-  DEBUG("RTXN_CONT %ld\n",msg->get_txn_id());
-  assert(IS_LOCAL(msg->get_txn_id()));
 
-  txn_man->txn_stats.local_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
-
-  if (txn_man->isTimeout) {
-    // printf("txn: %ld abort for timeout\n", txn_man->get_txn_id());
-    RC rc = txn_man->start_abort();
-    check_if_done(rc);
-  } else {
-    txn_man->run_txn_post_wait();
-    txn_man->send_RQRY_RSP = false;
-    RC rc = txn_man->run_txn();
-    check_if_done(rc);
-  }
-  return RCOK;
-}
-#endif
 
 #if CC_ALG != ARIA
 RC WorkerThread::process_rprepare(Message * msg) {

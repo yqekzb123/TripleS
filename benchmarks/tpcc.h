@@ -155,10 +155,6 @@ public:
 	void init(uint64_t thd_id, Workload * h_wl);
   void reset();
   RC acquire_locks();
-#if CC_ALG == SNAPPER
-  void get_read_write_set();
-  RC acquire_lock(row_t * row, access_t acctype);
-#endif
 	RC run_txn();
 	RC run_txn_post_wait();
 	RC run_calvin_txn();

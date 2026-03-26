@@ -371,10 +371,8 @@ Message * QWorkQueue::sched_dequeue(uint64_t thd_id) {
 				simulation->next_worker_epoch();
 			}
 			sched_ptr = (sched_ptr + 1) % g_node_cnt;
-// #if CC_ALG != SNAPPER
 			msg->release();
 			msg = NULL;
-// #endif
 
 		} else {
 			simulation->inc_epoch_txn_cnt();

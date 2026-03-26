@@ -39,9 +39,6 @@
 #include "pps_query.h"
 #include "array.h"
 #include "manager.h"
-#if CC_ALG == SNAPPER
-#include "row_snapper.h"
-#endif
 
 void TxnStats::init() {
 	starttime=0;
@@ -401,9 +398,7 @@ void TxnManager::reset() {
 
 	//ready = true;
 
-	// MaaT & DTA & WKDB
-	greatest_write_timestamp = 0;
-	greatest_read_timestamp = 0;
+	// Silo
 	commit_timestamp = 0;
 
 #if CC_ALG == CALVIN

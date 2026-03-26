@@ -69,10 +69,7 @@ void row_t::init_manager(row_t * row) {
 #elif CC_ALG == ARIA
 	manager = (Row_aria *) mem_allocator.align_alloc(sizeof(Row_aria));
 #endif
-
-#if CC_ALG != HSTORE && CC_ALG != HSTORE_SPEC && CC_ALG != TICTOC
 	manager->init(this);
-#endif
 }
 
 table_t *row_t::get_table() { return table; }
@@ -183,16 +180,6 @@ RC row_t::get_lock(access_t type, TxnManager * txn) {
 #endif
 	return rc;
 }
-
-#if CC_ALG == SNAPPER
-void row_t::enter_critical_section() {
-	this->manager->enter_critical_section();
-}
-
-void row_t::leave_critical_section() {
-	this->manager->leave_critical_section();
-}
-#endif
 
 RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
   RC rc = RCOK;
@@ -306,14 +293,6 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 #endif
 
 end:
-	return rc;
-}
-
-RC row_t::get_ts(uint64_t &orig_wts, uint64_t &orig_rts) {
-	RC rc = RCOK;
-#if CC_ALG == TICTOC
-	this->manager->get_ts(orig_wts, orig_rts);
-#endif
 	return rc;
 }
 

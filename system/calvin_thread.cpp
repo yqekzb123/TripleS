@@ -33,12 +33,6 @@
 #include "logger.h"
 #include "message.h"
 #include "work_queue.h"
-#if CC_ALG == SNAPPER
-#include <unordered_map>
-#include <utility>
-#include <vector>
-#include "row.h"
-#endif
 
 void CalvinLockThread::setup() {}
 

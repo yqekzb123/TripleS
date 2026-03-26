@@ -1548,7 +1548,7 @@ void TPCCQueryMessage::copy_to_txn(TxnManager * txn) {
 
   // new order
   if(txn_type == TPCC_NEW_ORDER) {
-#if CC_ALG==TICTOC || CC_ALG == ARIA
+#if CC_ALG == ARIA
     tpcc_query->items.clear();
 #endif
     tpcc_query->items.append(items);

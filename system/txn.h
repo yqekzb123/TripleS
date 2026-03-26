@@ -23,10 +23,6 @@
 #include "array.h"
 #include "transport/message.h"
 #include "index_btree.h"
-#if CC_ALG == SNAPPER
-#include <utility>
-#include <forward_list>
-#endif
 
 class Workload;
 class Thread;
@@ -170,10 +166,6 @@ public:
 #endif
 	virtual RC      acquire_locks() = 0;
 	virtual RC 		send_remote_request() = 0;
-#if CC_ALG == SNAPPER
-	virtual void get_read_write_set() {};
-	virtual RC		acquire_lock(row_t * row, access_t acctype) {return RCOK;};
-#endif
 	void            register_thread(Thread * h_thd);
 	uint64_t        get_thd_id();
 	Workload *      get_wl();
@@ -263,20 +255,8 @@ public:
 	uint64_t commit_timestamp;
 	uint64_t get_commit_timestamp() {return commit_timestamp;}
 	void set_commit_timestamp(uint64_t timestamp) {commit_timestamp = timestamp;}
-	uint64_t greatest_write_timestamp;
-	uint64_t greatest_read_timestamp;
-	std::set<uint64_t> * uncommitted_reads;
-	std::set<uint64_t> * uncommitted_writes;
-	std::set<uint64_t> * uncommitted_writes_y;
 
 	uint64_t twopl_wait_start;
-
-	// For Tictoc
-	uint64_t _min_commit_ts;
-	uint64_t _max_commit_ts;
-	volatile uint32_t _num_lock_waits;
-	bool _signal_abort;
-	bool _is_sub_txn;
 
 	uint64_t _timestamp;
 	uint64_t     get_priority() { return _timestamp; }
