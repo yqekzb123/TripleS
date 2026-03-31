@@ -29,6 +29,13 @@ enum ARIA_PHASE {
   ARIA_COMMIT
 };
 
+enum SDOCC_PHASE {
+  SDOCC_INIT = 0,
+  SDOCC_EXECUTION,
+  SDOCC_CHECK,
+  SDOCC_COMMIT
+};
+
 class SimManager {
 public:
 	volatile bool sim_init_done;

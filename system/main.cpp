@@ -18,6 +18,8 @@
 #include "aria_sequencer.h"
 #include "aria_thread.h"
 #include "calvin_thread.h"
+#include "sdocc_thread.h"
+#include "sdocc_sequencer.h"
 #include "client_query.h"
 #include "global.h"
 #include "io_thread.h"
@@ -61,7 +63,7 @@ CalvinSequencerThread * calvin_seq_thds;
 AriaSequencerThread * aria_seq_thds;
 #endif
 #if CC_ALG == SDOCC
-
+SDOCCSequencerThread * sdocc_seq_thds;
 #endif
 
 // defined in parser.cpp
@@ -139,7 +141,9 @@ int main(int argc, char *argv[]) {
 	check_commit_water_mark = new WaterMarkList("check_commit_water_mark");
 	#endif
 #endif
-
+	#if CC_ALG == SDOCC
+	check_water_mark = new WaterMarkList("sdocc_check_water_mark");
+	#endif
 
 	printf("Initializing work queue... ");
 	fflush(stdout);
@@ -197,7 +201,12 @@ int main(int argc, char *argv[]) {
 	seq_man.init(m_wl);
 	printf("Done\n");
 #endif
-
+#if CC_ALG == SDOCC
+	printf("Initializing sequencer... ");
+	fflush(stdout);
+	sdocc_seq_man.init(m_wl);
+	printf("Done\n");
+#endif
 #if LOGGING
 	printf("Initializing logger... ");
 	fflush(stdout);
@@ -235,6 +244,11 @@ int main(int argc, char *argv[]) {
 	all_thd_cnt -= 1; 	//abort thread
 #endif
 
+#if CC_ALG == SDOCC
+	all_thd_cnt += 1;	//sequencer thread
+	// all_thd_cnt -= 1; 	//abort thread
+#endif
+
 
 	printf("%ld, %ld, %ld, %d \n", thd_cnt, rthd_cnt, sthd_cnt, g_abort_thread_cnt);
 	printf("all_thd_cnt: %ld, g_this_total_thread_cnt: %d \n", all_thd_cnt, g_this_total_thread_cnt);
@@ -267,6 +281,10 @@ int main(int argc, char *argv[]) {
 
 #if CC_ALG == ARIA
 	aria_seq_thds = new AriaSequencerThread[1];
+#endif
+
+#if CC_ALG == SDOCC
+	sdocc_seq_thds = new SDOCCSequencerThread[1];
 #endif
 	// query_queue should be the last one to be initialized!!!
 	// because it collects txn latency
@@ -388,6 +406,17 @@ int main(int argc, char *argv[]) {
 #endif
 	aria_seq_thds[0].init(id,g_node_id,m_wl);
 	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&aria_seq_thds[0]);
+#endif
+
+#if CC_ALG == SDOCC
+#if SET_AFFINITY
+	CPU_ZERO(&cpus);
+	CPU_SET(cpu_cnt, &cpus);
+	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+	cpu_cnt++;
+#endif
+	sdocc_seq_thds[0].init(id,g_node_id,m_wl);
+	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&sdocc_seq_thds[0]);
 #endif
 
 #if STATS_EVERY_INTERVAL

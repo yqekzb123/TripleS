@@ -50,6 +50,10 @@ public:
 	bool isIntermediateState;
 	// ts_t 		epoch;
 #endif
+#if CC_ALG == SDOCC
+	uint64_t sdocc_read_reservation;
+	uint64_t sdocc_write_reservation;
+#endif
 	void cleanup();
 };
 
@@ -164,6 +168,11 @@ public:
 	virtual RC		run_aria_txn() = 0;
 	virtual RC		process_aria_remote(ARIA_PHASE aria_phase) = 0;
 #endif
+#if CC_ALG == SDOCC
+	virtual RC		run_sdocc_txn() = 0;
+	// virtual RC		process_sdocc_remote(SDOCC_PHASE sdocc_phase) = 0;
+#endif
+
 	virtual RC      acquire_locks() = 0;
 	virtual RC 		send_remote_request() = 0;
 	void            register_thread(Thread * h_thd);
@@ -189,6 +198,12 @@ public:
 
 	RC commit();
 	RC start_commit();
+	#if CC_ALG == SDOCC
+	RC start_sdocc_check();
+	RC start_sdocc_commit();
+	SDOCC_PHASE sdocc_phase;
+	#endif
+
 	RC start_abort();
 	RC abort();
 
@@ -231,6 +246,16 @@ public:
     RC              find_tid_silo(ts_t max_tid);
     RC              finish(RC rc);
 #endif
+
+#if CC_ALG == SDOCC
+	uint64_t last_sdocc_read_reservation;
+	uint64_t last_sdocc_write_reservation;
+	ListNode<watermark_node_entry*>* list_node_pointer;
+
+	uint64_t retry_cnt; // 当前是第几次重试了
+	bool has_re_enqueued; // 是否已经重试入队过了，避免重复入队
+#endif
+
 	bool send_RQRY_RSP;
 	bool aborted;
 	uint64_t return_id;
@@ -345,6 +370,11 @@ protected:
 	RC				reserve();
 	RC				check();
 	RC 				finish(RC rc);
+#endif
+
+#if CC_ALG == SDOCC
+	RC 				check();
+	// RC 				finish(RC rc);
 #endif
 };
 

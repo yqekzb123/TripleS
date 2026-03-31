@@ -152,6 +152,7 @@ Message * Message::create_message(RemReqType rtype) {
     case ARIA_ACK:
     case RACK_PREP:
     case RACK_FIN:
+    case PIP_ACK:
       msg = new AckMessage;
       break;
     case CL_QRY:
@@ -178,6 +179,9 @@ Message * Message::create_message(RemReqType rtype) {
       break;
     case CL_RSP:
       msg = new ClientResponseMessage;
+      break;
+    case WATERMARK:
+      msg = new WaterMarkMessage;
       break;
     default:
       assert(false);
@@ -207,7 +211,10 @@ uint64_t Message::mget_size() {
   uint64_t size = 0;
   size += sizeof(RemReqType);
   size += sizeof(uint64_t);
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC
+  size += sizeof(uint64_t);
+#endif
+#if CC_ALG == SDOCC
   size += sizeof(uint64_t);
 #endif
   // for stats, send message queue time
@@ -221,21 +228,31 @@ uint64_t Message::mget_size() {
 void Message::mcopy_from_txn(TxnManager * txn) {
   //rtype = query->rtype;
   txn_id = txn->get_txn_id();
-#if CC_ALG == CALVIN || CC_ALG == ARIA
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC
   batch_id = txn->get_batch_id();
+#endif
+#if CC_ALG == SDOCC
+  sdocc_phase = txn->sdocc_phase;
 #endif
 }
 
 void Message::mcopy_to_txn(TxnManager* txn) {
   txn->return_id = return_node_id;
+#if CC_ALG == SDOCC
+  txn->set_batch_id(batch_id);
+  txn->sdocc_phase = (SDOCC_PHASE)sdocc_phase;
+#endif
 }
 
 void Message::mcopy_from_buf(char * buf) {
   uint64_t ptr = 0;
   COPY_VAL(rtype,buf,ptr);
   COPY_VAL(txn_id,buf,ptr);
-#if CC_ALG == CALVIN || CC_ALG == ARIA
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC
   COPY_VAL(batch_id,buf,ptr);
+#endif
+#if CC_ALG == SDOCC
+  COPY_VAL(sdocc_phase,buf,ptr);
 #endif
   COPY_VAL(mq_time,buf,ptr);
 
@@ -259,8 +276,11 @@ void Message::mcopy_to_buf(char * buf) {
   uint64_t ptr = 0;
   COPY_BUF(buf,rtype,ptr);
   COPY_BUF(buf,txn_id,ptr);
-#if CC_ALG == CALVIN || CC_ALG == ARIA
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC
   COPY_BUF(buf,batch_id,ptr);
+#endif
+#if CC_ALG == SDOCC
+  COPY_BUF(buf,sdocc_phase,ptr);
 #endif
   COPY_BUF(buf,mq_time,ptr);
 
@@ -334,7 +354,8 @@ void Message::release_message(Message * msg) {
     case CALVIN_ACK:
     case ARIA_ACK:
     case RACK_PREP:
-    case RACK_FIN: {
+    case RACK_FIN: 
+    case PIP_ACK: {
       AckMessage * m_msg = (AckMessage*)msg;
       m_msg->release();
       delete m_msg;
@@ -378,6 +399,12 @@ void Message::release_message(Message * msg) {
       delete m_msg;
       break;
                  }
+    case WATERMARK: {
+      WaterMarkMessage * m_msg = (WaterMarkMessage*)msg;
+      m_msg->release();
+      delete m_msg;
+      break;
+    }
     default: {
       assert(false);
     }
@@ -898,6 +925,9 @@ void ClientQueryMessage::init() {
   rld_pointer = NULL;
   cld_pointer = NULL;
   #endif
+  #if CC_ALG == SDOCC
+  list_node_pointer = NULL;
+  #endif
 }
 
 void ClientQueryMessage::release() {
@@ -917,6 +947,9 @@ uint64_t ClientQueryMessage::get_size() {
   #if CC_ALG == ARIA
   size += sizeof(ARIA_PHASE);
   #endif
+  // #if CC_ALG == SDOCC
+  // size += sizeof(ListNode<watermark_node_entry*>*);
+  // #endif
   return size;
 }
 
@@ -950,6 +983,9 @@ void ClientQueryMessage::copy_to_txn(TxnManager * txn) {
   txn->aria_phase = aria_phase;
   txn->rld_pointer = rld_pointer;
   txn->cld_pointer = cld_pointer;
+  #endif
+  #if CC_ALG == SDOCC
+  txn->list_node_pointer = list_node_pointer;
   #endif
 }
 
@@ -1829,4 +1865,36 @@ void PPSQueryMessage::copy_to_buf(char * buf) {
   }
 
  assert(ptr == get_size());
+}
+
+/************************/
+
+void WaterMarkMessage::init() {}
+
+void WaterMarkMessage::release() { }
+
+uint64_t WaterMarkMessage::get_size() {
+  uint64_t size = Message::mget_size();
+  size += sizeof(uint64_t); //watermark
+  return size;
+}
+
+void WaterMarkMessage::copy_from_txn(TxnManager * txn) {
+}
+
+void WaterMarkMessage::copy_to_txn(TxnManager * txn) {
+}
+
+void WaterMarkMessage::copy_from_buf(char * buf) {
+  Message::mcopy_from_buf(buf);
+  uint64_t ptr = Message::mget_size();
+  COPY_VAL(watermark,buf,ptr);
+  assert(ptr == get_size());
+}
+
+void WaterMarkMessage::copy_to_buf(char * buf) {
+  Message::mcopy_to_buf(buf);
+  uint64_t ptr = Message::mget_size();
+  COPY_BUF(buf,watermark,ptr);
+  assert(ptr == get_size());
 }

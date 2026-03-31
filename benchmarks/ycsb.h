@@ -66,6 +66,9 @@ public:
 #if CC_ALG == ARIA
   RC run_aria_txn();
 #endif
+#if CC_ALG == SDOCC
+  RC run_sdocc_txn();
+#endif
   void copy_remote_requests(YCSBQueryMessage * msg);
 private:
   void next_ycsb_state();

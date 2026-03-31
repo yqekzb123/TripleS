@@ -47,6 +47,9 @@ public:
   RemReqType rtype;
   uint64_t txn_id;
   uint64_t batch_id;
+  #if CC_ALG == SDOCC
+  uint64_t sdocc_phase;
+  #endif
   uint64_t return_node_id;
 
   uint64_t wq_time;
@@ -76,6 +79,9 @@ public:
   void mcopy_from_txn(TxnManager * txn);
   void mcopy_to_txn(TxnManager * txn);
   RemReqType get_rtype() {return rtype;}
+  string get_message_name() {
+    return rtype_to_string(rtype);
+  }
 
   virtual uint64_t get_size() = 0;
   virtual void copy_from_buf(char * buf) = 0;
@@ -276,6 +282,9 @@ public:
   ListNode<watermark_node_entry*>* rld_pointer;
   ListNode<watermark_node_entry*>* cld_pointer;
   #endif
+  #if CC_ALG == SDOCC
+  ListNode<watermark_node_entry*>* list_node_pointer;
+  #endif
 };
 
 class YCSBClientQueryMessage : public ClientQueryMessage {
@@ -456,5 +465,20 @@ public:
   Array<uint64_t> part_keys;
 };
 
+
+class WaterMarkMessage : public Message {
+public:
+  void copy_from_buf(char * buf);
+  void copy_to_buf(char * buf);
+  void copy_from_txn(TxnManager * txn);
+  void copy_to_txn(TxnManager * txn);
+  uint64_t get_size();
+  void init();
+  void release();
+
+  void set_watermark(uint64_t w) {watermark = w;}
+  uint64_t get_watermark() {return watermark;}
+  uint64_t watermark;
+};
 
 #endif

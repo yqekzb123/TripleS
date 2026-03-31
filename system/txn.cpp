@@ -32,6 +32,7 @@
 #include "message.h"
 #include "msg_queue.h"
 #include "occ.h"
+#include "sdocc.h"
 #include "pool.h"
 #include "message.h"
 #include "ycsb_query.h"
@@ -39,6 +40,7 @@
 #include "pps_query.h"
 #include "array.h"
 #include "manager.h"
+#include "water_mark.h"
 
 void TxnStats::init() {
 	starttime=0;
@@ -376,6 +378,12 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	read_set.resize(g_node_cnt);
 	write_set.resize(g_node_cnt);
 #endif
+#if CC_ALG == SDOCC
+	last_sdocc_read_reservation = 0;
+	last_sdocc_write_reservation = 0;
+	retry_cnt = 0;
+	has_re_enqueued = false;
+#endif
 
 	registed_ = false;
 	txn_ready = true;
@@ -419,7 +427,11 @@ void TxnManager::reset() {
 	war = false;
 	aria_phase = ARIA_READ;
 #endif
-
+#if CC_ALG == SDOCC
+	last_sdocc_read_reservation = 0;
+	last_sdocc_write_reservation = 0;
+	sdocc_phase = SDOCC_INIT;
+#endif
 	assert(txn);
 	assert(query);
 	txn->reset(get_thd_id());
@@ -439,15 +451,12 @@ void TxnManager::release() {
 	INC_STATS(get_thd_id(),mtx[1],get_sys_clock()-prof_starttime);
 	txn = NULL;
 
-	// // Unregister from global registry
-	// Manager::unregister_txn_manager(get_txn_id());
-
 #if CC_ALG == CALVIN
 	calvin_locked_rows.release();
 #endif
 #if CC_ALG == SILO
-  num_locks = 0;
-  memset(write_set, 0, sizeof(write_set));
+	num_locks = 0;
+	memset(write_set, 0, sizeof(write_set));
   // mem_allocator.free(write_set, sizeof(int) * 100);
 #endif
 	txn_ready = true;
@@ -464,7 +473,7 @@ void TxnManager::reset_query() {
 }
 
 RC TxnManager::commit() {
-	DEBUG_WRK("Commit %ld\n",get_txn_id());
+	DEBUG_WRK("Commit %ld,%ld\n",get_batch_id(), get_txn_id());
 	RC rc = do_insert();
 	assert(rc == RCOK);
 	rc = do_delete();
@@ -555,6 +564,64 @@ RC TxnManager::start_abort() {
 	return abort();
 }
 
+RC TxnManager::start_sdocc_check() {
+	// ! trans process time
+	DEBUG_WRK("%ld,%ld start_sdocc_check\n",get_batch_id(), get_txn_id());
+	uint64_t prepare_start_time = get_sys_clock();
+	txn_stats.prepare_start_time = prepare_start_time;
+	uint64_t process_time_span  = prepare_start_time - txn_stats.restart_starttime;
+	txn_stats.trans_process_time = process_time_span;
+	// INC_STATS(get_thd_id(), trans_process_time, process_time_span);
+  	// INC_STATS(get_thd_id(), trans_process_count, 1);
+	RC rc = RCOK;
+	set_rc(rc);
+	if (is_multi_part()) {
+		txn_stats.trans_validate_network_start_time = get_sys_clock();
+		// rc = validate();
+		send_prepare_messages();
+		rc = WAIT_REM;
+	} else {
+		rc = validate();
+
+		bool watermark_passed = false;
+		uint64_t key = get_calvin_key(get_batch_id(), return_id, get_txn_id());
+		if(rc == RCOK) {
+			// ! 检查水印
+    		watermark_passed = key <= check_water_mark->get_global_watermark();
+		}
+		if(!watermark_passed || rc == RETRY) {
+			// assert(rc == RETRY);
+			// !事务重新入队
+			rc = RETRY;
+		} else {
+			sdocc_phase = SDOCC_COMMIT;
+			assert(rc == RCOK);
+			// 可以提交了
+			start_sdocc_commit();
+		}
+		return rc;
+	}
+	return rc;
+}
+
+RC TxnManager::start_sdocc_commit() {
+	DEBUG_WRK("%ld,%ld start_sdocc_commit\n",get_batch_id(), get_txn_id());
+	RC rc = RCOK;
+	assert(sdocc_phase == SDOCC_CHECK);
+	sdocc_phase = SDOCC_COMMIT;
+	if (is_multi_part()) {
+		send_finish_messages();
+	} 
+	uint64_t finish_start_time = get_sys_clock();
+	txn_stats.finish_start_time = finish_start_time;
+	// uint64_t prepare_timespan  = finish_start_time - txn_stats.prepare_start_time;
+	// INC_STATS(get_thd_id(), trans_prepare_time, prepare_timespan);
+	// INC_STATS(get_thd_id(), trans_prepare_count, 1);
+	rc = commit();
+
+	return rc;
+}
+
 RC TxnManager::start_commit() {
 	// ! trans process time
 	uint64_t prepare_start_time = get_sys_clock();
@@ -619,9 +686,9 @@ void TxnManager::send_prepare_messages() {
 	rsp_cnt = query->partitions_touched.size() - 1;
 	DEBUG("%ld Send PREPARE messages to %d\n",get_txn_id(),rsp_cnt);
 	for(uint64_t i = 0; i < query->partitions_touched.size(); i++) {
-	if(GET_NODE_ID(query->partitions_touched[i]) == g_node_id) {
-		continue;
-	}
+		if(GET_NODE_ID(query->partitions_touched[i]) == g_node_id) {
+			continue;
+		}
 		msg_queue.enqueue(get_thd_id(), Message::create_message(this, RPREPARE),
 											GET_NODE_ID(query->partitions_touched[i]));
 #if CC_ALG == ARIA
@@ -644,7 +711,7 @@ void TxnManager::send_finish_messages() {
 }
 
 int TxnManager::received_response(RC rc) {
-	assert(txn->rc == RCOK || txn->rc == Abort);
+	assert(txn->rc == RCOK || txn->rc == Abort || txn->rc == RETRY);
 	if (txn->rc == RCOK) txn->rc = rc;
 #if CC_ALG == CALVIN
 	++rsp_cnt;
@@ -667,7 +734,7 @@ void TxnManager::commit_stats() {
 	uint64_t timespan_short = commit_time - txn_stats.restart_starttime;
 	uint64_t timespan_long  = commit_time - txn_stats.starttime;
 	INC_STATS(get_thd_id(),total_txn_commit_cnt,1);
-	DEBUG_WRK("Commit_stats txn [%ld-%ld] timespan_long %ld timespan_short %ld\n",
+	DEBUG_WRK("Commit_stats txn [%ld,%ld] timespan_long %ld timespan_short %ld\n",
 						get_batch_id(), get_txn_id(), timespan_long, timespan_short);
 
 	uint64_t warmuptime = get_sys_clock() - simulation->run_starttime;
@@ -807,7 +874,7 @@ void TxnManager::cleanup_row(RC rc, uint64_t rid) {
 			version = orig_r->return_row(rc, type, this, txn->accesses[rid]->data);
 		}
 #else
-	version = orig_r->return_row(rc, type, this, txn->accesses[rid]->data);
+		version = orig_r->return_row(rc, type, this, txn->accesses[rid]->data);
 #endif
 	}
 #endif
@@ -829,13 +896,13 @@ void TxnManager::cleanup_row(RC rc, uint64_t rid) {
 	if (type == WR) txn->accesses[rid]->version = version;
 
 #if CC_ALG != SILO
-  txn->accesses[rid]->data = NULL;
+  	txn->accesses[rid]->data = NULL;
 #endif
 }
 
 void TxnManager::cleanup(RC rc) {
 #if CC_ALG == SILO
-  finish(rc);
+  	finish(rc);
 #endif
 #if CC_ALG == ARIA
 	finish(rc);
@@ -896,7 +963,7 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 	INC_STATS(get_thd_id(), trans_get_access_time, get_access_end_time - starttime);
 	INC_STATS(get_thd_id(), trans_get_access_count, 1);
 
-
+	// 这里是进入row里去做并发控制的入口
 	rc = row->get_row(type, this, access);
 	INC_STATS(get_thd_id(), trans_get_row_time, get_sys_clock() - get_access_end_time);
 	INC_STATS(get_thd_id(), trans_get_row_count, 1);
@@ -1050,7 +1117,6 @@ RC TxnManager::insert_row(row_t * row, index_btree * index) {
 #else
 // This function is useless
 void TxnManager::insert_row(row_t * row, table_t * table) {
-	if (CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC) return;
 	assert(txn->insert_rows.size() < MAX_ROW_PER_TXN);
 	txn->insert_rows.add(row);
 }
@@ -1097,7 +1163,7 @@ RC TxnManager::validate() {
 #if MODE != NORMAL_MODE
 	return RCOK;
 #endif
-	if (CC_ALG != OCC && CC_ALG != SILO) {
+	if (CC_ALG != OCC && CC_ALG != SILO && CC_ALG != SDOCC) {
 		return RCOK;
 	}
 	RC rc = RCOK;
@@ -1106,19 +1172,24 @@ RC TxnManager::validate() {
 	if (CC_ALG == OCC && rc == RCOK) rc = occ_man.validate(this);
 
 #if CC_ALG == SILO
-  if(CC_ALG == SILO && rc == RCOK) {
-    rc = validate_silo();
-    if(IS_LOCAL(get_txn_id()) && rc == RCOK) {
-      _cur_tid ++;
-      commit_timestamp = _cur_tid;
-      DEBUG("Validate success: %ld, cts: %ld \n", get_txn_id(), commit_timestamp);
-    }
-  }
+	if(CC_ALG == SILO && rc == RCOK) {
+		rc = validate_silo();
+		if(IS_LOCAL(get_txn_id()) && rc == RCOK) {
+		_cur_tid ++;
+		commit_timestamp = _cur_tid;
+		DEBUG("Validate success: %ld, cts: %ld \n", get_txn_id(), commit_timestamp);
+		}
+	}
+#endif
+#if CC_ALG == SDOCC
+	rc = check();
+	// !更新水印
+	update_local_watermark(get_thd_id(), this);
 #endif
 
 	INC_STATS(get_thd_id(),txn_validate_time,get_sys_clock() - starttime);
 	INC_STATS(get_thd_id(),trans_validate_time,get_sys_clock() - starttime);
-  INC_STATS(get_thd_id(),trans_validate_count, 1);
+  	INC_STATS(get_thd_id(),trans_validate_count, 1);
 	return rc;
 }
 
@@ -1131,7 +1202,7 @@ RC TxnManager::send_remote_reads() {
 	for(uint64_t i = 0; i < query->active_nodes.size(); i++) {
 		if (i == g_node_id) continue;
 	if(query->active_nodes[i] == 1) {
-		DEBUG("(%ld,%ld) send_remote_read to %ld\n",get_txn_id(),get_batch_id(),i);
+		DEBUG("(%ld,%ld) send_remote_read to %ld\n",get_batch_id(),get_txn_id(),i);
 		msg_queue.enqueue(get_thd_id(),Message::create_message(this,RFWD),i);
 	}
 	}
@@ -1142,7 +1213,7 @@ RC TxnManager::send_remote_reads() {
 bool TxnManager::calvin_exec_phase_done() {
 	bool ready =  (phase == CALVIN_DONE) && (get_rc() != WAIT);
 	if(ready) {
-	DEBUG("(%ld,%ld) calvin exec phase done!\n",txn->txn_id,txn->batch_id);
+	DEBUG("(%ld,%ld) calvin exec phase done!\n",txn->batch_id,txn->txn_id);
 	}
 	return ready;
 }
@@ -1150,7 +1221,7 @@ bool TxnManager::calvin_exec_phase_done() {
 bool TxnManager::calvin_collect_phase_done() {
 	bool ready =  (phase == CALVIN_COLLECT_RD) && (get_rsp_cnt() == calvin_expected_rsp_cnt);
 	if(ready) {
-		DEBUG("(%ld,%ld) calvin collect phase done!\n",txn->txn_id,txn->batch_id);
+		DEBUG("(%ld,%ld) calvin collect phase done!\n",txn->batch_id,txn->txn_id);
 	}
 	return ready;
 }

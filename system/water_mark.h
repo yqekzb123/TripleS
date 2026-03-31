@@ -17,71 +17,10 @@
 #include <pthread.h>
 #include "helper.h"
 #include "small_lock_list.h"
+#include "message.h"
+// #include "global.h"
+// #include 
 
-#if 0
-class WaterMark {
-public:
-    uint64_t minSid;
-    pthread_mutex_t latch;
-    std::vector<std::pair<uint64_t, bool> > sid_list; // pair<sid, is_completed>
-
-    WaterMark() {
-        minSid = 0;
-        pthread_mutex_init(&latch, NULL);
-        sid_list.clear();
-    }   
-    void init() {
-        minSid = 0;
-        pthread_mutex_init(&latch, NULL);
-        sid_list.clear();
-    }
-    // 插入一个新的事务号，应该是服务器在接收到事务时插入。
-    bool insert_sid(uint64_t key) {
-        pthread_mutex_lock(&latch);
-        if (key < minSid) {
-            assert(false);
-            pthread_mutex_unlock(&latch);
-            return false;
-        }
-        auto it = std::lower_bound(sid_list.begin(), sid_list.end(), std::make_pair(key, false));
-        if (it != sid_list.end() && it->first == key) {
-            // 这样的情况不应该存在
-            assert(false);
-            pthread_mutex_unlock(&latch);
-            return true;
-        }
-        sid_list.insert(it, std::make_pair(key, false));
-        pthread_mutex_unlock(&latch);
-        return true;
-    }
-
-    // 标记一个事务号为完成，应该是在事务完成某个阶段时调用。
-    // !目前感觉最大的瓶颈在这里，因为每次标记完成都要遍历sid_list。
-    // 不过还没验证。
-    bool mark_completed(uint64_t key) {
-        pthread_mutex_lock(&latch);
-        auto it = std::lower_bound(sid_list.begin(), sid_list.end(), std::make_pair(key, false));
-        if (it == sid_list.end() || it->first != key) {
-            // 这样的情况不应该存在
-            assert(false);
-            pthread_mutex_unlock(&latch);
-            return false;   
-        }
-        it->second = true;
-        // 更新minSid，是把连续为true的都删除，然后把minSid改成连续为true里面最大的
-        uint64_t oldSid = minSid;
-        uint64_t temp = minSid;
-
-        while (!sid_list.empty() && sid_list.front().second) {
-            temp = temp > sid_list.front().first ? temp : sid_list.front().first;
-            sid_list.erase(sid_list.begin());
-        }
-        minSid = temp;
-        pthread_mutex_unlock(&latch);
-        return true;
-    }
-};
-#endif
 // 写一个带key或者水印时间的，包括事务TxnManager的结构体
 struct watermark_node_entry
 {
@@ -95,16 +34,32 @@ public:
 
 class WaterMarkList : public LockList<watermark_node_entry*> {
 public:
-    WaterMarkList() : LockList<watermark_node_entry*>("WaterMarkList") {}
-    WaterMarkList(std::string list_name) : LockList<watermark_node_entry*>(list_name) {}
+    WaterMarkList() : WaterMarkList("WaterMarkList") {
+    }
+    WaterMarkList(std::string list_name) : LockList<watermark_node_entry*>(list_name) {
+        for (uint64_t i = 0; i < g_node_cnt; i++) {
+            water_mark[i] = 0;
+        }
+    }
     ~WaterMarkList() {}
 
-    uint64_t minSid;
+    uint64_t get_current_watermark() {
+        return water_mark[g_node_id];
+    }
+    uint64_t get_node_watermark(uint64_t nid) {
+        return water_mark[nid];
+    }
+    uint64_t get_global_watermark() {
+        // return UINT64_MAX;
+        return glob_water_mark;
+        // return water_mark[g_node_id];
+    }
 public:
-    void update_minsid() {
+    bool update_local_watermark() {
         // 直接读取head->next开始遍历，找到第一个不需要删除的节点
+        bool updated = false;
         ListNode<watermark_node_entry*>* curr = head->next;;
-        uint64_t new_minSid = minSid;
+        uint64_t new_minSid = water_mark[g_node_id];
         while (curr) {
             if (curr->status == NODE_REMOVED || 
                 curr->status == NODE_TAKEN) {
@@ -114,9 +69,46 @@ public:
             new_minSid = max(new_minSid, curr->data->key);
             break;
         }
-        minSid = new_minSid;
-        DEBUG_SCH("[WaterMarkList] update %s minsid to %lu\n", name.c_str(),minSid);
+        if (water_mark[g_node_id] < new_minSid) {
+            // 说明water_mark[g_node_id]对应的节点已经被删除了，可以把water_mark[g_node_id]更新到下一个节点的key了
+            water_mark[g_node_id] = new_minSid;
+            updated = true;
+            DEBUG_SCH("[WaterMarkList] update %s minsid to %lu\n", name.c_str(),water_mark[g_node_id]);
+        }
+        update_global_watermark();
+        return updated;
     }
+    Message* broadcast_watermark() {
+        // 这里可以直接广播minSid给所有节点，或者通过消息队列发送给所有节点
+        // 这里假设有一个全局的消息队列msg_queue，可以用来发送消息
+        WaterMarkMessage * msg =  (WaterMarkMessage*)Message::create_message(WATERMARK);
+        msg->set_watermark(water_mark[g_node_id]);
+        return msg;
+        // for (uint64_t i = 0; i < g_node_cnt; i++) {
+        //     if (i == g_node_id) continue;
+        //     msg_queue.enqueue(0, msg, i);
+        // }
+    }
+    void receive_watermark(uint64_t nid, uint64_t sid) {
+        // 这里可以直接更新对应节点的水印值，然后调用update_watermark来更新minSid
+        water_mark[nid] = sid;
+        DEBUG_SCH("[WaterMarkList] receive watermark from node %lu, sid: %lu\n", nid, sid);
+        update_global_watermark();
+    }
+    void update_global_watermark() {
+        // 这里可以直接遍历所有节点的水印值，找到最小的那个作为全局水印
+        uint64_t new_glob_water_mark = UINT64_MAX;
+        for (uint64_t i = 0; i < g_node_cnt; i++) {
+            new_glob_water_mark = min(new_glob_water_mark, water_mark[i]);
+        }
+        if (glob_water_mark < new_glob_water_mark) {
+            glob_water_mark = new_glob_water_mark;
+            DEBUG_SCH("[WaterMarkList] update global watermark to %lu\n", glob_water_mark);
+        }
+    }
+private:
+    uint64_t water_mark[NODE_CNT];
+    uint64_t glob_water_mark = 0; // 这个是全局的水印，表示所有节点都已经完成的最大事务号
 };
 
 

@@ -144,8 +144,11 @@ public:
     }
 
     bool mark_consumed_by_pointer(ListNode<T>* target_node, uint64_t thd_id) {
+        if (!target_node) return false;
+        if (target_node->status == NODE_REMOVED) return false; // already removed
         target_node->mtx.lock();
         if (target_node->status == NODE_AVAILABLE) {
+            
             target_node->status = NODE_REMOVED;
             count.fetch_sub(1, std::memory_order_relaxed);
             // #if DEBUG_LOCKFREE_LIST

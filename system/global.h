@@ -75,6 +75,7 @@ class MessageQueue;
 class Client_query_queue;
 class Client_txn;
 class Sequencer;
+class SDOCCSequencer;
 class AriaSequencer;
 class Logger;
 class WaterMarkList;
@@ -111,6 +112,7 @@ extern AbortQueue abort_queue;
 extern MessageQueue msg_queue;
 extern Client_txn client_man;
 extern Sequencer seq_man;
+extern SDOCCSequencer sdocc_seq_man;
 extern AriaSequencer aria_seq;
 extern Logger logger;
 // extern QTcpQueue tcp_queue;
@@ -164,15 +166,14 @@ extern UInt32 g_rem_thread_cnt;
 extern UInt32 g_scheduler_thread_cnt;
 extern uint64_t the_first_scheduler_id;
 extern uint64_t * sids;
-#if CC_ALG == ARIA
-// Aria的水印，分为4个阶段
-extern WaterMarkList* reservation_check_water_mark;
-extern WaterMarkList* check_commit_water_mark;
-// extern uint64_t * reservation_check_sids; // 从Reservation阶段到Check阶段中的水印
-// extern uint64_t min_reservation_check_sid;
-// extern uint64_t * check_commit_sids; // 从Check阶段到Commit阶段中的水印
-// extern uint64_t min_check_commit_sid;
+  #if CC_ALG == ARIA
+  // Aria的水印，分为4个阶段
+  extern WaterMarkList* reservation_check_water_mark;
+  extern WaterMarkList* check_commit_water_mark;
+  #endif
 #endif
+#if CC_ALG == SDOCC
+extern WaterMarkList* check_water_mark;
 #endif
 extern uint64_t minSid;
 
@@ -275,33 +276,64 @@ extern UInt32 g_aria_batch_size;
 extern UInt32 g_repl_type;
 extern UInt32 g_repl_cnt;
 
-enum RC { RCOK=0, Commit, Abort, WAIT, WAIT_REM, ERROR, FINISH, NONE};
+enum RC { RCOK=0, Commit, Abort, WAIT, WAIT_REM, ERROR, FINISH, NONE, RETRY};
 enum RemReqType {
   INIT_DONE = 0,
-    CL_QRY,
-    RQRY,
-    RQRY_CONT,
-    RFIN,
-    RQRY_RSP,
-    RACK,
-    RACK_PREP,
-    RACK_FIN,
-    RTXN,
-    RTXN_CONT,
-    RINIT,
-    RPREPARE,
-    RFWD,
-    RDONE,
-    CL_RSP,
-    LOG_MSG,
-    LOG_MSG_RSP,
-    LOG_FLUSHED,
-    CALVIN_ACK,
-    CALVIN_ABORT,
-    ARIA_ACK,
-    VALID,
+  CL_QRY,
+  RQRY,
+  RQRY_CONT,
+  RFIN,
+  RQRY_RSP,
+  RACK,
+  RACK_PREP,
+  RACK_FIN,
+  RTXN,
+  RTXN_CONT,
+  RINIT,
+  RPREPARE,
+  RFWD,
+  RDONE,
+  CL_RSP,
+  LOG_MSG,
+  LOG_MSG_RSP,
+  LOG_FLUSHED,
+  CALVIN_ACK,
+  CALVIN_ABORT,
+  ARIA_ACK,
+  PIP_ACK,
+  WATERMARK,
   NO_MSG
 };
+
+inline string rtype_to_string(RemReqType rtype) {
+  switch(rtype) {
+      case INIT_DONE: return "INIT_DONE";
+      case FINISH: return "FINISH";
+      case LOG_MSG: return "LOG_MSG";
+      case LOG_FLUSHED: return "LOG_FLUSHED";
+      case CL_QRY: return "CL_QRY";
+      case CL_RSP: return "CL_RSP";
+      case RPREPARE: return "RPREPARE";
+      case RFWD: return "RFWD";
+      case RQRY: return "RQRY";
+      case RQRY_CONT: return "RQRY_CONT";
+      case RQRY_RSP: return "RQRY_RSP";
+      case RFIN: return "RFIN";
+      case ARIA_ACK: return "ARIA_ACK";
+      case RACK_PREP: return "RACK_PREP";
+      case RACK_FIN: return "RACK_FIN";
+      case RTXN: return "RTXN";
+      case RTXN_CONT: return "RTXN_CONT";
+      case RINIT: return "RINIT";
+      case CALVIN_ACK: return "CALVIN_ACK";
+      case CALVIN_ABORT: return "CALVIN_ABORT";
+      case PIP_ACK: return "PIP_ACK";
+      case WATERMARK: return "WATERMARK";
+      case NO_MSG: return "NO_MSG";
+      case LOG_MSG_RSP: return "LOG_MSG_RSP";
+      default: return "Unknown";
+    }
+}
 
 // Calvin
 enum CALVIN_PHASE {

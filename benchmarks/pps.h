@@ -119,6 +119,9 @@ public:
 #if CC_ALG == ARIA
   RC run_aria_txn() {return RCOK;}
 #endif
+#if CC_ALG == SDOCC
+  RC run_sdocc_txn() {return RCOK;}
+#endif
   RC run_pps_phase2();
   RC run_pps_phase5();
 	PPSRemTxnType state;

@@ -59,7 +59,7 @@ class Sequencer {
 	void process_abort(Message *msg, uint64_t thd_id);
 	void send_next_batch(uint64_t thd_id);
 
- private:
+ protected:
 	void reset_participating_nodes(bool * part_nodes);
 
 	boost::lockfree::queue<Message*, boost::lockfree::capacity<65526> > * fill_queue;

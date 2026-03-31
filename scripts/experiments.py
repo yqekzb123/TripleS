@@ -102,7 +102,8 @@ def ycsb_skew_pip():
     wl = 'YCSB'
     nnodes = [2]
     # algos=['CALVIN','SILO','ARIA']
-    algos=['ARIA']
+    # algos=['ARIA']
+    algos=['SDOCC']
     # algos=['CALVIN']
     # algos=['SILO']
     base_table_size=1048576*8
@@ -442,7 +443,7 @@ configs = {
     "NETWORK_DELAY": '0UL',
     "NETWORK_DELAY_TEST": 'false',
     "DONE_TIMER": "1 * 20 * BILLION // ~1 minutes",
-    "WARMUP_TIMER": "1 * 20 * BILLION // ~1 minutes",
+    "WARMUP_TIMER": "1 * 60 * BILLION // ~1 minutes",
     "SEQ_BATCH_TIMER": "5 * 1 * MILLION // ~5ms -- same as CALVIN paper",
     "BATCH_TIMER" : "0",
     "PROG_TIMER" : "10 * BILLION // in s",
@@ -473,9 +474,9 @@ configs = {
     "ARIA_BATCH_SIZE":1000,
     "LOGGING":"false",
 #OTHERS
-    "DEBUG_DISTR":"false",
-    "DEBUG_ALLOC":"false",
-    "DEBUG_RACE":"false",
+    # "DEBUG_DISTR":"false",
+    # "DEBUG_ALLOC":"false",
+    # "DEBUG_RACE":"false",
     "MODE":"NORMAL_MODE",
     "SHMEM_ENV":"false",
     "STRICT_PPT":0,

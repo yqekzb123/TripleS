@@ -83,7 +83,7 @@
 /***********************************************/
 #define TPORT_TYPE tcp
 #define TPORT_PORT 18000
-#define SET_AFFINITY true
+#define SET_AFFINITY false
 
 #define MAX_TPORT_NAME 128
 #define MSG_SIZE 128 // in bytes
@@ -106,7 +106,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG ARIA
+#define CC_ALG SDOCC
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -350,9 +350,9 @@ enum PPSTxnType {
 // #define DEBUG_TIMESTAMP       false
 // #define DEBUG_SYNTH         false
 #define DEBUG_ASSERT        false
-#define DEBUG_DISTR false
-#define DEBUG_ALLOC false
-#define DEBUG_RACE false
+#define DEBUG_DISTR         false
+#define DEBUG_ALLOC         false
+#define DEBUG_RACE          false
 #define DEBUG_TIMELINE        false
 #define DEBUG_BREAKDOWN       false
 #define DEBUG_LATENCY       false
@@ -440,7 +440,7 @@ enum PPSTxnType {
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
 #define DONE_TIMER 1 * 20 * BILLION // ~1 minutes
-#define WARMUP_TIMER 1 * 20 * BILLION // ~1 minutes
+#define WARMUP_TIMER 1 * 60 * BILLION // ~1 minutes
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define ONE_MILLISECOND 1 * MILLION

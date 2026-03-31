@@ -161,6 +161,10 @@ public:
 #if CC_ALG == ARIA
   RC run_aria_txn();
 #endif
+#if CC_ALG == SDOCC
+  // !还没实现
+  RC run_sdocc_txn() { return RCOK; }
+#endif
   RC run_tpcc_phase2();
   RC run_tpcc_phase5();
 	TPCCRemTxnType state;

@@ -41,6 +41,7 @@
 #include "work_queue.h"
 #include "client_txn.h"
 #include "sequencer.h"
+#include "sdocc_sequencer.h"
 #include "logger.h"
 #include "aria_sequencer.h"
 #include "water_mark.h"
@@ -69,6 +70,7 @@ AbortQueue abort_queue;
 MessageQueue msg_queue;
 Client_txn client_man;
 Sequencer seq_man;
+SDOCCSequencer sdocc_seq_man;
 #if CC_ALG == ARIA
 AriaSequencer aria_seq;
 #endif
@@ -143,6 +145,9 @@ WaterMarkList* check_commit_water_mark;
 UInt32 g_thread_cnt = THREAD_CNT;
 uint64_t minSid = 0;
 #endif
+#if CC_ALG == SDOCC
+WaterMarkList* check_water_mark;
+#endif
 UInt32 g_rem_thread_cnt = REM_THREAD_CNT;
 UInt32 g_abort_thread_cnt = 1;
 #if LOGGING
@@ -160,6 +165,8 @@ UInt32 g_send_thread_cnt = SEND_THREAD_CNT;
     // sequencer + scheduler thread
     UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2 ;
     #endif
+#elif CC_ALG == SDOCC
+    UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
 #else
 UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt;
 #endif

@@ -101,14 +101,14 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 				if (cl_msg->recon) {
 					// Copy over part keys
 					cl_msg->part_keys.copy( ((AckMessage*)msg)->part_keys);
-					DEBUG("Finished RECON (%ld,%ld)\n",msg->get_txn_id(),msg->get_batch_id());
+					DEBUG("Finished RECON (%ld,%ld)\n",msg->get_batch_id(),msg->get_txn_id());
 			} else {
 					uint64_t timespan = get_sys_clock() - wait_list[id].seq_startts;
 					if (warmup_done) {
 						INC_STATS_ARR(0,start_abort_commit_latency, timespan);
 					}
 					cl_msg->part_keys.clear();
-					DEBUG("Aborted (%ld,%ld)\n",msg->get_txn_id(),msg->get_batch_id());
+					DEBUG("Aborted (%ld,%ld)\n",msg->get_batch_id(),msg->get_txn_id());
 					INC_STATS(0,total_txn_abort_cnt,1);
 					abort_cnt++;
 				}
@@ -322,8 +322,7 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 	for(auto participant = participants.begin(); participant != participants.end(); participant++) {
 		// DEBUG("SEQ adding (%ld,%ld) to fill queue (recon: %d)\n", msg->get_txn_id(),
 			// msg->get_batch_id(), ((PPSClientQueryMessage *)msg)->recon);
-		DEBUG("SEQ adding (%ld,%ld) to fill queue\n", msg->get_txn_id(),
-			msg->get_batch_id());
+		DEBUG("SEQ adding (%ld,%ld) to fill queue\n", msg->get_batch_id(), msg->get_txn_id());
 		while (!fill_queue[*participant].push(msg) && !simulation->is_done()) {
 		}
 	}

@@ -32,6 +32,7 @@
 #include "msg_queue.h"
 #include "message.h"
 #include "small_lock_list.h"
+#include "sdocc.h"
 
 void YCSBTxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	TxnManager::init(thd_id, h_wl);
@@ -43,47 +44,6 @@ void YCSBTxnManager::reset() {
   state = YCSB_0;
   next_record_id = 0;
 	TxnManager::reset();
-}
-
-RC YCSBTxnManager::acquire_locks() {
-  uint64_t starttime = get_sys_clock();
-  assert(CC_ALG == CALVIN);
-  YCSBQuery* ycsb_query = (YCSBQuery*) query;
-  locking_done = false;
-  RC rc = RCOK;
-  incr_lr();
-  assert(ycsb_query->requests.size() == g_req_per_query || ycsb_query->requests.size() == g_req_per_short_query);
-
-  assert(phase == CALVIN_RW_ANALYSIS);
-	for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
-		ycsb_request * req = ycsb_query->requests[rid];
-		uint64_t part_id = _wl->key_to_part( req->key );
-    DEBUG("[%ld] LK Acquire (%ld,%ld) %d,%ld -> %ld\n", get_thd_id(), get_txn_id(), get_batch_id(), req->acctype,
-      req->key, GET_NODE_ID(part_id));
-    if (GET_NODE_ID(part_id) != g_node_id) continue;
-		INDEX * index = _wl->the_index;
-		itemid_t * item;
-		item = index_read(index, req->key, part_id);
-		row_t * row = ((row_t *)item->location);
-		RC rc2 = get_lock(row,req->acctype);
-    if(rc2 != RCOK) {
-      rc = rc2;
-    }
-	}
-  if(decr_lr() == 0) {
-    if (ATOM_CAS(lock_ready, false, true)) rc = RCOK;
-  }
-  txn_stats.wait_starttime = get_sys_clock();
-  /*
-  if(rc == WAIT && lock_ready_cnt == 0) {
-    if(ATOM_CAS(lock_ready,false,true))
-    //lock_ready = true;
-      rc = RCOK;
-  }
-  */
-  INC_STATS(get_thd_id(),calvin_sched_time,get_sys_clock() - starttime);
-  locking_done = true;
-  return rc;
 }
 
 RC YCSBTxnManager::run_txn() {
@@ -294,9 +254,7 @@ RC YCSBTxnManager::run_txn_state() {
         rc = run_ycsb_0(req,row);
       } else {
         rc = send_remote_request();
-
       }
-
       break;
 		case YCSB_1 :
       rc = run_ycsb_1(req->acctype,row);
@@ -360,6 +318,48 @@ RC YCSBTxnManager::run_ycsb_1(access_t acctype, row_t * row_local) {
   INC_STATS(get_thd_id(),trans_benchmark_compute_time,get_sys_clock() - starttime);
   return RCOK;
 }
+
+// Calvin函数部分
+RC YCSBTxnManager::acquire_locks() {
+  uint64_t starttime = get_sys_clock();
+  assert(CC_ALG == CALVIN);
+  YCSBQuery* ycsb_query = (YCSBQuery*) query;
+  locking_done = false;
+  RC rc = RCOK;
+  incr_lr();
+  assert(ycsb_query->requests.size() == g_req_per_query || ycsb_query->requests.size() == g_req_per_short_query);
+
+  assert(phase == CALVIN_RW_ANALYSIS);
+	for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
+		ycsb_request * req = ycsb_query->requests[rid];
+		uint64_t part_id = _wl->key_to_part( req->key );
+    DEBUG("[%ld] LK Acquire (%ld,%ld) %d,%ld -> %ld\n", get_thd_id(), get_batch_id(), get_txn_id(), req->acctype, req->key, GET_NODE_ID(part_id));
+    if (GET_NODE_ID(part_id) != g_node_id) continue;
+		INDEX * index = _wl->the_index;
+		itemid_t * item;
+		item = index_read(index, req->key, part_id);
+		row_t * row = ((row_t *)item->location);
+		RC rc2 = get_lock(row,req->acctype);
+    if(rc2 != RCOK) {
+      rc = rc2;
+    }
+	}
+  if(decr_lr() == 0) {
+    if (ATOM_CAS(lock_ready, false, true)) rc = RCOK;
+  }
+  txn_stats.wait_starttime = get_sys_clock();
+  /*
+  if(rc == WAIT && lock_ready_cnt == 0) {
+    if(ATOM_CAS(lock_ready,false,true))
+    //lock_ready = true;
+      rc = RCOK;
+  }
+  */
+  INC_STATS(get_thd_id(),calvin_sched_time,get_sys_clock() - starttime);
+  locking_done = true;
+  return rc;
+}
+
 RC YCSBTxnManager::run_calvin_txn() {
   RC rc = RCOK;
   uint64_t starttime = get_sys_clock();
@@ -378,14 +378,14 @@ RC YCSBTxnManager::run_calvin_txn() {
         #else
           calvin_expected_rsp_cnt = 0;
         #endif
-        DEBUG("[%ld] (%ld,%ld) expects %d responses;\n", get_thd_id(), txn->txn_id, txn->batch_id,
+        DEBUG("[%ld] (%ld,%ld) expects %d responses;\n", get_thd_id(), txn->batch_id, txn->txn_id, 
         calvin_expected_rsp_cnt);
 
         this->phase = CALVIN_LOC_RD;
         break;
       case CALVIN_LOC_RD: {
         // Phase 2: Perform local reads
-        DEBUG("[%ld] (%ld,%ld) local reads\n",get_thd_id(),txn->txn_id,txn->batch_id);
+        DEBUG("[%ld] (%ld,%ld) local reads\n",get_thd_id(),txn->batch_id,txn->txn_id);
         rc = run_ycsb();
         //release_read_locks(query);
         
@@ -403,8 +403,8 @@ RC YCSBTxnManager::run_calvin_txn() {
           if(calvin_collect_phase_done()) {
             rc = RCOK;
           } else {
-            DEBUG("[%ld] (%ld,%ld) wait in collect phase; %d / %d rfwds received\n", get_thd_id(), txn->txn_id,
-              txn->batch_id, rsp_cnt, calvin_expected_rsp_cnt);
+            DEBUG("[%ld] (%ld,%ld) wait in collect phase; %d / %d rfwds received\n", get_thd_id(), 
+              txn->batch_id, txn->txn_id, rsp_cnt, calvin_expected_rsp_cnt);
             rc = WAIT;
           }
         } else { // Done
@@ -419,7 +419,7 @@ RC YCSBTxnManager::run_calvin_txn() {
         break;
       case CALVIN_EXEC_WR:
         // Phase 5: Execute transaction / perform local writes
-        DEBUG("[%ld] (%ld,%ld) execute writes\n",get_thd_id(),txn->txn_id,txn->batch_id);
+        DEBUG("[%ld] (%ld,%ld) execute writes\n",get_thd_id(),txn->batch_id,txn->txn_id);
         rc = run_ycsb();
         this->phase = CALVIN_DONE;
         break;
@@ -434,6 +434,33 @@ RC YCSBTxnManager::run_calvin_txn() {
   return rc;
 }
 
+
+RC YCSBTxnManager::run_ycsb() {
+  RC rc = RCOK;
+  assert(CC_ALG == CALVIN);
+  YCSBQuery* ycsb_query = (YCSBQuery*) query;
+
+  for (uint64_t i = 0; i < ycsb_query->requests.size(); i++) {
+	  ycsb_request * req = ycsb_query->requests[i];
+    if (this->phase == CALVIN_LOC_RD && req->acctype == WR) continue;
+    if (this->phase == CALVIN_EXEC_WR && req->acctype == RD) continue;
+
+		uint64_t part_id = _wl->key_to_part( req->key );
+    bool loc = GET_NODE_ID(part_id) == g_node_id;
+
+    if (!loc) continue;
+
+    rc = run_ycsb_0(req,row);
+    assert(rc == RCOK);
+
+    rc = run_ycsb_1(req->acctype,row);
+    assert(rc == RCOK);
+  }
+  return rc;
+
+}
+
+// Aria函数部分
 #if CC_ALG == ARIA
 RC YCSBTxnManager::run_aria_txn() {
   RC rc = RCOK;
@@ -548,28 +575,44 @@ RC YCSBTxnManager::run_aria_txn() {
 }
 #endif
 
-RC YCSBTxnManager::run_ycsb() {
+#if CC_ALG == SDOCC
+RC YCSBTxnManager::run_sdocc_txn() {
   RC rc = RCOK;
-  assert(CC_ALG == CALVIN);
-  YCSBQuery* ycsb_query = (YCSBQuery*) query;
+  assert(CC_ALG == SDOCC);
+  // Implement SDOCC transaction logic here
+  assert(sdocc_phase == SDOCC_EXECUTION || sdocc_phase == SDOCC_CHECK);
+  if (sdocc_phase == SDOCC_EXECUTION) {
+    DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
+    if(IS_LOCAL(txn->txn_id) && state == YCSB_0 && next_record_id == 0) {
+      DEBUG("[%ld] Running txn %ld\n", get_thd_id(), txn->txn_id);
+      //query->print();
+      query->partitions_touched.add_unique(GET_PART_ID(0,g_node_id));
+    }
+    uint64_t starttime = get_sys_clock();
 
-  for (uint64_t i = 0; i < ycsb_query->requests.size(); i++) {
-	  ycsb_request * req = ycsb_query->requests[i];
-    if (this->phase == CALVIN_LOC_RD && req->acctype == WR) continue;
-    if (this->phase == CALVIN_EXEC_WR && req->acctype == RD) continue;
+    while(rc == RCOK && !is_done()) {
+      rc = run_txn_state();
+    }
+    uint64_t curr_time = get_sys_clock();
+    txn_stats.process_time += curr_time - starttime;
+    txn_stats.process_time_short += curr_time - starttime;
+    txn_stats.wait_starttime = get_sys_clock();
 
-		uint64_t part_id = _wl->key_to_part( req->key );
-    bool loc = GET_NODE_ID(part_id) == g_node_id;
-
-    if (!loc) continue;
-
-    rc = run_ycsb_0(req,row);
-    assert(rc == RCOK);
-
-    rc = run_ycsb_1(req->acctype,row);
-    assert(rc == RCOK);
+    if (is_done() && rc == RCOK) {// 如果执行完了，进入SDOCC检查阶段 
+      sdocc_phase = SDOCC_CHECK;
+    }
   }
+  // !这个IS_LOCAL可能有问题，因为事务号可能判断不出来是不是本地的
+  if (IS_LOCAL(get_txn_id()) && sdocc_phase == SDOCC_CHECK) {
+    // Perform SDOCC check logic here
+    DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
+    rc = start_sdocc_check();
+  } 
+  // if (IS_LOCAL(get_txn_id()) && sdocc_phase == SDOCC_COMMIT) {
+  //   // Perform SDOCC commit logic here
+  //   // 确定性的SDOCC不应该有回滚
+  //   rc = start_sdocc_commit();
+  // }
   return rc;
-
 }
-
+#endif

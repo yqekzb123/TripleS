@@ -28,8 +28,10 @@
 #include "row_null.h"
 #include "row_silo.h"
 #include "row_aria.h"
+#include "row_sdocc.h"
 #include "mem_alloc.h"
 #include "manager.h"
+#include <new>
 
 #define SIM_FULL_ROW true
 
@@ -68,6 +70,8 @@ void row_t::init_manager(row_t * row) {
     manager = (Row_silo *) mem_allocator.align_alloc(sizeof(Row_silo));
 #elif CC_ALG == ARIA
 	manager = (Row_aria *) mem_allocator.align_alloc(sizeof(Row_aria));
+#elif CC_ALG == SDOCC
+	manager = new (mem_allocator.align_alloc(sizeof(Row_sdocc))) Row_sdocc();
 #endif
 	manager->init(this);
 }
@@ -216,10 +220,10 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 #endif
 
 #if CC_ALG == WAIT_DIE || CC_ALG == NO_WAIT
-  uint64_t init_time = get_sys_clock();
+  	uint64_t init_time = get_sys_clock();
 	//uint64_t thd_id = txn->get_thd_id();
-	lock_t lt = (type == RD || type == SCAN) ? LOCK_SH : LOCK_EX; // ! this wrong !!
-  INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
+	lock_t lt = (type == RD || type == SCAN) ? LOCK_SH : LOCK_EX; 
+  	INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
 
 	rc = this->manager->lock_get(lt, txn);
 
@@ -230,38 +234,38 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 	} else if (rc == WAIT) {
 		ASSERT(CC_ALG == WAIT_DIE);
 	}
-  INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
+  	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
 	goto end;
 
 #elif CC_ALG == OCC
 	// OCC always make a local copy regardless of read or write
-  uint64_t init_time = get_sys_clock();
+  	uint64_t init_time = get_sys_clock();
 	DEBUG_M("row_t::get_row OCC alloc \n");
 	txn->cur_row = (row_t *) mem_allocator.alloc(sizeof(row_t));
 	txn->cur_row->init(get_table(), get_part_id());
-  INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
+  	INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
 
 	rc = this->manager->access(txn, R_REQ);
 
-  uint64_t copy_time = get_sys_clock();
+  	uint64_t copy_time = get_sys_clock();
 	access->data = txn->cur_row;
-  INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
+  	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
 	goto end;
 
 #elif CC_ALG == SILO
 	// like OCC, tictoc also makes a local copy for each read/write
-  uint64_t init_time = get_sys_clock();
+  	uint64_t init_time = get_sys_clock();
  	DEBUG_M("row_t::get_row SILO alloc \n");
 	txn->cur_row = (row_t *) mem_allocator.alloc(sizeof(row_t));
 	txn->cur_row->init(get_table(), get_part_id());
 	TsType ts_type = (type == RD)? R_REQ : P_REQ;
-  INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
+  	INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
 
 	rc = this->manager->access(txn, ts_type, txn->cur_row);
 
-  uint64_t copy_time = get_sys_clock();
-  access->data = txn->cur_row;
-  INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
+	uint64_t copy_time = get_sys_clock();
+	access->data = txn->cur_row;
+	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
 	goto end;
 
 #elif CC_ALG == ARIA
@@ -275,19 +279,27 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 	access->data = txn->cur_row;
 	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
 	goto end;
-#elif CC_ALG == HSTORE || CC_ALG == HSTORE_SPEC || CC_ALG == CALVIN
-#if CC_ALG == HSTORE_SPEC
-	if(txn_table.spec_mode) {
-		DEBUG_M("row_t::get_row HSTORE_SPEC alloc \n");
-		txn->cur_row = (row_t *) mem_allocator.alloc(sizeof(row_t));
-		txn->cur_row->init(get_table(), get_part_id());
-		rc = this->manager->access(txn, R_REQ);
-		access->data = txn->cur_row;
-		goto end;
-	}
-#endif
+#elif CC_ALG == CALVIN
 	access->data = this;
 	goto end;
+#elif CC_ALG == SDOCC
+	uint64_t init_time = get_sys_clock();
+	DEBUG_M("row_t::get_row SDOCC alloc \n");
+	txn->cur_row = (row_t *) mem_allocator.alloc(sizeof(row_t));
+	txn->cur_row->init(get_table(), get_part_id());
+	manager->access(txn, type, txn->cur_row);
+  	INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
+	txn->cur_row->copy(this);
+	uint64_t copy_time = get_sys_clock();
+	access->data = txn->cur_row;
+	if (type == RD|| type == SCAN){
+		access->sdocc_write_reservation = txn->last_sdocc_write_reservation;
+		access->sdocc_write_reservation = 0;
+	} else if (type == WR) {
+		access->sdocc_read_reservation = txn->last_sdocc_read_reservation;
+		access->sdocc_write_reservation = txn->last_sdocc_write_reservation;
+	}
+  	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
 #else
 	assert(false);
 #endif
@@ -364,6 +376,12 @@ uint64_t row_t::return_row(RC rc, access_t type, TxnManager *txn, row_t *row) {
 	return 0;
 #elif CC_ALG == ARIA
 	assert(row != NULL);
+	row->free_row();
+	mem_allocator.free(row, sizeof(row_t));
+	return 0;
+#elif CC_ALG == SDOCC
+	assert(row != NULL);
+	manager->clean(txn, type);
 	row->free_row();
 	mem_allocator.free(row, sizeof(row_t));
 	return 0;

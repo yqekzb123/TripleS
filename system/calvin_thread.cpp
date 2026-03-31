@@ -191,7 +191,7 @@ RC CalvinSequencerThread::run() {
 				break;
 			case CALVIN_ACK:
 				// Ack from server
-				DEBUG("SEQ process_ack (%ld,%ld) from %ld\n", msg->get_txn_id(), msg->get_batch_id(),
+				DEBUG("SEQ process_ack (%ld,%ld) from %ld\n", msg->get_batch_id(),msg->get_txn_id(), 
 							msg->get_return_id());
 				seq_man.process_ack(msg,get_thd_id());
 				// Free message here

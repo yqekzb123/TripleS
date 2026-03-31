@@ -49,6 +49,7 @@ class Row_occ;
 class Row_null;
 class Row_silo;
 class Row_aria;
+class Row_sdocc;
 
 class row_t {
 public:
@@ -112,6 +113,8 @@ public:
   		Row_silo * manager;
 	#elif CC_ALG == ARIA
 		Row_aria * manager;
+	#elif CC_ALG == SDOCC
+		Row_sdocc * manager;
 	#endif
 	char * data;
 	int tuple_size;

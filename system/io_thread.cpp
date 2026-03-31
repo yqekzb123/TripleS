@@ -32,6 +32,7 @@
 #include "work_queue.h"
 #include "txn.h"
 #include "ycsb.h"
+#include "water_mark.h"
 
 void InputThread::setup() {
 
@@ -174,6 +175,24 @@ RC InputThread::server_recv_loop() {
 			if(msg->rtype == RDONE || msg->rtype == CL_QRY) {
 				assert(ISSERVERN(msg->get_return_id()));
 				work_queue.sched_enqueue(get_thd_id(),msg);
+				msgs->erase(msgs->begin());
+				continue;
+			}
+#endif
+#if CC_ALG == SDOCC
+			if ((msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id())) ||  // 如果是客户端发来的消息
+				 msg->rtype == PIP_ACK) {
+				work_queue.sequencer_enqueue(get_thd_id(),msg);
+				msgs->erase(msgs->begin());
+				continue;
+			} else if (msg->rtype == CL_QRY) {
+				assert(false); // 不应该有服务器发来的CL_QRY
+			}
+			if (msg->rtype == WATERMARK) {
+				// DEBUG_SCH("OutputThread %ld receive watermark %ld from node %ld\n", get_thd_id(), ((WaterMarkMessage*)msg)->get_watermark(), msg->get_return_id());
+				check_water_mark->receive_watermark(msg->get_return_id(), ((WaterMarkMessage*)msg)->get_watermark());
+				msg->release();
+				delete msg;
 				msgs->erase(msgs->begin());
 				continue;
 			}

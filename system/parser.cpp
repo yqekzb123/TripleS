@@ -200,7 +200,10 @@ void parser(int argc, char * argv[]) {
 #elif CC_ALG == ARIA
   g_total_thread_cnt += 1; // sequencer thread
   g_total_thread_cnt -= 1; // abort thread
+#elif CC_ALG == SDOCC
+  g_total_thread_cnt += 1; // sequencer thread
 #endif
+
   g_total_client_thread_cnt =
       g_client_thread_cnt + g_client_rem_thread_cnt + g_client_send_thread_cnt + g_client_dynamic_thread_cnt;
   g_total_node_cnt = g_node_cnt + g_client_node_cnt + g_repl_cnt*g_node_cnt;
