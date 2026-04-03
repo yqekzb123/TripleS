@@ -13,7 +13,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-
+#if CC_ALG == SDOCC
 #ifndef _SDOCC_THREAD_H_
 #define _SDOCC_THREAD_H_
 
@@ -30,4 +30,5 @@ private:
 	uint64_t last_batchtime;
 };
 
+#endif
 #endif

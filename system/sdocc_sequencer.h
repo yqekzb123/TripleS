@@ -14,6 +14,7 @@
     limitations under the License.
 */
 
+#if CC_ALG == SDOCC
 #ifndef _SDOCC_SEQUENCER_H_
 #define _SDOCC_SEQUENCER_H_
 
@@ -27,15 +28,47 @@ class Workload;
 class BaseQuery;
 class Message;
 
-class SDOCCSequencer : public Sequencer {
- public:
-	void process_ack(Message * msg, uint64_t thd_id);
-	void process_txn(Message* msg, uint64_t thd_id, uint64_t early_start, uint64_t last_start,
-									 uint64_t wait_time, uint32_t abort_cnt);
-	void process_abort(Message *msg, uint64_t thd_id);
-	void send_next_batch(uint64_t thd_id);
+typedef struct sdocc_txn_entry {
+    BaseQuery * qry;
+    uint32_t client_id;
+    uint64_t client_startts;
+    uint64_t seq_startts;
+    uint64_t seq_first_startts;
+    // uint64_t skew_startts;
+    uint64_t total_batch_time;
+    // uint32_t server_ack_cnt;
+    uint32_t abort_cnt;
+    Message * msg;
+} sdocc_txn;
 
+struct PBatch {
+    uint64_t id;
+    std::vector<sdocc_txn*> txns;
+    uint64_t txns_left;
+    bool sent;
+    PBatch(uint64_t _id) : id(_id), txns_left(0), sent(false) {}
+};
+
+class SDOCCSequencer{
+ public:
+    void init(Workload *wl);
+	void process_ack(Message * msg, uint64_t thd_id);
+	void send_next_batch(uint64_t thd_id);
+    // 
+    void put_one_txn_to_batch(uint64_t _thd_id) ;
  private:
     void check_participants(Message * msg, Workload * wl);
+
+    volatile uint64_t next_txn_id;
+    volatile uint64_t batch_id;
+    uint64_t last_batch_time;
+    uint64_t txns_left;
+    Workload * _wl;
+
+    std::vector<PBatch*> pipeline_batches;
+    PBatch * pipeline_current_batch = nullptr;
+    uint64_t pipeline_next_batch_id = 0;
+    uint64_t pipeline_txns_left = 0;
 };
+#endif
 #endif

@@ -180,14 +180,6 @@ RC InputThread::server_recv_loop() {
 			}
 #endif
 #if CC_ALG == SDOCC
-			if ((msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id())) ||  // 如果是客户端发来的消息
-				 msg->rtype == PIP_ACK) {
-				work_queue.sequencer_enqueue(get_thd_id(),msg);
-				msgs->erase(msgs->begin());
-				continue;
-			} else if (msg->rtype == CL_QRY) {
-				assert(false); // 不应该有服务器发来的CL_QRY
-			}
 			if (msg->rtype == WATERMARK) {
 				// DEBUG_SCH("OutputThread %ld receive watermark %ld from node %ld\n", get_thd_id(), ((WaterMarkMessage*)msg)->get_watermark(), msg->get_return_id());
 				check_water_mark->receive_watermark(msg->get_return_id(), ((WaterMarkMessage*)msg)->get_watermark());

@@ -160,14 +160,13 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 										(double)skew_timespan / BILLION,
 										(double)wait_list[id].total_batch_time / BILLION);
 
-				cl_msg->release();
+			cl_msg->release();
 
-			ClientResponseMessage *rsp_msg =
-					(ClientResponseMessage *)Message::create_message(msg->get_txn_id(), CL_RSP);
-					rsp_msg->client_startts = wait_list[id].client_startts;
-					msg_queue.enqueue(thd_id,rsp_msg,wait_list[id].client_id);
+			ClientResponseMessage *rsp_msg = (ClientResponseMessage *)Message::create_message(msg->get_txn_id(), CL_RSP);
+			rsp_msg->client_startts = wait_list[id].client_startts;
+			msg_queue.enqueue(thd_id,rsp_msg,wait_list[id].client_id);
 #if WORKLOAD == PPS
-			}
+		}
 #endif
 
 		INC_STATS(thd_id,seq_complete_cnt,1);

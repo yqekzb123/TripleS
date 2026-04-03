@@ -195,10 +195,7 @@ void Transport::init() {
 	read_ifconfig(path.c_str());
 
   for(uint64_t node_id = 0; node_id < g_total_node_cnt; node_id++) {
-    #ifdef NO_REMOTE
-    #else
     if (node_id == g_node_id) continue;
-    #endif
     // Listening ports
     if(ISCLIENTN(node_id)) {
       for (uint64_t client_thread_id = g_client_thread_cnt + g_client_rem_thread_cnt;

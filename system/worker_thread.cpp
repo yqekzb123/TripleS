@@ -214,10 +214,13 @@ void WorkerThread::commit() {
   // Send result back to client
 #if CC_ALG == ARIA
 #elif CC_ALG == SDOCC
-  assert(txn_man->return_id == g_node_id);
   DEBUG_SEQ("SDOCC ACK to %ld for (%ld,%ld)\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id());
+  // msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,CL_RSP),1);
+  assert(txn_man->return_id == g_node_id);
   work_queue.sequencer_enqueue(_thd_id,Message::create_message(txn_man,PIP_ACK));
 #else
+  // work_queue.sequencer_enqueue(_thd_id,Message::create_message(txn_man,PIP_ACK));
+  DEBUG_WRK("ACK to %ld for (%ld,%ld) to client %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), txn_man->client_id);
   msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,CL_RSP),txn_man->client_id);
 #endif
   // remove txn from pool
@@ -378,7 +381,7 @@ RC WorkerThread::run() {
 
     progress_stats();
     Message* msg;
-
+    uint64_t dequeue_starttime = get_sys_clock();
     #if CC_ALG == SDOCC
       msg = work_queue.sdocc_dequeue(get_thd_id());
     #elif CC_ALG == ARIA
@@ -386,9 +389,11 @@ RC WorkerThread::run() {
     #else
       msg = work_queue.dequeue(get_thd_id());
     #endif
-
     if(!msg) {
       if (idle_starttime == 0) idle_starttime = get_sys_clock();
+      uint64_t dequeue_endtime = get_sys_clock();
+      INC_STATS(get_thd_id(),workqueue_dequeue_time,dequeue_endtime - dequeue_starttime);
+      // dequeue_starttime = dequeue_endtime;
       //todo: add sleep 0.01ms
       continue;
     }
@@ -778,12 +783,9 @@ RC WorkerThread::process_rqry_rsp(Message * msg) {
 #if CC_ALG != ARIA
 RC WorkerThread::process_rqry(Message * msg) {
   DEBUG("RQRY %ld\n",msg->get_txn_id());
-#ifdef NO_REMOTE 
-#else
   M_ASSERT_V(!IS_LOCAL(msg->get_txn_id()), "RQRY local: %ld %ld/%d\n", msg->get_txn_id(),
              msg->get_txn_id() % g_node_cnt, g_node_id);
   assert(!IS_LOCAL(msg->get_txn_id()));
-#endif
   RC rc = RCOK;
 
   msg->copy_to_txn(txn_man);
@@ -903,6 +905,7 @@ uint64_t WorkerThread::get_next_txn_id() {
 RC WorkerThread::process_rtxn(Message * msg) {
   RC rc = RCOK;
   uint64_t txn_id = UINT64_MAX;
+  // !
   #if CC_ALG == SDOCC
   uint64_t batch_id = msg->get_batch_id();
   #else
@@ -911,6 +914,7 @@ RC WorkerThread::process_rtxn(Message * msg) {
   if(msg->get_rtype() == CL_QRY ) {
     // This is a new transaction
     // Only set new txn_id when txn first starts
+    // !
     #if CC_ALG == SDOCC
     txn_id = msg->txn_id;
     #else
@@ -1229,6 +1233,9 @@ RC StatsPerIntervalThread::run(){
       work_queue.aria_check_lockfree->DEBUG_PRINT_LIST_LENGTH();
       work_queue.aria_commit_lockfree->DEBUG_PRINT_LIST_LENGTH();
       #endif
+      #endif
+      #if CC_ALG == SDOCC
+      work_queue.sdocc_lockfree->DEBUG_PRINT_LIST_LENGTH();
       #endif
       DEBUG_TIME("------StatsPerIntervalThread %ld seconds--------\n",loop);
       loop++;

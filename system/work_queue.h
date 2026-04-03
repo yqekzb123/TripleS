@@ -79,6 +79,8 @@ public:
 #endif
 
 #if CC_ALG == SDOCC
+    Message * txn_dequeue(uint64_t thd_id);
+    void sdocc_enqueue(uint64_t thd_id, Message* msg, bool not_ready);
     Message * sdocc_dequeue(uint64_t thd_id);
     void insert_sdocc_list_lockfree(uint64_t thd_id, TxnManager * txn);
     TxnManager * get_from_sdocc_list_lockfree(uint64_t thd_id);
@@ -133,6 +135,10 @@ private:
     boost::lockfree::queue<work_queue_entry* > * new_txn_queue;
     boost::lockfree::queue<work_queue_entry* > * seq_queue;
     boost::lockfree::queue<work_queue_entry* > ** sched_queue;
+    #if CC_ALG == SDOCC
+    boost::lockfree::queue<work_queue_entry* > * sdocc_queue;
+    #endif
+
 #if CC_ALG == ARIA
     boost::lockfree::queue<work_queue_entry* > * aria_read_queue;
     boost::lockfree::queue<work_queue_entry* > * aria_reserve_queue;

@@ -38,6 +38,9 @@ void QWorkQueue::init() {
 	aria_check_queue = new boost::lockfree::queue<work_queue_entry* >(0);
 	aria_commit_queue = new boost::lockfree::queue<work_queue_entry* >(0);
 #endif
+#if CC_ALG == SDOCC
+	sdocc_queue = new boost::lockfree::queue<work_queue_entry* > (0);
+#endif
 	sched_queue = new boost::lockfree::queue<work_queue_entry* > * [g_node_cnt];
 	for ( uint64_t i = 0; i < g_node_cnt; i++) {
 		sched_queue[i] = new boost::lockfree::queue<work_queue_entry* > (0);
@@ -561,27 +564,130 @@ void QWorkQueue::insert_list_lockfree(uint64_t thd_id,
 }
 
 #if CC_ALG == SDOCC
+Message* QWorkQueue::txn_dequeue(uint64_t thd_id) {
+	uint64_t starttime = get_sys_clock();
+	assert(CC_ALG == SDOCC || CC_ALG == SILO);
+	assert(ISSERVER || ISREPLICA);
+	Message * msg = NULL;
+	work_queue_entry * entry = NULL;
+	bool valid = false;
+
+	valid = new_txn_queue->pop(entry);
+	if(valid) {
+		msg = entry->msg;
+		assert(msg);
+		uint64_t queue_time = get_sys_clock() - entry->starttime;
+		INC_STATS(thd_id,work_queue_wait_time,queue_time);
+		INC_STATS(thd_id,work_queue_cnt,1);
+		statqueue(thd_id, entry);
+		if(msg->rtype == CL_QRY) {
+			sem_wait(&_semaphore);
+			txn_queue_size --;
+			txn_dequeue_size ++;
+			sem_post(&_semaphore);
+			INC_STATS(thd_id,work_queue_new_wait_time,queue_time);
+			INC_STATS(thd_id,work_queue_new_cnt,1);
+		} else {
+			assert(false);
+		}
+		msg->wq_time = queue_time;
+		DEBUG("Work Dequeue (%ld,%ld)\n",entry->batch_id,entry->txn_id);
+		DEBUG_M("QWorkQueue::dequeue work_queue_entry free\n");
+		mem_allocator.free(entry,sizeof(work_queue_entry));
+		INC_STATS(thd_id,work_queue_dequeue_time,get_sys_clock() - starttime);
+	}
+	return msg;
+}
+
+void QWorkQueue::sdocc_enqueue(uint64_t thd_id, Message* msg, bool not_ready) {
+	uint64_t starttime = get_sys_clock();
+	assert(msg);
+	DEBUG_M("QWorkQueue::enqueue work_queue_entry alloc\n");
+	work_queue_entry * entry;
+
+	entry = (work_queue_entry*)mem_allocator.align_alloc(sizeof(work_queue_entry));
+	entry->msg = msg;
+	entry->rtype = msg->rtype;
+	entry->txn_id = msg->txn_id;
+	entry->batch_id = msg->batch_id;
+	entry->starttime = get_sys_clock();
+	assert(ISSERVER || ISREPLICA);
+	// DEBUG("Work Enqueue (%ld,%ld) %d\n",entry->batch_id,entry->txn_id,entry->rtype);
+
+	assert(msg->rtype == CL_QRY);
+
+	if(not_ready) {
+		INC_STATS(thd_id,work_queue_conflict_cnt,1);
+	}
+	while (!sdocc_queue->push(entry) && !simulation->is_done()) {}
+	
+	sem_wait(&_semaphore);
+	work_queue_size ++;
+	work_enqueue_size ++;
+	sem_post(&_semaphore);
+
+	INC_STATS(thd_id,work_queue_enqueue_time,get_sys_clock() - starttime);
+	INC_STATS(thd_id,work_queue_enq_cnt,1);
+	INC_STATS(thd_id,trans_work_queue_item_total,txn_queue_size+work_queue_size);
+}
 
 Message* QWorkQueue::sdocc_dequeue(uint64_t thd_id) {
 	uint64_t starttime = get_sys_clock();
-	assert(CC_ALG == SDOCC);
+	// assert(CC_ALG == SDOCC);
 	assert(ISSERVER || ISREPLICA);
 	work_queue_entry * entry = NULL;
 	bool valid = false;
 	Message * msg = NULL;
-
-	msg = dequeue(thd_id);
+	// uint64_t dequeue_starttime = 0;
+	enum SDOCC_QUEUE_TYPE {WORK_QUEUE, SDOCC_QUEUE, SDOCC_LIST};
+	SDOCC_QUEUE_TYPE queue_type = WORK_QUEUE;
 	
-	if (msg) {
-		// DEBUG_WRK("[SDOCC] thd %ld dequeue msg %p-%ld,%ld from work_queue\n", thd_id, msg, msg->batch_id, msg->txn_id);
+	// 先从work_queue里pop，如果有的话就直接返回，没有的话再从sdocc_queue里pop
+	valid = work_queue->pop(entry);
+	if (!valid) {
+		valid = sdocc_queue->pop(entry);
+		queue_type = SDOCC_QUEUE;
 	}
-	else {
-		TxnManager * txn = get_from_sdocc_list_lockfree(thd_id);
-		if (txn) {
-			msg = txn->last_msg;
-			assert(msg);
-			// DEBUG_WRK("[SDOCC] thd %ld dequeue txn %p with msg %p-%ld,%ld from sdocc_list_lockfree\n", thd_id, txn, msg, msg->batch_id, msg->txn_id);
+	if (valid) {
+		msg = entry->msg;
+		assert(msg);
+		uint64_t queue_time = get_sys_clock() - entry->starttime;
+		INC_STATS(thd_id,work_queue_wait_time,queue_time);
+		INC_STATS(thd_id,work_queue_cnt,1);
+		statqueue(thd_id, entry);
+		if(msg->rtype == CL_QRY) {
+			sem_wait(&_semaphore);
+			work_queue_size --;
+			work_enqueue_size ++;
+			sem_post(&_semaphore);
+			INC_STATS(thd_id,work_queue_new_wait_time,queue_time);
+			INC_STATS(thd_id,work_queue_new_cnt,1);
+		} else {
+			sem_wait(&_semaphore);
+			work_queue_size --;
+			work_enqueue_size ++;
+			sem_post(&_semaphore);
+			INC_STATS(thd_id,work_queue_old_wait_time,queue_time);
+			INC_STATS(thd_id,work_queue_old_cnt,1);
 		}
+		assert(msg->txn_id != (uint64_t)-1);
+		msg->wq_time = queue_time;
+		DEBUG("Work Dequeue (%ld,%ld) from %d\n",entry->batch_id,entry->txn_id,queue_type);
+		DEBUG_M("QWorkQueue::dequeue work_queue_entry free\n");
+		mem_allocator.free(entry,sizeof(work_queue_entry));
+		INC_STATS(thd_id,work_queue_dequeue_time,get_sys_clock() - starttime);
+		return msg;
+	} else {
+		queue_type = SDOCC_LIST;
+		// 最后从sdocc_list_lockfree里取，如果有的话就返回
+		// TxnManager * txn = get_from_sdocc_list_lockfree(thd_id);
+		// // INC_STATS(thd_id,small_lock_queue_dequeue_time,get_sys_clock() - dequeue_starttime);
+		// if (txn) {
+		// 	msg = txn->last_msg;
+		// 	assert(msg);
+		// 	// DEBUG_WRK("[SDOCC] thd %ld dequeue txn %p with msg %p-%ld,%ld from sdocc_list_lockfree\n", thd_id, txn, msg, msg->batch_id, msg->txn_id);
+		// return msg;
+		// }
 	}
 	return msg;
 }
@@ -602,6 +708,7 @@ TxnManager * QWorkQueue::get_from_sdocc_list_lockfree(uint64_t thd_id) {
 		DEBUG_LOCKFREE("[LockFreeList] get_from_sdocc_list_lockfree cond1 skip txn %p key=%lu minSid=%lu\n",entry->txn, entry->key, minSid);
 		return false;
 	};
+
 	list_node_entry * entry = NULL;
 
 	bool succ = sdocc_lockfree->try_take(func, func, entry, thd_id);
@@ -664,6 +771,7 @@ TxnManager * QWorkQueue::get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t
 #endif
 
 #if CC_ALG == ARIA
+#if LONG_TXN_SCHEDULE
 void QWorkQueue::work_enqueue_lockfree_list(uint64_t thd_id, Message* msg, bool not_ready, ARIA_PHASE phase) {
 	uint64_t starttime = get_sys_clock();
 	assert(CC_ALG == ARIA);
@@ -830,5 +938,6 @@ Message* QWorkQueue::work_dequeue_lockfree_list(uint64_t thd_id, ARIA_PHASE phas
 	}
 	return msg;
 }
+#endif
 #endif	// CC_ALG == ARIA
 

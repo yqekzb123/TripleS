@@ -162,8 +162,6 @@ public:
   void release() {}
 
 };
-
-
 class QueryResponseMessage : public Message {
 public:
   void copy_from_buf(char * buf);
@@ -231,7 +229,6 @@ public:
 	uint64_t o_id;
 #endif
 };
-
 
 class DoneMessage : public Message {
 public:

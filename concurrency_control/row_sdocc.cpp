@@ -71,6 +71,7 @@ bool Row_sdocc::clean_reservation(std::vector<uint64_t>& reservations, pthread_m
 }
 
 RC Row_sdocc::access(TxnManager * txn, access_t type, row_t * local_row){
+    // return RCOK;
     // 和师兄讨论，SDOCC，access里只检查是否满足条件，真正的reservation放到check里
     if (type == RD || type == SCAN) {
         // 读操作，检查写操作，即处理读写冲突
@@ -90,6 +91,7 @@ RC Row_sdocc::access(TxnManager * txn, access_t type, row_t * local_row){
 }
 
 RC Row_sdocc::check(TxnManager * txn, access_t type, row_t * local_row, Access *a) {
+    // return RCOK;
     uint64_t key = get_calvin_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
     RC rc = RCOK;
     // 这里要干的事情是，先把自己的key作为reservation放到reservations里;
@@ -131,6 +133,7 @@ RC Row_sdocc::check(TxnManager * txn, access_t type, row_t * local_row, Access *
 }
 
 RC Row_sdocc::clean(TxnManager * txn, access_t type) {
+    // return RCOK;
     // 清理掉对应的reservation
     uint64_t batch_id = txn->get_batch_id();
     uint64_t return_id = txn->return_id;

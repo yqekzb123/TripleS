@@ -30,6 +30,7 @@ std::string get_sdocc_phase_str(SDOCC_PHASE phase) {
 
 RC TxnManager::check() {
     RC rc = RCOK;
+    // return RCOK;
     uint64_t txn_id = get_txn_id();
     for (uint64_t i = 0; i < txn->row_cnt; i++) {
         Access * access = txn->accesses[i];
@@ -39,12 +40,15 @@ RC TxnManager::check() {
         if (rc2 == WAIT || rc2 == Abort) {
             rc = RETRY;
         }
+        // ! 这里暂时强行设定RCOK，不会因为check而重试
+        // rc = RCOK;
     }
     DEBUG_WRK("[%ld] Check SDOCC txn %ld,%ld, rc: %s\n",get_thd_id(),get_batch_id(),txn_id,rc == RCOK? "OK" : "RETRY");
     return rc;
 }
 
 void update_local_watermark(uint64_t thd_id, TxnManager * txn_manager) {
+    // return;
     uint64_t bid = txn_manager->get_batch_id();
     uint64_t return_id = txn_manager->return_id;
     uint64_t txn_id = txn_manager->get_txn_id();

@@ -66,10 +66,7 @@ void MessageQueue::statqueue(uint64_t thd_id, msg_entry * entry) {
 void MessageQueue::enqueue(uint64_t thd_id, Message * msg,uint64_t dest) {
   DEBUG("MQ Enqueue %ld\n",dest)
   assert(dest < g_total_node_cnt);
-#ifdef NO_REMOTE 
-#else
   assert(dest != g_node_id);
-#endif
   DEBUG_M("MessageQueue::enqueue msg_entry alloc\n");
   msg_entry * entry = (msg_entry*) mem_allocator.alloc(sizeof(struct msg_entry));
   //msg_pool.get(entry);

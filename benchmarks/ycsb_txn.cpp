@@ -82,6 +82,7 @@ RC YCSBTxnManager::run_txn() {
   } else if(rc == Abort){
     rc = abort();
   }
+  // INC_STATS(get_thd_id(),worker_activate_txn_time,curr_time - starttime);
 
   return rc;
 
@@ -217,12 +218,8 @@ void YCSBTxnManager::copy_remote_requests(YCSBQueryMessage * msg) {
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
   //msg->requests.init(ycsb_query->requests.size());
   uint64_t dest_node_id = GET_NODE_ID(ycsb_query->requests[next_record_id]->key);
-#ifdef NO_REMOTE
-  while (next_record_id < ycsb_query->requests.size() && GET_NODE_ID(ycsb_query->requests[next_record_id]->key) == dest_node_id) {
-#else
   while (next_record_id < ycsb_query->requests.size() && !is_local_request(next_record_id) &&
          GET_NODE_ID(ycsb_query->requests[next_record_id]->key) == dest_node_id) {
-#endif
     YCSBQuery::copy_request_to_msg(ycsb_query,msg,next_record_id++);
   }
 }
@@ -581,6 +578,7 @@ RC YCSBTxnManager::run_sdocc_txn() {
   assert(CC_ALG == SDOCC);
   // Implement SDOCC transaction logic here
   assert(sdocc_phase == SDOCC_EXECUTION || sdocc_phase == SDOCC_CHECK);
+  
   if (sdocc_phase == SDOCC_EXECUTION) {
     DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
     if(IS_LOCAL(txn->txn_id) && state == YCSB_0 && next_record_id == 0) {
@@ -600,19 +598,17 @@ RC YCSBTxnManager::run_sdocc_txn() {
 
     if (is_done() && rc == RCOK) {// 如果执行完了，进入SDOCC检查阶段 
       sdocc_phase = SDOCC_CHECK;
+    } else if (rc == RETRY || rc == WAIT || rc == WAIT_REM) {
+    } else {
+      assert(false); 
     }
   }
-  // !这个IS_LOCAL可能有问题，因为事务号可能判断不出来是不是本地的
+  // assert(IS_LOCAL(get_txn_id()));
   if (IS_LOCAL(get_txn_id()) && sdocc_phase == SDOCC_CHECK) {
     // Perform SDOCC check logic here
     DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
     rc = start_sdocc_check();
   } 
-  // if (IS_LOCAL(get_txn_id()) && sdocc_phase == SDOCC_COMMIT) {
-  //   // Perform SDOCC commit logic here
-  //   // 确定性的SDOCC不应该有回滚
-  //   rc = start_sdocc_commit();
-  // }
   return rc;
 }
 #endif

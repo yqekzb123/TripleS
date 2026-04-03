@@ -277,6 +277,10 @@ public:
   uint64_t occ_ts_abort_cnt;
   double occ_finish_time;
 
+  // SOCC
+  double workqueue_dequeue_time;
+  double small_lock_queue_dequeue_time;
+
   // Logging
   uint64_t log_write_cnt;
   double log_write_time;

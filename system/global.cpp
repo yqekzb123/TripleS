@@ -70,7 +70,9 @@ AbortQueue abort_queue;
 MessageQueue msg_queue;
 Client_txn client_man;
 Sequencer seq_man;
+#if CC_ALG == SDOCC
 SDOCCSequencer sdocc_seq_man;
+#endif
 #if CC_ALG == ARIA
 AriaSequencer aria_seq;
 #endif

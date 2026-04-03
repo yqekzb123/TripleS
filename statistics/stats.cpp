@@ -310,6 +310,10 @@ void Stats_thd::clear() {
   occ_ts_abort_cnt=0;
   occ_finish_time=0;
 
+  // SDOCC
+  workqueue_dequeue_time=0;
+  small_lock_queue_dequeue_time=0;
+
   // Logging
   log_write_cnt=0;
   log_write_time=0;
@@ -986,6 +990,12 @@ void Stats_thd::print(FILE * outf, bool prog) {
           occ_hist_validate_fail_time / BILLION, occ_act_validate_fail_time / BILLION,
           occ_check_cnt, occ_abort_check_cnt, occ_ts_abort_cnt, occ_finish_time / BILLION);
 
+  // SDOCC
+  fprintf(outf,
+  ",workqueue_dequeue_time=%f"
+  ",small_lock_queue_dequeue_time=%f",
+          workqueue_dequeue_time / BILLION, small_lock_queue_dequeue_time / BILLION);
+
   // Logging
   double log_write_avg_time = 0;
   if (log_write_cnt > 0) log_write_avg_time = log_write_time / log_write_cnt;
@@ -1472,6 +1482,10 @@ void Stats_thd::combine(Stats_thd * stats) {
   occ_abort_check_cnt+=stats->occ_abort_check_cnt;
   occ_ts_abort_cnt+=stats->occ_ts_abort_cnt;
   occ_finish_time+=stats->occ_finish_time;
+
+  // SDOCC
+  workqueue_dequeue_time+=stats->workqueue_dequeue_time;
+  small_lock_queue_dequeue_time+=stats->small_lock_queue_dequeue_time;
 
   // Logging
   log_write_cnt+=stats->log_write_cnt;

@@ -563,7 +563,7 @@ RC TxnManager::start_abort() {
 	}
 	return abort();
 }
-
+#if CC_ALG == SDOCC
 RC TxnManager::start_sdocc_check() {
 	// ! trans process time
 	DEBUG_WRK("%ld,%ld start_sdocc_check\n",get_batch_id(), get_txn_id());
@@ -594,10 +594,9 @@ RC TxnManager::start_sdocc_check() {
 			// !事务重新入队
 			rc = RETRY;
 		} else {
-			sdocc_phase = SDOCC_COMMIT;
 			assert(rc == RCOK);
 			// 可以提交了
-			start_sdocc_commit();
+			rc = start_sdocc_commit();
 		}
 		return rc;
 	}
@@ -621,7 +620,7 @@ RC TxnManager::start_sdocc_commit() {
 
 	return rc;
 }
-
+#endif
 RC TxnManager::start_commit() {
 	// ! trans process time
 	uint64_t prepare_start_time = get_sys_clock();

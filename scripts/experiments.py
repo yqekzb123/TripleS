@@ -100,12 +100,12 @@ def ycsb_scaling():
 
 def ycsb_skew_pip():
     wl = 'YCSB'
-    nnodes = [2]
+    nnodes = [1]
     # algos=['CALVIN','SILO','ARIA']
     # algos=['ARIA']
-    algos=['SDOCC']
+    # algos=['SDOCC']
     # algos=['CALVIN']
-    # algos=['SILO']
+    algos=['SILO']
     base_table_size=1048576*8
     txn_write_perc = [1]
     tup_write_perc = [0.2]
@@ -113,7 +113,7 @@ def ycsb_skew_pip():
     total_cnt=[16]
     scnt = [8]
     # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    skew = [0.1]
+    skew = [0.0]
     # skew = [0.1,0.9]
     fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
     exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
@@ -442,7 +442,7 @@ configs = {
     "MAX_TXN_IN_FLIGHT": 10000,
     "NETWORK_DELAY": '0UL',
     "NETWORK_DELAY_TEST": 'false',
-    "DONE_TIMER": "1 * 20 * BILLION // ~1 minutes",
+    "DONE_TIMER": "1 * 60 * BILLION // ~1 minutes",
     "WARMUP_TIMER": "1 * 60 * BILLION // ~1 minutes",
     "SEQ_BATCH_TIMER": "5 * 1 * MILLION // ~5ms -- same as CALVIN paper",
     "BATCH_TIMER" : "0",
