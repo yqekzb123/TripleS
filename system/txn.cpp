@@ -590,7 +590,7 @@ RC TxnManager::start_sdocc_check() {
     		watermark_passed = key <= check_water_mark->get_global_watermark();
 		}
 		if(!watermark_passed || rc == RETRY) {
-			// assert(rc == RETRY);
+			// assert(false);
 			// !事务重新入队
 			rc = RETRY;
 		} else {

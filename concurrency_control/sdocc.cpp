@@ -37,7 +37,7 @@ RC TxnManager::check() {
         row_t * row = access->orig_row;
         RC rc2 = row->manager->check(this, access->type, row, access);
         // 如果要返回Abort，那么对于SDOCC来说，应该是重试
-        if (rc2 == WAIT || rc2 == Abort) {
+        if (rc2 == RETRY || rc2 == Abort) {
             rc = RETRY;
         }
         // ! 这里暂时强行设定RCOK，不会因为check而重试

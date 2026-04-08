@@ -141,11 +141,11 @@ void WorkerThread::check_if_done(RC rc) {
     txn_man->txn_stats.finish_start_time = get_sys_clock();
     abort();
   }
-  #if CC_ALG == SDOCC
-  if (rc == RETRY) {
-    rc = RETRY;
-  }
-  #endif
+  // #if CC_ALG == SDOCC
+  // if (rc == RETRY) {
+  //   rc = WAIT;
+  // }
+  // #endif
 }
 
 void WorkerThread::release_txn_man() {
@@ -213,21 +213,19 @@ void WorkerThread::commit() {
 
   // Send result back to client
 #if CC_ALG == ARIA
-#elif CC_ALG == SDOCC
-  DEBUG_SEQ("SDOCC ACK to %ld for (%ld,%ld)\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id());
-  // msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,CL_RSP),1);
-  assert(txn_man->return_id == g_node_id);
-  work_queue.sequencer_enqueue(_thd_id,Message::create_message(txn_man,PIP_ACK));
+// #elif CC_ALG == SDOCC || CC_ALG == SILO
+//   DEBUG_SEQ("SDOCC ACK to %ld for (%ld,%ld)\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id());
+//   msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,CL_RSP),1);
+//   // assert(txn_man->return_id == g_node_id);
+//   work_queue.sequencer_enqueue(_thd_id,Message::create_message(txn_man,PIP_ACK));
 #else
   // work_queue.sequencer_enqueue(_thd_id,Message::create_message(txn_man,PIP_ACK));
   DEBUG_WRK("ACK to %ld for (%ld,%ld) to client %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), txn_man->client_id);
   msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,CL_RSP),txn_man->client_id);
 #endif
-  // remove txn from pool
-  // TODO：重新打开release
-  #if CC_ALG != SDOCC
+  // #if CC_ALG != SDOCC  && CC_ALG != SILO
   release_txn_man();
-  #endif
+  // #endif
   
   // Do not use txn_man after this
 }
@@ -263,15 +261,14 @@ void WorkerThread::abort() {
   
   #if CC_ALG != ARIA
   uint64_t penalty =
-      abort_queue.enqueue(get_thd_id(), txn_man->get_txn_id(), txn_man->get_abort_cnt());
+      abort_queue.enqueue(get_thd_id(), txn_man->get_txn_id(), txn_man->get_batch_id(), txn_man->get_abort_cnt());
   txn_man->txn_stats.total_abort_time += penalty;
   #endif
 }
 
 TxnManager * WorkerThread::get_transaction_manager(Message * msg) {
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC
-  TxnManager* local_txn_man =
-      txn_table.get_transaction_manager(get_thd_id(), msg->get_txn_id(), msg->get_batch_id());
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC// || CC_ALG == SILO
+  TxnManager* local_txn_man = txn_table.get_transaction_manager(get_thd_id(), msg->get_txn_id(), msg->get_batch_id());
 #else
   TxnManager * local_txn_man = txn_table.get_transaction_manager(get_thd_id(),msg->get_txn_id(),0);
 #endif
@@ -382,7 +379,7 @@ RC WorkerThread::run() {
     progress_stats();
     Message* msg;
     uint64_t dequeue_starttime = get_sys_clock();
-    #if CC_ALG == SDOCC
+    #if CC_ALG == SDOCC// || CC_ALG == SILO
       msg = work_queue.sdocc_dequeue(get_thd_id());
     #elif CC_ALG == ARIA
       msg = work_queue.work_dequeue(get_thd_id());
@@ -538,26 +535,27 @@ RC WorkerThread::run() {
     if(txn_man) {
       bool ready = txn_man->set_ready();
       assert(ready);
-      DEBUG("Thd %ld txn %ld,%ld set ready\n",
-          get_thd_id(), txn_man->get_batch_id(),txn_man->get_txn_id());
+      DEBUG("Thd %ld txn %ld,%ld set ready\n", get_thd_id(), txn_man->get_batch_id(),txn_man->get_txn_id());
     }
     INC_STATS(get_thd_id(),worker_deactivate_txn_time,get_sys_clock() - ready_starttime);
     #if CC_ALG == SDOCC
-    if (rc == RETRY && IS_LOCAL(txn_man->get_txn_id()) && !txn_man->has_re_enqueued) {
+    if (rc == RETRY && IS_LOCAL(txn_man->get_txn_id()) && !((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued) {
       // !事务重新入队
-      work_queue.insert_sdocc_list_lockfree(get_thd_id(), txn_man);
-      txn_man->txn_stats.restart_starttime = get_sys_clock();
-      txn_man->has_re_enqueued = true;
-
       uint64_t key = get_calvin_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
       bool watermark_passed = key <= check_water_mark->get_global_watermark();
-      DEBUG("Thd %ld txn %ld,%ld re-enqueue to list because %swatermark_passed: %d, rc: %d, <watermark_key: %ld, min_sid: %ld>\n",
-            get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), !watermark_passed ? "!" : "", watermark_passed, rc, key, check_water_mark->get_global_watermark());
+      DEBUG("Thd %ld txn %ld,%ld re-enqueue to list because %swatermark_passed: %d, rc: %d, <watermark_key: %ld, min_sid: %ld>\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), !watermark_passed ? "!" : "", watermark_passed, rc, key, check_water_mark->get_global_watermark());
+
+
+      assert(txn_man->sdocc_phase == SDOCC_CHECK);
+      // work_queue.insert_sdocc_list_lockfree(get_thd_id(), txn_man);
+      work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
+      assert(txn_man->last_msg->get_rtype() == CL_QRY);
+      ((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued = true;
     }
     #endif
     // delete message
     ready_starttime = get_sys_clock();
-    #if CC_ALG == ARIA || CC_ALG == SDOCC
+    #if CC_ALG == ARIA || CC_ALG == SDOCC //|| CC_ALG == SILO
       if (msg->rtype != CL_QRY) {
         msg->release();
         delete msg;
@@ -643,6 +641,7 @@ RC WorkerThread::process_rack_prep(Message * msg) {
   }
   if(!watermark_passed || rc == RETRY || txn_man->get_rc() == RETRY) {
     // !事务重新入队
+    // assert(false);
     rc = RETRY;
   } else {
     assert(rc == RCOK);
@@ -906,7 +905,7 @@ RC WorkerThread::process_rtxn(Message * msg) {
   RC rc = RCOK;
   uint64_t txn_id = UINT64_MAX;
   // !
-  #if CC_ALG == SDOCC
+  #if CC_ALG == SDOCC// || CC_ALG == SILO
   uint64_t batch_id = msg->get_batch_id();
   #else
   uint64_t batch_id = 0;
@@ -915,7 +914,7 @@ RC WorkerThread::process_rtxn(Message * msg) {
     // This is a new transaction
     // Only set new txn_id when txn first starts
     // !
-    #if CC_ALG == SDOCC
+    #if CC_ALG == SDOCC// || CC_ALG == SILO
     txn_id = msg->txn_id;
     #else
     txn_id = get_next_txn_id();
@@ -948,8 +947,11 @@ RC WorkerThread::process_rtxn(Message * msg) {
         assert(txn_man->sdocc_phase == SDOCC_PHASE::SDOCC_CHECK);
       }
       // 这里是下一次重试的入口，将has_re_enqueued置为false，以便于允许下一次重试重新入队
-      txn_man->has_re_enqueued = false;
-      txn_man->retry_cnt++;
+      if (txn_man->last_msg) {
+        ((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued = false;
+      }
+      // txn_man->has_re_enqueued = false;
+      // txn_man->retry_cnt++;
     #else
       msg->copy_to_txn(txn_man);
     #endif

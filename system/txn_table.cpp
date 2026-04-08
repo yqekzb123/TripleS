@@ -58,7 +58,7 @@ void TxnTable::dump() {
 
 bool TxnTable::is_matching_txn_node(txn_node_t t_node, uint64_t txn_id, uint64_t batch_id){
   assert(t_node);
-#if CC_ALG == CALVIN || CC_ALG == SDOCC
+#if CC_ALG == CALVIN || CC_ALG == SDOCC// || CC_ALG == SILO
     return (t_node->txn_man->get_txn_id() == txn_id && t_node->txn_man->get_batch_id() == batch_id);
 #else
     return (t_node->txn_man->get_txn_id() == txn_id);

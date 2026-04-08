@@ -70,7 +70,7 @@ AbortQueue abort_queue;
 MessageQueue msg_queue;
 Client_txn client_man;
 Sequencer seq_man;
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC// || CC_ALG == SILO
 SDOCCSequencer sdocc_seq_man;
 #endif
 #if CC_ALG == ARIA
@@ -167,7 +167,7 @@ UInt32 g_send_thread_cnt = SEND_THREAD_CNT;
     // sequencer + scheduler thread
     UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2 ;
     #endif
-#elif CC_ALG == SDOCC
+#elif CC_ALG == SDOCC// || CC_ALG == SILO
     UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
 #else
 UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt;

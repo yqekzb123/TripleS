@@ -78,7 +78,8 @@ public:
     #endif
 #endif
 
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC// || CC_ALG == SILO
+    Message * sdocc_sequencer_dequeue(uint64_t thd_id);
     Message * txn_dequeue(uint64_t thd_id);
     void sdocc_enqueue(uint64_t thd_id, Message* msg, bool not_ready);
     Message * sdocc_dequeue(uint64_t thd_id);
@@ -113,7 +114,7 @@ public:
     TxnMsgLockList * calvin_scheduled_list_lockfree;
     #endif
 
-    #if CC_ALG == SDOCC
+    #if CC_ALG == SDOCC// || CC_ALG == SILO
     bool sdocc_ready;
     TxnMsgLockList * sdocc_lockfree;
     #endif
@@ -135,7 +136,7 @@ private:
     boost::lockfree::queue<work_queue_entry* > * new_txn_queue;
     boost::lockfree::queue<work_queue_entry* > * seq_queue;
     boost::lockfree::queue<work_queue_entry* > ** sched_queue;
-    #if CC_ALG == SDOCC
+    #if CC_ALG == SDOCC// || CC_ALG == SILO
     boost::lockfree::queue<work_queue_entry* > * sdocc_queue;
     #endif
 

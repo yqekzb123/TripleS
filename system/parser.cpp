@@ -200,7 +200,7 @@ void parser(int argc, char * argv[]) {
 #elif CC_ALG == ARIA
   g_total_thread_cnt += 1; // sequencer thread
   g_total_thread_cnt -= 1; // abort thread
-#elif CC_ALG == SDOCC
+#elif CC_ALG == SDOCC// || CC_ALG == SILO
   g_total_thread_cnt += 1; // sequencer thread
 #endif
 

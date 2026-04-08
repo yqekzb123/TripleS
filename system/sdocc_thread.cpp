@@ -33,13 +33,8 @@
 #include "message.h"
 #include "work_queue.h"
 
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC// || CC_ALG == SILO
 void SDOCCSequencerThread::setup() {}
-
-bool SDOCCSequencerThread::is_batch_ready() {
-	bool ready = get_wall_clock() - simulation->last_seq_epoch_time >= g_seq_batch_time_limit;
-	return ready;
-}
 
 RC SDOCCSequencerThread::run() {
 	tsetup();
@@ -49,33 +44,34 @@ RC SDOCCSequencerThread::run() {
 	uint64_t prof_starttime = 0;
 
 	while(!simulation->is_done()) {
-
-		prof_starttime = get_sys_clock();
-
-		{
-			sdocc_seq_man.put_one_txn_to_batch(_thd_id);
-			// try to send next batch (no-op if none ready)
-			sdocc_seq_man.send_next_batch(_thd_id);
+		// if (sdocc_seq_man.is_batch_ready()) {
+		// 	sdocc_seq_man.send_next_batch(_thd_id);
+		// 	INC_STATS(_thd_id, seq_batch_time, get_sys_clock() - prof_starttime);
+		// 	prof_starttime = get_sys_clock();
+		// 	sdocc_seq_man.advance_seq_epoch();
+		// }
+		msg = work_queue.txn_dequeue(_thd_id);
+		// msg = work_queue.sdocc_sequencer_dequeue(_thd_id);
+		if (!msg) {
+			if (idle_starttime == 0) {
+				idle_starttime = get_sys_clock();
+			}
+			continue;
 		}
-		msg = work_queue.sequencer_dequeue(_thd_id);
-        if (!msg) {
-            if (idle_starttime == 0) {
-                idle_starttime = get_sys_clock();
-            }
-            continue;
-        }
-
 		if (idle_starttime > 0) {
             INC_STATS(_thd_id, seq_idle_time, get_sys_clock() - idle_starttime);
             idle_starttime = 0;
         }
-
-        int rtype = msg->get_rtype();
-        if (rtype == PIP_ACK) {
-            sdocc_seq_man.process_ack(msg, _thd_id);
-        } else {
-            assert(false);
-        }
+		// work_queue.sdocc_enqueue(_thd_id, msg, false);
+		int rtype = msg->get_rtype();
+		// if (rtype == PIP_ACK) {
+		// 	sdocc_seq_man.process_ack(msg, _thd_id);
+		// } else 
+		if (rtype == CL_QRY) {
+			sdocc_seq_man.put_one_txn_to_batch(_thd_id, msg);
+		} else {
+			assert(false);
+		}
 	}
 	printf("FINISH %ld:%ld\n",_node_id,_thd_id);
 	fflush(stdout);

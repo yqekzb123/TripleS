@@ -113,15 +113,15 @@ RC Row_sdocc::check(TxnManager * txn, access_t type, row_t * local_row, Access *
     if (type == RD || type == SCAN) {
         // 读操作，检查写操作，即处理读写冲突
         if (txn->last_sdocc_write_reservation > a->sdocc_write_reservation) {
-            DEBUG_WRK("[SDOCC] txn %ld,%ld read key %ld, but write reservation changed from %ld to %ld, return WAIT\n", txn->get_batch_id(), txn->get_txn_id(), key, a->sdocc_write_reservation, txn->last_sdocc_write_reservation);
-            rc = WAIT;
+            DEBUG_WRK("[SDOCC] txn %ld,%ld read key %ld, but write reservation changed from %ld to %ld, return RETRY\n", txn->get_batch_id(), txn->get_txn_id(), key, a->sdocc_write_reservation, txn->last_sdocc_write_reservation);
+            rc = RETRY;
             a->sdocc_write_reservation = txn->last_sdocc_write_reservation;
         }
     } else if (type == WR) {
         // 写操作，检查读操作和写操作，即处理写写冲突和写读冲突
         if (txn->last_sdocc_write_reservation > a->sdocc_write_reservation || txn->last_sdocc_read_reservation > a->sdocc_read_reservation) {
-            DEBUG_WRK("[SDOCC] txn %ld,%ld write key %ld, but reservation changed, write reservation from %ld to %ld, read reservation from %ld to %ld, return WAIT\n", txn->get_batch_id(), txn->get_txn_id(), key, a->sdocc_write_reservation, txn->last_sdocc_write_reservation, a->sdocc_read_reservation, txn->last_sdocc_read_reservation);
-            rc = WAIT;
+            DEBUG_WRK("[SDOCC] txn %ld,%ld write key %ld, but reservation changed, write reservation from %ld to %ld, read reservation from %ld to %ld, return RETRY\n", txn->get_batch_id(), txn->get_txn_id(), key, a->sdocc_write_reservation, txn->last_sdocc_write_reservation, a->sdocc_read_reservation, txn->last_sdocc_read_reservation);
+            rc = RETRY;
             a->sdocc_write_reservation = txn->last_sdocc_write_reservation;
             a->sdocc_read_reservation = txn->last_sdocc_read_reservation;
         }

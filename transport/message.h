@@ -51,6 +51,7 @@ public:
   uint64_t sdocc_phase;
   #endif
   uint64_t return_node_id;
+  uint64_t client_id;
 
   uint64_t wq_time;
   uint64_t mq_time;
@@ -281,6 +282,8 @@ public:
   #endif
   #if CC_ALG == SDOCC
   ListNode<watermark_node_entry*>* list_node_pointer;
+
+  bool has_re_enqueued = false;
   #endif
 };
 

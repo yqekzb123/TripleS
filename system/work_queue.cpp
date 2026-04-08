@@ -38,7 +38,7 @@ void QWorkQueue::init() {
 	aria_check_queue = new boost::lockfree::queue<work_queue_entry* >(0);
 	aria_commit_queue = new boost::lockfree::queue<work_queue_entry* >(0);
 #endif
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC// || CC_ALG == SILO
 	sdocc_queue = new boost::lockfree::queue<work_queue_entry* > (0);
 #endif
 	sched_queue = new boost::lockfree::queue<work_queue_entry* > * [g_node_cnt];
@@ -563,7 +563,16 @@ void QWorkQueue::insert_list_lockfree(uint64_t thd_id,
 	list->insert(entry, thd_id);
 }
 
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC// || CC_ALG == SILO
+Message * QWorkQueue::sdocc_sequencer_dequeue(uint64_t thd_id) {
+	Message * msg = sequencer_dequeue(thd_id);
+	if(msg) {
+		return msg;
+	} else {
+		return txn_dequeue(thd_id);
+	}
+}
+
 Message* QWorkQueue::txn_dequeue(uint64_t thd_id) {
 	uint64_t starttime = get_sys_clock();
 	assert(CC_ALG == SDOCC || CC_ALG == SILO);
@@ -670,7 +679,7 @@ Message* QWorkQueue::sdocc_dequeue(uint64_t thd_id) {
 			INC_STATS(thd_id,work_queue_old_wait_time,queue_time);
 			INC_STATS(thd_id,work_queue_old_cnt,1);
 		}
-		assert(msg->txn_id != (uint64_t)-1);
+		// assert(msg->txn_id != (uint64_t)-1);
 		msg->wq_time = queue_time;
 		DEBUG("Work Dequeue (%ld,%ld) from %d\n",entry->batch_id,entry->txn_id,queue_type);
 		DEBUG_M("QWorkQueue::dequeue work_queue_entry free\n");
@@ -685,8 +694,8 @@ Message* QWorkQueue::sdocc_dequeue(uint64_t thd_id) {
 		// if (txn) {
 		// 	msg = txn->last_msg;
 		// 	assert(msg);
-		// 	// DEBUG_WRK("[SDOCC] thd %ld dequeue txn %p with msg %p-%ld,%ld from sdocc_list_lockfree\n", thd_id, txn, msg, msg->batch_id, msg->txn_id);
-		// return msg;
+		// 	DEBUG_WRK("[SDOCC] thd %ld dequeue txn %p with msg %p-%ld,%ld from sdocc_list_lockfree\n", thd_id, txn, msg, msg->batch_id, msg->txn_id);
+		// 	return msg;
 		// }
 	}
 	return msg;
@@ -700,6 +709,7 @@ TxnManager * QWorkQueue::get_from_sdocc_list_lockfree(uint64_t thd_id) {
 	// 第一个函数
 	std::function<bool(list_node_entry*)> func = [](list_node_entry * arg) -> bool {
 		list_node_entry * entry = arg;
+		// uint64_t minSid = UINT64_MAX;
 		uint64_t minSid = check_water_mark->get_global_watermark();
 		if (!entry) return false;
 		if (entry->key <= minSid) {

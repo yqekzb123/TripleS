@@ -84,10 +84,6 @@ public:
         WaterMarkMessage * msg =  (WaterMarkMessage*)Message::create_message(WATERMARK);
         msg->set_watermark(water_mark[g_node_id]);
         return msg;
-        // for (uint64_t i = 0; i < g_node_cnt; i++) {
-        //     if (i == g_node_id) continue;
-        //     msg_queue.enqueue(0, msg, i);
-        // }
     }
     void receive_watermark(uint64_t nid, uint64_t sid) {
         // 这里可以直接更新对应节点的水印值，然后调用update_watermark来更新minSid

@@ -211,7 +211,7 @@ uint64_t Message::mget_size() {
   uint64_t size = 0;
   size += sizeof(RemReqType);
   size += sizeof(uint64_t);
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC// || CC_ALG == SILO
   size += sizeof(uint64_t);
 #endif
 #if CC_ALG == SDOCC
@@ -228,7 +228,7 @@ uint64_t Message::mget_size() {
 void Message::mcopy_from_txn(TxnManager * txn) {
   //rtype = query->rtype;
   txn_id = txn->get_txn_id();
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC// || CC_ALG == SILO
   batch_id = txn->get_batch_id();
 #endif
 #if CC_ALG == SDOCC
@@ -248,7 +248,7 @@ void Message::mcopy_from_buf(char * buf) {
   uint64_t ptr = 0;
   COPY_VAL(rtype,buf,ptr);
   COPY_VAL(txn_id,buf,ptr);
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC// || CC_ALG == SILO
   COPY_VAL(batch_id,buf,ptr);
 #endif
 #if CC_ALG == SDOCC
@@ -276,7 +276,7 @@ void Message::mcopy_to_buf(char * buf) {
   uint64_t ptr = 0;
   COPY_BUF(buf,rtype,ptr);
   COPY_BUF(buf,txn_id,ptr);
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC// || CC_ALG == SILO
   COPY_BUF(buf,batch_id,ptr);
 #endif
 #if CC_ALG == SDOCC

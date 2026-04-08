@@ -13,7 +13,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC// || CC_ALG == SILO
 #ifndef _SDOCC_THREAD_H_
 #define _SDOCC_THREAD_H_
 
@@ -26,7 +26,7 @@ public:
     RC run();
     void setup();
 private:
-    bool is_batch_ready();
+    // bool is_batch_ready();
 	uint64_t last_batchtime;
 };
 

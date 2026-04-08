@@ -62,7 +62,7 @@ CalvinSequencerThread * calvin_seq_thds;
 #if CC_ALG == ARIA
 AriaSequencerThread * aria_seq_thds;
 #endif
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC// || CC_ALG == SILO
 SDOCCSequencerThread * sdocc_seq_thds;
 #endif
 
@@ -201,7 +201,7 @@ int main(int argc, char *argv[]) {
 	seq_man.init(m_wl);
 	printf("Done\n");
 #endif
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC// || CC_ALG == SILO
 	printf("Initializing sequencer... ");
 	fflush(stdout);
 	sdocc_seq_man.init(m_wl);
@@ -244,9 +244,8 @@ int main(int argc, char *argv[]) {
 	all_thd_cnt -= 1; 	//abort thread
 #endif
 
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC// || CC_ALG == SILO
 	all_thd_cnt += 1;	//sequencer thread
-	// all_thd_cnt -= 1; 	//abort thread
 #endif
 
 
@@ -283,7 +282,7 @@ int main(int argc, char *argv[]) {
 	aria_seq_thds = new AriaSequencerThread[1];
 #endif
 
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC || CC_ALG == SILO
 	sdocc_seq_thds = new SDOCCSequencerThread[1];
 #endif
 	// query_queue should be the last one to be initialized!!!
@@ -312,7 +311,7 @@ int main(int argc, char *argv[]) {
 	pthread_barrier_init( &warmup_bar, NULL, all_thd_cnt);
 
 #if SET_AFFINITY
-	uint64_t cpu_cnt = 0;
+	uint64_t cpu_cnt = 10;
 	cpu_set_t cpus;
 #endif
 	// spawn and run txns again.
@@ -408,7 +407,7 @@ int main(int argc, char *argv[]) {
 	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&aria_seq_thds[0]);
 #endif
 
-#if CC_ALG == SDOCC
+#if CC_ALG == SDOCC// || CC_ALG == SILO
 #if SET_AFFINITY
 	CPU_ZERO(&cpus);
 	CPU_SET(cpu_cnt, &cpus);
