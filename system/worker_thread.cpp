@@ -211,6 +211,18 @@ void WorkerThread::commit() {
   INC_STATS(get_thd_id(), trans_commit_count, 1);
   INC_STATS(get_thd_id(), trans_total_count, 1);
 
+  #if CC_ALG == SDOCC 
+  INC_STATS(get_thd_id(), trans_abort_count, ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
+  uint64_t retry_cnt = ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt;
+  if (retry_cnt >= 0 && retry_cnt < 99) {
+    INC_STATS(get_thd_id(), sdocc_retry_cnt[retry_cnt], 1);
+  } else if (retry_cnt >= 99) {
+    INC_STATS(get_thd_id(), sdocc_retry_cnt[99], 1);
+  } else {
+    assert(false);
+  }
+  #endif
+
   // Send result back to client
 #if CC_ALG == ARIA
 // #elif CC_ALG == SDOCC || CC_ALG == SILO
@@ -548,9 +560,10 @@ RC WorkerThread::run() {
 
       assert(txn_man->sdocc_phase == SDOCC_CHECK);
       // work_queue.insert_sdocc_list_lockfree(get_thd_id(), txn_man);
-      work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
       assert(txn_man->last_msg->get_rtype() == CL_QRY);
       ((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued = true;
+      ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt++;
+      work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
     }
     #endif
     // delete message

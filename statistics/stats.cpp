@@ -59,6 +59,10 @@ void Stats_thd::init(uint64_t thd_id) {
   tputs = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * SECOND);
 #endif
 
+#if CC_ALG == SDOCC
+  sdocc_retry_cnt = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * 100);
+#endif 
+
   DEBUG_M("Stats_thd::init mtx alloc\n");
   mtx= (double *) mem_allocator.align_alloc(sizeof(double) * 40);
 
@@ -246,6 +250,11 @@ void Stats_thd::clear() {
     hdcc_silo_cnts[i] = 0;
     hdcc_calvin_cnts[i] = 0;
     tputs[i] = 0;
+  }
+#endif
+#if CC_ALG == SDOCC
+  for (uint64_t i = 0; i < 100; i++) {
+    sdocc_retry_cnt[i] = 0;
   }
 #endif
   // Concurrency control, general
@@ -1239,7 +1248,12 @@ void Stats_thd::print(FILE * outf, bool prog) {
   }
   fprintf(outf,"\n");
 #endif
-
+#if CC_ALG == SDOCC
+  fprintf(outf,"\nsdocc_retry_cnts\n");
+  for(uint64_t i = 0; i < 100; i ++) {
+    fprintf(outf,",rcnt%lu=%lu",i,sdocc_retry_cnt[i]);
+  }
+#endif
   //first_start_commit_latency.print(outf);
 
   //start_abort_commit_latency.print(outf);
@@ -1419,6 +1433,11 @@ void Stats_thd::combine(Stats_thd * stats) {
     hdcc_silo_cnts[i] += stats->hdcc_silo_cnts[i];
     hdcc_calvin_cnts[i] += stats->hdcc_calvin_cnts[i];
     tputs[i] += stats->tputs[i];
+  }
+#endif
+#if CC_ALG == SDOCC
+  for(uint64_t i = 0; i < 100; i ++) {
+    sdocc_retry_cnt[i] += stats->sdocc_retry_cnt[i];
   }
 #endif
   // Concurrency control, general

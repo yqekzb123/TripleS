@@ -104,6 +104,7 @@ public:
   uint64_t trans_get_access_count=0;
   uint64_t trans_store_access_count=0;
   uint64_t trans_get_row_count=0;
+  // uint64_t trans_max_abort_count=0;
   double trans_total_run_time=0;
   double trans_init_time=0;
   double trans_process_time=0;
@@ -213,6 +214,9 @@ public:
   // Conflict statistics thread
   uint64_t * row_conflict_total_cnt;
   uint64_t * row_conflict_highest_cnt;
+
+  // SDOCC, retry count
+  uint64_t * sdocc_retry_cnt;
 
   // Concurrency control, general
   uint64_t cc_conflict_cnt;

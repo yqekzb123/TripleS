@@ -284,6 +284,7 @@ public:
   ListNode<watermark_node_entry*>* list_node_pointer;
 
   bool has_re_enqueued = false;
+  uint64_t retry_cnt = 0;
   #endif
 };
 
