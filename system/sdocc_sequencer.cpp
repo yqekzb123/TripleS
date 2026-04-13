@@ -70,7 +70,7 @@ void SDOCCSequencer::put_one_txn_to_batch(uint64_t _thd_id, Message * msg) {
     watermark_node_entry* entry = (watermark_node_entry*)mem_allocator.align_alloc(sizeof(watermark_node_entry));
     entry->key = key;
     ListNode<watermark_node_entry*>* ld = check_water_mark->insert(entry, _thd_id);
-    DEBUG_SCH("check_water_mark save %ld for txn %ld,%ld.\n", key, msg->batch_id, msg->txn_id);
+    // DEBUG_SCH("check_water_mark save %ld for txn %ld,%ld.\n", key, msg->batch_id, msg->txn_id);
     ((ClientQueryMessage*)msg)->list_node_pointer = ld;
 
     work_queue.sdocc_enqueue(_thd_id, msg, false);

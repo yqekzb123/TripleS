@@ -75,13 +75,13 @@ RC Row_sdocc::access(TxnManager * txn, access_t type, row_t * local_row){
     // 和师兄讨论，SDOCC，access里只检查是否满足条件，真正的reservation放到check里
     if (type == RD || type == SCAN) {
         // 读操作，检查写操作，即处理读写冲突
-        uint64_t reservation = get_reservations(write_reservations, read_latch, txn->get_batch_id(), txn->return_id, txn->get_txn_id());
+        uint64_t reservation = get_reservations(write_reservations, write_latch, txn->get_batch_id(), txn->return_id, txn->get_txn_id());
         txn->last_sdocc_write_reservation = reservation;
     } else if (type == WR) {
         // 写操作，检查读操作和写操作，即处理写写冲突和写读冲突
         uint64_t reservation = get_reservations(write_reservations, write_latch, txn->get_batch_id(), txn->return_id, txn->get_txn_id());
         txn->last_sdocc_write_reservation = reservation;
-        reservation = get_reservations(read_reservations, write_latch, txn->get_batch_id(), txn->return_id, txn->get_txn_id());
+        reservation = get_reservations(read_reservations, read_latch, txn->get_batch_id(), txn->return_id, txn->get_txn_id());
         txn->last_sdocc_read_reservation = reservation;
     } else {
         // 其他操作

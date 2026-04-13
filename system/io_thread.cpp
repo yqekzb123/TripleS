@@ -181,7 +181,7 @@ RC InputThread::server_recv_loop() {
 #endif
 #if CC_ALG == SDOCC
 			if (msg->rtype == WATERMARK) {
-				// DEBUG_SCH("OutputThread %ld receive watermark %ld from node %ld\n", get_thd_id(), ((WaterMarkMessage*)msg)->get_watermark(), msg->get_return_id());
+				DEBUG_SCH("OutputThread %ld receive watermark %ld from node %ld\n", get_thd_id(), ((WaterMarkMessage*)msg)->get_watermark(), msg->get_return_id());
 				check_water_mark->receive_watermark(msg->get_return_id(), ((WaterMarkMessage*)msg)->get_watermark());
 				msg->release();
 				delete msg;

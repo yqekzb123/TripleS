@@ -407,6 +407,7 @@ void QWorkQueue::enqueue(uint64_t thd_id, Message * msg, bool busy) {
 	entry->batch_id = msg->batch_id;
 	entry->starttime = get_sys_clock();
 	assert(ISSERVER || ISREPLICA);
+	assert(msg->rtype != WATERMARK);
 	DEBUG("Work Enqueue (%ld,%ld) %s\n",entry->batch_id,entry->txn_id, entry->get_message_name().c_str());
 
 	uint64_t mtx_wait_starttime = get_sys_clock();

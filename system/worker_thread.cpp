@@ -949,8 +949,6 @@ RC WorkerThread::process_rtxn(Message * msg) {
     if (CC_ALG == WAIT_DIE) {
       txn_man->set_timestamp(get_next_ts());
     }
-    txn_man->txn_stats.starttime = get_sys_clock();
-    txn_man->txn_stats.restart_starttime = txn_man->txn_stats.starttime;
     #if CC_ALG == SDOCC
       if (txn_man->sdocc_phase == SDOCC_PHASE::SDOCC_INIT) {
         msg->copy_to_txn(txn_man);
@@ -958,6 +956,8 @@ RC WorkerThread::process_rtxn(Message * msg) {
         txn_man->return_id = msg->return_node_id;
       } else {
         assert(txn_man->sdocc_phase == SDOCC_PHASE::SDOCC_CHECK);
+        // txn_man->txn_stats.starttime = get_sys_clock();
+        // txn_man->txn_stats.restart_starttime = txn_man->txn_stats.starttime;
       }
       // 这里是下一次重试的入口，将has_re_enqueued置为false，以便于允许下一次重试重新入队
       if (txn_man->last_msg) {
@@ -966,6 +966,8 @@ RC WorkerThread::process_rtxn(Message * msg) {
       // txn_man->has_re_enqueued = false;
       // txn_man->retry_cnt++;
     #else
+      txn_man->txn_stats.starttime = get_sys_clock();
+      txn_man->txn_stats.restart_starttime = txn_man->txn_stats.starttime;
       msg->copy_to_txn(txn_man);
     #endif
     DEBUG_WRK("START %ld,%ld %p %f %lu\n", txn_man->get_batch_id(),txn_man->get_txn_id(),txn_man,

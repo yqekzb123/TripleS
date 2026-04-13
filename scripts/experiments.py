@@ -100,8 +100,8 @@ def ycsb_scaling():
 
 def ycsb_skew_pip():
     wl = 'YCSB'
-    nnodes = [1]
-    # algos=['CALVIN','SILO','ARIA']
+    nnodes = [2]
+    # algos=['CALVIN','ARIA','SDOCC']
     # algos=['ARIA']
     algos=['SDOCC']
     # algos=['CALVIN']
@@ -112,8 +112,9 @@ def ycsb_skew_pip():
     load = [10000]
     total_cnt=[16]
     scnt = [8]
-    # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    skew = [0.0]
+    skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
+    # skew = [1.5]
+    # skew = [0.0]
     # skew = [0.1,0.9]
     fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
     exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]

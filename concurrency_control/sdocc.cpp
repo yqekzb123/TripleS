@@ -68,7 +68,7 @@ void update_local_watermark(uint64_t thd_id, TxnManager * txn_manager) {
     // 已经标记完了，那么就将list_node_pointer置为0；
     txn_manager->list_node_pointer = nullptr;
 
-    DEBUG_SCH("[SDOCC] %ld set %s key %ld [%ld,%ld] to complete, and set sid from %ld to %ld\n", thd_id, "CHECK", key,bid,txn_id, old_min_sid, check_water_mark->get_current_watermark());
+    // DEBUG_SCH("[SDOCC] %ld set %s key %ld [%ld,%ld] to complete, and set sid from %ld to %ld\n", thd_id, "CHECK", key,bid,txn_id, old_min_sid, check_water_mark->get_current_watermark());
 }
 
 #endif

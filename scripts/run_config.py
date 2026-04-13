@@ -2,8 +2,8 @@
 
 #Configuration file for run_experiments.py
 
-username = "zhy"
-deploy_location = 'home/zhy/test'
+username = "dell"
+deploy_location = 'home/dell/test'
 
 vcloud_machines = [
 "127.0.0.1",
