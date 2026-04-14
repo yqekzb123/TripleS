@@ -34,6 +34,7 @@
 #include "message.h"
 #include "work_queue.h"
 
+#if CC_ALG == SDPCC
 void SDPCCLockThread::setup() {}
 
 
@@ -206,3 +207,5 @@ RC SDPCCSequencerThread::run() {
 	return FINISH;
 
 }
+
+#endif
