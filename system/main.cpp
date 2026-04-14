@@ -18,6 +18,7 @@
 #include "aria_sequencer.h"
 #include "aria_thread.h"
 #include "calvin_thread.h"
+#include "sdpcc_thread.h"
 #include "sdocc_thread.h"
 #include "sdocc_sequencer.h"
 #include "client_query.h"
@@ -58,6 +59,10 @@ WorkerNumThread * worker_num_thds;
 #if CC_ALG == CALVIN
 CalvinLockThread * calvin_lock_thds;
 CalvinSequencerThread * calvin_seq_thds;
+#endif
+#if CC_ALG == SDPCC
+SDPCCLockThread * sdpcc_lock_thds;
+SDPCCSequencerThread * sdpcc_seq_thds;
 #endif
 #if CC_ALG == ARIA
 AriaSequencerThread * aria_seq_thds;
@@ -131,15 +136,11 @@ int main(int argc, char *argv[]) {
 	return 0;
 #endif
 
-#if LONG_TXN_SCHEDULE
+#if CC_ALG == SDPCC
 	sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_scheduler_thread_cnt);
 	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
 		sids[i] = 0;
 	}
-	#if CC_ALG == ARIA
-	reservation_check_water_mark = new WaterMarkList("reservation_check_water_mark");
-	check_commit_water_mark = new WaterMarkList("check_commit_water_mark");
-	#endif
 #endif
 	#if CC_ALG == SDOCC
 	check_water_mark = new WaterMarkList("sdocc_check_water_mark");
@@ -201,6 +202,12 @@ int main(int argc, char *argv[]) {
 	seq_man.init(m_wl);
 	printf("Done\n");
 #endif
+#if CC_ALG == SDPCC
+	printf("Initializing sequencer... ");
+	fflush(stdout);
+	seq_man.init(m_wl);
+	printf("Done\n");
+#endif
 #if CC_ALG == SDOCC// || CC_ALG == SILO
 	printf("Initializing sequencer... ");
 	fflush(stdout);
@@ -232,11 +239,10 @@ int main(int argc, char *argv[]) {
 		all_thd_cnt += g_logger_thread_cnt;
 #endif
 #if CC_ALG == CALVIN
-#if LONG_TXN_SCHEDULE
-		all_thd_cnt += (g_scheduler_thread_cnt + 1);
-#else
 		all_thd_cnt += 2; // sequencer + scheduler thread
 #endif
+#if CC_ALG == SDPCC
+		all_thd_cnt += (g_scheduler_thread_cnt + 1); // sequencer + scheduler thread
 #endif
 
 #if CC_ALG == ARIA
@@ -269,13 +275,13 @@ int main(int argc, char *argv[]) {
 #endif
 
 #if CC_ALG == CALVIN
-#if LONG_TXN_SCHEDULE
-	calvin_lock_thds = new CalvinLockThread[g_scheduler_thread_cnt];
-	calvin_seq_thds = new CalvinSequencerThread[1];
-#else
 	calvin_lock_thds = new CalvinLockThread[1];
 	calvin_seq_thds = new CalvinSequencerThread[1];
 #endif
+
+#if CC_ALG == SDPCC
+	sdpcc_lock_thds = new SDPCCLockThread[g_scheduler_thread_cnt];
+	sdpcc_seq_thds = new SDPCCSequencerThread[1];
 #endif
 
 #if CC_ALG == ARIA
@@ -356,13 +362,32 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 
-#if CC_ALG != CALVIN && CC_ALG != ARIA
+#if CC_ALG != CALVIN && CC_ALG != ARIA && CC_ALG != SDOCC && CC_ALG != SDPCC
 	abort_thds[0].init(id,g_node_id,m_wl);
 	pthread_create(&p_thds[id++], NULL, run_thread, (void *)&abort_thds[0]);
 #endif
 
 #if CC_ALG == CALVIN
-#if LONG_TXN_SCHEDULE
+#if SET_AFFINITY
+	CPU_ZERO(&cpus);
+	CPU_SET(cpu_cnt, &cpus);
+	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+	cpu_cnt++;
+#endif
+	calvin_lock_thds[0].init(id,g_node_id,m_wl);
+	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_lock_thds[0]);
+
+#if SET_AFFINITY
+	CPU_ZERO(&cpus);
+	CPU_SET(cpu_cnt, &cpus);
+	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+	cpu_cnt++;
+#endif
+	calvin_seq_thds[0].init(id,g_node_id,m_wl);
+	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_seq_thds[0]);
+#endif
+
+#if CC_ALG == SDPCC
 	the_first_scheduler_id = id; 
 	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
 	#if SET_AFFINITY
@@ -371,10 +396,9 @@ int main(int argc, char *argv[]) {
 		pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
 		cpu_cnt++;
 	#endif
-		calvin_lock_thds[i].init(id,g_node_id,m_wl);
-		pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_lock_thds[i]);
-}
-#else
+		sdpcc_lock_thds[i].init(id,g_node_id,m_wl);
+		pthread_create(&p_thds[id++], &attr, run_thread, (void *)&sdpcc_lock_thds[i]);
+	}
 #if SET_AFFINITY
 	CPU_ZERO(&cpus);
 	CPU_SET(cpu_cnt, &cpus);
@@ -382,18 +406,8 @@ int main(int argc, char *argv[]) {
 	cpu_cnt++;
 #endif
 
-	calvin_lock_thds[0].init(id,g_node_id,m_wl);
-	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_lock_thds[0]);
-#endif
-#if SET_AFFINITY
-	CPU_ZERO(&cpus);
-	CPU_SET(cpu_cnt, &cpus);
-	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-	cpu_cnt++;
-#endif
-
-	calvin_seq_thds[0].init(id,g_node_id,m_wl);
-	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_seq_thds[0]);
+	sdpcc_seq_thds[0].init(id,g_node_id,m_wl);
+	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&sdpcc_seq_thds[0]);
 #endif
 
 #if CC_ALG == ARIA

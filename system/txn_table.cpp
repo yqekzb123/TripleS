@@ -58,7 +58,7 @@ void TxnTable::dump() {
 
 bool TxnTable::is_matching_txn_node(txn_node_t t_node, uint64_t txn_id, uint64_t batch_id){
   assert(t_node);
-#if CC_ALG == CALVIN || CC_ALG == SDOCC// || CC_ALG == SILO
+#if CC_ALG == CALVIN || CC_ALG == SDOCC || CC_ALG == SDPCC// || CC_ALG == SILO
     return (t_node->txn_man->get_txn_id() == txn_id && t_node->txn_man->get_batch_id() == batch_id);
 #else
     return (t_node->txn_man->get_txn_id() == txn_id);
@@ -175,7 +175,7 @@ void TxnTable::restart_txn(uint64_t thd_id, uint64_t txn_id,uint64_t batch_id){
 
   while (t_node != NULL) {
     if(is_matching_txn_node(t_node,txn_id,batch_id)) {
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
       work_queue.enqueue(thd_id,Message::create_message(t_node->txn_man,RTXN),false);
 #else
       if(IS_LOCAL(txn_id))

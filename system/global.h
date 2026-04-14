@@ -162,15 +162,10 @@ extern UInt32 g_logger_thread_cnt;
 extern UInt32 g_tcp_thread_cnt;
 extern UInt32 g_send_thread_cnt;
 extern UInt32 g_rem_thread_cnt;
-#if LONG_TXN_SCHEDULE
+#if CC_ALG == SDPCC
 extern UInt32 g_scheduler_thread_cnt;
 extern uint64_t the_first_scheduler_id;
 extern uint64_t * sids;
-  #if CC_ALG == ARIA
-  // Aria的水印，分为4个阶段
-  extern WaterMarkList* reservation_check_water_mark;
-  extern WaterMarkList* check_commit_water_mark;
-  #endif
 #endif
 #if CC_ALG == SDOCC
 extern WaterMarkList* check_water_mark;

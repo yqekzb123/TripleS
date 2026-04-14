@@ -75,16 +75,16 @@ uint64_t merge_idx_key(uint64_t key1, uint64_t key2, uint64_t key3) {
 }
 
 // todo: 应该叫计算。。流式执行的通用。。key
-uint64_t get_calvin_key(uint64_t batch_id, uint64_t return_id, uint64_t txn_id) {
+uint64_t get_batch_key(uint64_t batch_id, uint64_t return_id, uint64_t txn_id) {
 	uint64_t key = (batch_id << 32) + (return_id << 24) + txn_id + 1;
 	return key;
 }
 
-std::vector<uint64_t> split_calvin_key(uint64_t calvin_key) {
+std::vector<uint64_t> split_batch_key(uint64_t key) {
 	std::vector<uint64_t> parts(3);
-	parts[0] = (calvin_key >> 32); // batch_id
-	parts[1] = (calvin_key >> 24) & 0xFF; // return_id
-	parts[2] = (calvin_key & 0xFFFFFF) - 1; // txn_id
+	parts[0] = (key >> 32); // batch_id
+	parts[1] = (key >> 24) & 0xFF; // return_id
+	parts[2] = (key & 0xFFFFFF) - 1; // txn_id
 	return parts;
 }
 

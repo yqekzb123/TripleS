@@ -32,14 +32,14 @@
 
 void TxnManPool::init(Workload * wl, uint64_t size) {
   _wl = wl;
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
   pool = new boost::lockfree::queue<TxnManager* > (size);
 #else
   pool = new boost::lockfree::queue<TxnManager* > * [g_total_thread_cnt];
 #endif
   TxnManager * txn;
   for(uint64_t thd_id = 0; thd_id < g_total_thread_cnt; thd_id++) {
-#if CC_ALG != CALVIN 
+#if CC_ALG != CALVIN && CC_ALG != SDPCC
     pool[thd_id] = new boost::lockfree::queue<TxnManager* > (size);
 #endif
     for(uint64_t i = 0; i < size; i++) {
@@ -52,7 +52,7 @@ void TxnManPool::init(Workload * wl, uint64_t size) {
 }
 
 void TxnManPool::get(uint64_t thd_id, TxnManager *& item) {
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
   bool r = pool->pop(item);
 #else
   bool r = pool[thd_id]->pop(item);
@@ -66,7 +66,7 @@ void TxnManPool::get(uint64_t thd_id, TxnManager *& item) {
 void TxnManPool::put(uint64_t thd_id, TxnManager * item) {
   item->release();
   int tries = 0;
-#if CC_ALG == CALVIN 
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
   while (!pool->push(item) && tries++ < TRY_LIMIT) {
   }
 #else
@@ -81,7 +81,7 @@ void TxnManPool::put(uint64_t thd_id, TxnManager * item) {
 void TxnManPool::free_all() {
   TxnManager * item;
   for(uint64_t thd_id = 0; thd_id < g_total_thread_cnt; thd_id++) {
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
   while(pool->pop(item)) {
 #else
   while(pool[thd_id]->pop(item)) {
@@ -93,14 +93,14 @@ void TxnManPool::free_all() {
 
 void TxnPool::init(Workload * wl, uint64_t size) {
   _wl = wl;
-#if CC_ALG == CALVIN 
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
   pool = new boost::lockfree::queue<Transaction*  > (size);
 #else
   pool = new boost::lockfree::queue<Transaction* > * [g_total_thread_cnt];
 #endif
   Transaction * txn;
   for(uint64_t thd_id = 0; thd_id < g_total_thread_cnt; thd_id++) {
-#if CC_ALG != CALVIN
+#if CC_ALG != CALVIN && CC_ALG != SDPCC
     pool[thd_id] = new boost::lockfree::queue<Transaction*  > (size);
 #endif
     for(uint64_t i = 0; i < size; i++) {
@@ -113,7 +113,7 @@ void TxnPool::init(Workload * wl, uint64_t size) {
 }
 
 void TxnPool::get(uint64_t thd_id, Transaction *& item) {
-#if CC_ALG == CALVIN 
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
   bool r = pool->pop(item);
 #else
   bool r = pool[thd_id]->pop(item);
@@ -128,7 +128,7 @@ void TxnPool::put(uint64_t thd_id,Transaction * item) {
   //item->release();
   item->reset(thd_id);
   int tries = 0;
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
   while (!pool->push(item) && tries++ < TRY_LIMIT) {
   }
 #else
@@ -144,7 +144,7 @@ void TxnPool::put(uint64_t thd_id,Transaction * item) {
 void TxnPool::free_all() {
   TxnManager * item;
     for(uint64_t thd_id = 0; thd_id < g_total_thread_cnt; thd_id++) {
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
     while(pool->pop(item)) {
 #else
     while(pool[thd_id]->pop(item)) {
@@ -156,7 +156,7 @@ void TxnPool::free_all() {
 
 void QryPool::init(Workload * wl, uint64_t size) {
   _wl = wl;
-#if CC_ALG == CALVIN 
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
   pool = new boost::lockfree::queue<BaseQuery* > (size);
 #else
   pool = new boost::lockfree::queue<BaseQuery*> * [g_total_thread_cnt];
@@ -164,7 +164,7 @@ void QryPool::init(Workload * wl, uint64_t size) {
   BaseQuery * qry=NULL;
   DEBUG_M("QryPool alloc init\n");
   for(uint64_t thd_id = 0; thd_id < g_total_thread_cnt; thd_id++) {
-#if CC_ALG != CALVIN 
+#if CC_ALG != CALVIN && CC_ALG != SDPCC
     pool[thd_id] = new boost::lockfree::queue<BaseQuery* > (size);
 #endif
     for(uint64_t i = 0; i < size; i++) {
@@ -185,7 +185,7 @@ void QryPool::init(Workload * wl, uint64_t size) {
 }
 
 void QryPool::get(uint64_t thd_id, BaseQuery *& item) {
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
   bool r = pool->pop(item);
 #else
   bool r = pool[thd_id]->pop(item);
@@ -220,7 +220,7 @@ void QryPool::put(uint64_t thd_id, BaseQuery * item) {
   DEBUG_R("put 0x%lx\n",(uint64_t)item);
   //mem_allocator.free(item,sizeof(item));
   int tries = 0;
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
   while (!pool->push(item) && tries++ < TRY_LIMIT) {
   }
 #else
@@ -245,7 +245,7 @@ void QryPool::free_all() {
   BaseQuery * item;
   DEBUG_M("query_pool free\n");
   for(uint64_t thd_id = 0; thd_id < g_total_thread_cnt; thd_id++) {
-#if CC_ALG == CALVIN 
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
     while(pool->pop(item)) {
 #else
     while(pool[thd_id]->pop(item)) {

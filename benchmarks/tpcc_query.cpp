@@ -417,7 +417,7 @@ uint64_t TPCCQuery::get_participants(Workload * wl) {
 
 void TPCCQuery::reset() {
   BaseQuery::clear();
-#if CC_ALG != CALVIN
+#if CC_ALG != CALVIN && CC_ALG != SDPCC
   release_items();
 #endif
   items.clear();
@@ -426,7 +426,7 @@ void TPCCQuery::reset() {
 void TPCCQuery::release() {
   BaseQuery::release();
   DEBUG_M("TPCCQuery::release() free\n");
-#if CC_ALG != CALVIN
+#if CC_ALG != CALVIN && CC_ALG != SDPCC
   release_items();
 #endif
   items.release();

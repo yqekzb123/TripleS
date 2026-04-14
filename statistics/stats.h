@@ -209,8 +209,8 @@ public:
 
   //stats every interval
   uint64_t * tputs;
-  uint64_t * hdcc_silo_cnts;
-  uint64_t * hdcc_calvin_cnts;
+  // uint64_t * hdcc_silo_cnts;
+  // uint64_t * hdcc_calvin_cnts;
   // Conflict statistics thread
   uint64_t * row_conflict_total_cnt;
   uint64_t * row_conflict_highest_cnt;

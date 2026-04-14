@@ -48,7 +48,7 @@ void YCSBTxnManager::reset() {
 
 RC YCSBTxnManager::run_txn() {
   RC rc = RCOK;
-  assert(CC_ALG != CALVIN);
+  assert(CC_ALG != CALVIN && CC_ALG != SDPCC);
 
   if(IS_LOCAL(txn->txn_id) && state == YCSB_0 && next_record_id == 0) {
   DEBUG("[%ld] Running txn %ld\n", get_thd_id(), txn->txn_id);
@@ -319,7 +319,7 @@ RC YCSBTxnManager::run_ycsb_1(access_t acctype, row_t * row_local) {
 // Calvin函数部分
 RC YCSBTxnManager::acquire_locks() {
   uint64_t starttime = get_sys_clock();
-  assert(CC_ALG == CALVIN);
+  assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
   locking_done = false;
   RC rc = RCOK;
@@ -434,7 +434,7 @@ RC YCSBTxnManager::run_calvin_txn() {
 
 RC YCSBTxnManager::run_ycsb() {
   RC rc = RCOK;
-  assert(CC_ALG == CALVIN);
+  assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
 
   for (uint64_t i = 0; i < ycsb_query->requests.size(); i++) {

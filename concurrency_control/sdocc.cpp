@@ -53,7 +53,7 @@ void update_local_watermark(uint64_t thd_id, TxnManager * txn_manager) {
     uint64_t return_id = txn_manager->return_id;
     uint64_t txn_id = txn_manager->get_txn_id();
 	uint64_t id = thd_id % g_thread_cnt;
-	uint64_t key = get_calvin_key(bid, return_id, txn_id);
+	uint64_t key = get_batch_key(bid, return_id, txn_id);
     uint64_t old_min_sid = 0;
     bool suc = false;
 

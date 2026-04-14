@@ -139,7 +139,7 @@ void TxnStats::commit_stats(uint64_t thd_id, uint64_t txn_id, uint64_t batch_id,
 	total_work_queue_cnt += work_queue_cnt;
 	assert(total_process_time >= process_time);
 
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 
 	INC_STATS(thd_id,lat_s_loc_work_queue_time,work_queue_time);
 	INC_STATS(thd_id,lat_s_loc_msg_queue_time,msg_queue_time);
@@ -356,7 +356,7 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	return_id = UINT64_MAX;
 
 	this->h_wl = h_wl;
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	phase = CALVIN_RW_ANALYSIS;
 	locking_done = false;
 	calvin_locked_rows.init(MAX_ROW_PER_TXN);
@@ -409,7 +409,7 @@ void TxnManager::reset() {
 	// Silo
 	commit_timestamp = 0;
 
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	phase = CALVIN_RW_ANALYSIS;
 	locking_done = false;
 	calvin_locked_rows.clear();
@@ -451,7 +451,7 @@ void TxnManager::release() {
 	INC_STATS(get_thd_id(),mtx[1],get_sys_clock()-prof_starttime);
 	txn = NULL;
 
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	calvin_locked_rows.release();
 #endif
 #if CC_ALG == SILO
@@ -480,7 +480,7 @@ RC TxnManager::commit() {
 	assert(rc == RCOK);
 	release_locks(RCOK);
 	commit_stats();
-#if LOGGING && CC_ALG != CALVIN
+#if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
 		LogRecord * record = logger.createRecord(get_txn_id(),L_COMMIT,0,0);
 		if(g_repl_cnt > 0) {
 			msg_queue.enqueue(get_thd_id(), Message::create_message(record, LOG_MSG),
@@ -514,7 +514,7 @@ RC TxnManager::abort() {
 	if (IS_LOCAL(get_txn_id()) && warmup_done) {
 		INC_STATS_ARR(get_thd_id(),start_abort_commit_latency, timespan);
 	}
-#if LOGGING && CC_ALG != CALVIN
+#if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
 		LogRecord * record = logger.createRecord(get_txn_id(),L_ABORT,0,0);
 		if(g_repl_cnt > 0) {
 			msg_queue.enqueue(get_thd_id(), Message::create_message(record, LOG_MSG),
@@ -584,7 +584,7 @@ RC TxnManager::start_sdocc_check() {
 		rc = validate();
 
 		bool watermark_passed = false;
-		uint64_t key = get_calvin_key(get_batch_id(), return_id, get_txn_id());
+		uint64_t key = get_batch_key(get_batch_id(), return_id, get_txn_id());
 		if(rc == RCOK) {
 			// ! 检查水印
     		watermark_passed = key <= check_water_mark->get_global_watermark();
@@ -632,7 +632,7 @@ RC TxnManager::start_commit() {
 	RC rc = RCOK;
 	DEBUG("%ld start_commit RO?%d\n",get_txn_id(),query->readonly());
 	if(is_multi_part()) {
-#if LOGGING && CC_ALG != CALVIN
+#if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
 		LogRecord * record = logger.createRecord(get_txn_id(),L_FLUSH,0,0);
 		if(g_repl_cnt > 0) {
 			msg_queue.enqueue(get_thd_id(), Message::create_message(record, LOG_MSG),
@@ -712,7 +712,7 @@ void TxnManager::send_finish_messages() {
 int TxnManager::received_response(RC rc) {
 	assert(txn->rc == RCOK || txn->rc == Abort || txn->rc == RETRY);
 	if (txn->rc == RCOK) txn->rc = rc;
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	++rsp_cnt;
 #else
   if (rsp_cnt > 0)
@@ -763,7 +763,7 @@ void TxnManager::commit_stats() {
 		INC_STATS(get_thd_id(),cflt_cnt_txn,1);
 	}*/
 	txn_stats.commit_stats(get_thd_id(),get_txn_id(),get_batch_id(),timespan_long, timespan_short);
-	#if CC_ALG == CALVIN
+	#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	return;
 	#endif
 
@@ -861,7 +861,7 @@ void TxnManager::cleanup_row(RC rc, uint64_t rid) {
 	uint64_t version = 0;
 	// Handle calvin elsewhere
 
-#if CC_ALG != CALVIN
+#if CC_ALG != CALVIN && CC_ALG != SDPCC
 #if ISOLATION_LEVEL != READ_UNCOMMITTED
 	row_t * orig_r = txn->accesses[rid]->orig_row;
 	if (ROLL_BACK && type == XP &&
@@ -919,7 +919,7 @@ void TxnManager::cleanup(RC rc) {
 	for (int rid = row_cnt - 1; rid >= 0; rid --) {
 		cleanup_row(rc,rid);
 	}
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	// cleanup locked rows
 	for (uint64_t i = 0; i < calvin_locked_rows.size(); i++) {
 		row_t * row = calvin_locked_rows[i];
@@ -1015,7 +1015,7 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 	}
 #endif
 
-#if LOGGING && CC_ALG != CALVIN
+#if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
 	if (type == WR) {
 			LogRecord *record = logger.createRecord(
 					get_txn_id(), L_UPDATE, row->get_table()->get_table_id(), row->get_primary_key());
@@ -1037,7 +1037,7 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 	INC_STATS(get_thd_id(), txn_manager_time, timespan);
 	row_rtn  = access->data;
 
-	if (CC_ALG == CALVIN) assert(rc == RCOK);
+	if (CC_ALG == CALVIN || CC_ALG == SDPCC) assert(rc == RCOK);
 	assert(rc == RCOK);
 	return rc;
 }
@@ -1122,7 +1122,7 @@ void TxnManager::insert_row(row_t * row, table_t * table) {
 #endif
 
 RC TxnManager::delete_row(row_t * row, index_btree * index) {
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	index->index_remove(row->get_primary_key(), row->get_part_id());
 #else
 	txn->delete_rows.add(std::pair<row_t*, index_btree*>(row, index));
@@ -1193,7 +1193,7 @@ RC TxnManager::validate() {
 }
 
 RC TxnManager::send_remote_reads() {
-	assert(CC_ALG == CALVIN);
+	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
 #if !YCSB_ABORT_MODE && !OPEN_YCSB_DEPENDENCY && WORKLOAD == YCSB
 	return RCOK;
 #endif

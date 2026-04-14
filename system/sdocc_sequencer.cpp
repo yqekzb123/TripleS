@@ -66,7 +66,7 @@ void SDOCCSequencer::put_one_txn_to_batch(uint64_t _thd_id, Message * msg) {
     } 
 
     // 直接把事务发出去
-    uint64_t key = get_calvin_key(msg->batch_id, msg->return_node_id, msg->txn_id);
+    uint64_t key = get_batch_key(msg->batch_id, msg->return_node_id, msg->txn_id);
     watermark_node_entry* entry = (watermark_node_entry*)mem_allocator.align_alloc(sizeof(watermark_node_entry));
     entry->key = key;
     ListNode<watermark_node_entry*>* ld = check_water_mark->insert(entry, _thd_id);
@@ -188,7 +188,7 @@ void SDOCCSequencer::send_next_batch(uint64_t thd_id) {
     DEBUG_SCH("PIPELINE SEND NEXT BATCH %ld %ld %ld\n", thd_id, b->id, b->txns.size());
     for (uint64_t i = 0; i < b->txns.size(); i++) {
         // !目前设定为在发送事务的时候，提高 min_commit_read_sid
-		// uint64_t key = get_calvin_key(msg->batch_id, msg->return_node_id, msg->txn_id);
+		// uint64_t key = get_batch_key(msg->batch_id, msg->return_node_id, msg->txn_id);
         // watermark_node_entry* entry = (watermark_node_entry*)mem_allocator.align_alloc(sizeof(watermark_node_entry));
         // entry->key = key;
         // ListNode<watermark_node_entry*>* ld = check_water_mark->insert(entry, thd_id);

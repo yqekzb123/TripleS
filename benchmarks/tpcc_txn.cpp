@@ -31,6 +31,9 @@
 #if CC_ALG == CALVIN
 #include "row_lock.h"
 #endif
+#if CC_ALG == SDPCC
+#include "row_sdpcc.h"
+#endif
 
 void TPCCTxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	TxnManager::init(thd_id, h_wl);
@@ -84,7 +87,7 @@ RC TPCCTxnManager::run_txn() {
 	RC rc = RCOK;
 	uint64_t starttime = get_sys_clock();
 
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	rc = run_calvin_txn();
 	return rc;
 #endif
@@ -160,7 +163,7 @@ bool TPCCTxnManager::is_done() {
 
 RC TPCCTxnManager::acquire_locks() {
 	uint64_t starttime = get_sys_clock();
-	assert(CC_ALG == CALVIN);
+	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
 	locking_done = false;
 	RC rc = RCOK;
 	RC rc2;
@@ -307,7 +310,7 @@ RC TPCCTxnManager::acquire_locks() {
 			index = _wl->i_order_cust;
 			item = index_read(index, key, wh_to_part(w_id));
 			row = (row_t *) item->location;
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 			while (row->manager->has_write_lock()) {
 				item = item->next;
 				row = (row_t *)item->location;
@@ -1174,7 +1177,7 @@ inline RC TPCCTxnManager::new_order_5_1(uint64_t w_id, uint64_t d_id, uint64_t c
 	r_order->set_value(O_ALL_LOCAL, all_local);
 	RC rc = RCOK;
 #if TXN_TYPE == TPCC_ALL
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	rc = get_lock(r_order, WR);
 #endif
 	row_t * temp;
@@ -1215,7 +1218,7 @@ inline RC TPCCTxnManager::new_order_5_2(uint64_t w_id, uint64_t d_id, uint64_t c
 	r_no->set_value(NO_W_ID, w_id);
 	RC rc = RCOK;
 #if TXN_TYPE == TPCC_ALL
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	rc = get_lock(r_no, WR);
 #endif
 	row_t * temp;
@@ -1431,7 +1434,7 @@ inline RC TPCCTxnManager::run_order_status_1(uint64_t w_id, uint64_t d_id, uint6
 
 inline RC TPCCTxnManager::run_order_status_2(uint64_t w_id, uint64_t d_id, uint64_t o_id, itemid_t * items, row_t*& l_order_local) {
 	uint64_t starttime = get_sys_clock();
-#if CC_ALG != CALVIN
+#if CC_ALG != CALVIN && CC_ALG != SDPCC
 	l_order_local->get_value(O_ID, o_id);
 #endif
 	uint64_t key = orderlineKey(w_id, d_id, o_id);
@@ -1476,7 +1479,7 @@ inline RC TPCCTxnManager::run_delivery_1(uint64_t &no_o_id, row_t *&r_new_order_
 
 inline RC TPCCTxnManager::run_delivery_2(uint64_t &no_o_id, row_t *&r_new_order_local) {
 	uint64_t starttime = get_sys_clock();
-#if CC_ALG != CALVIN
+#if CC_ALG != CALVIN && CC_ALG != SDPCC
 	r_new_order_local->get_value(NO_O_ID, no_o_id);
 #endif
 #if TXN_TYPE == TPCC_ALL
@@ -1712,11 +1715,7 @@ RC TPCCTxnManager::run_aria_txn() {
 	bool remote = tpcc_query->remote;
 	uint64_t ol_cnt = tpcc_query->ol_cnt;
 	uint64_t o_entry_d = tpcc_query->o_entry_d;
-	#if !LONG_TXN_SCHEDULE
 	ARIA_PHASE phase = simulation->aria_phase;
-	#else
-	ARIA_PHASE phase = aria_phase;
-	#endif
 	switch (phase)
 	{
 	case ARIA_READ:
@@ -1814,11 +1813,7 @@ RC TPCCTxnManager::run_aria_txn() {
 		assert(rc == RCOK || rc == WAIT_REM);
 
 		assert(aria_phase == ARIA_READ);
-		#if LONG_TXN_SCHEDULE
-		txn_next_aria_phase(get_thd_id(),aria_phase,this);
-		#else
 		assert(simulation->aria_phase == ARIA_READ);
-		#endif
 		aria_phase = (ARIA_PHASE) (aria_phase + 1);
 		break;
 	case ARIA_RESERVATION:
@@ -2074,7 +2069,7 @@ RC TPCCTxnManager::process_aria_remote(ARIA_PHASE aria_phase) {
 RC TPCCTxnManager::run_tpcc_phase2() {
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
 	RC rc = RCOK;
-	assert(CC_ALG == CALVIN);
+	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
 
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;
@@ -2173,7 +2168,7 @@ RC TPCCTxnManager::run_tpcc_phase2() {
 RC TPCCTxnManager::run_tpcc_phase5() {
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
 	RC rc = RCOK;
-	assert(CC_ALG == CALVIN);
+	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
 
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;

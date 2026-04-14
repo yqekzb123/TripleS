@@ -209,7 +209,7 @@ public:
 
 	void release_locks(RC rc);
 	bool isRecon() {
-		assert(CC_ALG == CALVIN || !recon);
+		assert(CC_ALG == CALVIN || CC_ALG == SDPCC || !recon);
 		return recon;
 	};
 		bool recon;
@@ -329,7 +329,7 @@ public:
 	int last_txn_id;
 	Message* last_msg;
 
-    // 如果此事务被插入到 calvin_scheduled_list_lockfree 中，
+    // 如果此事务被插入到 sdpcc_scheduled_list_lockfree 中，
     // scheduled_entry 指向其对应的 list_node_entry（用于更新 snapshot）
     struct list_node_entry* scheduled_entry = nullptr;
 

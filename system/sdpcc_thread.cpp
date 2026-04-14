@@ -17,7 +17,7 @@
 #include "global.h"
 #include "manager.h"
 #include "thread.h"
-#include "calvin_thread.h"
+#include "sdpcc_thread.h"
 #include "txn.h"
 #include "wl.h"
 #include "query.h"
@@ -34,10 +34,10 @@
 #include "message.h"
 #include "work_queue.h"
 
-void CalvinLockThread::setup() {}
+void SDPCCLockThread::setup() {}
 
 
-RC CalvinLockThread::run() {
+RC SDPCCLockThread::run() {
 	tsetup();
 
 	RC rc = RCOK;
@@ -45,10 +45,12 @@ RC CalvinLockThread::run() {
 	uint64_t prof_starttime = get_sys_clock();
 	uint64_t idle_starttime = 0;
 
+	uint64_t id = _thd_id % g_scheduler_thread_cnt;
+
 	while(!simulation->is_done()) {
 		txn_man = NULL;
 
-		Message * msg = work_queue.sched_dequeue(_thd_id);
+		Message * msg = work_queue.sdpcc_sched_dequeue(_thd_id);
 
 		if(!msg) {
 			if (idle_starttime == 0) idle_starttime = get_sys_clock();
@@ -86,10 +88,41 @@ RC CalvinLockThread::run() {
 			rc = txn_man->acquire_locks();
 		}
 
-		txn_man->last_msg = msg;
-		if(rc == RCOK) {
-			work_queue.enqueue(_thd_id,msg,false);
+		uint64_t old_sid = sids[id];
+		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+		// sids[id] = (txn_man->get_batch_id() << 32) + (txn_man->return_id << 24) + txn_man->get_txn_id() + 1;
+		assert(key > minSid);
+		assert(key > sids[id]);
+		sids[id] = key;
+		DEBUG_SCH("[SDPCCThread] %ld set sid from %ld to %ld, now minSid %ld\n", _thd_id, old_sid, sids[id], minSid);
+		//Update minSid
+		if (_thd_id == the_first_scheduler_id) {
+
+			uint64_t min = UINT64_MAX;
+			#if DEBUG_SCHEDULER
+			std::string sid_log = "[SDPCCThread] " + std::to_string(_thd_id) + " minSid update: sids = ";
+			#endif
+			for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
+				uint64_t current_sid = sids[i];
+				#if DEBUG_SCHEDULER
+				sid_log += std::to_string(current_sid) + " ";
+				#endif
+				if (current_sid < min) min = current_sid;
+			}
+			assert(min >= minSid);
+			minSid = min;
+			#if DEBUG_SCHEDULER
+			sid_log += "| new minSid = " + std::to_string(minSid);
+			std::vector<uint64_t> ids = split_batch_key(minSid);
+			sid_log += "| now (" + std::to_string(ids[0]) + "," + std::to_string(ids[2]) +") can running\n";
+			std::cout << sid_log;
+			#endif
 		}
+
+		txn_man->last_msg = msg;
+
+		work_queue.insert_sdpcc_list_lockfree(_thd_id, txn_man);	
+
 		txn_man->set_ready();
 
 		INC_STATS(_thd_id,mtx[33],get_sys_clock() - prof_starttime);
@@ -100,14 +133,14 @@ RC CalvinLockThread::run() {
 	return FINISH;
 }
 
-void CalvinSequencerThread::setup() {}
+void SDPCCSequencerThread::setup() {}
 
-bool CalvinSequencerThread::is_batch_ready() {
+bool SDPCCSequencerThread::is_batch_ready() {
 	bool ready = get_wall_clock() - simulation->last_seq_epoch_time >= g_seq_batch_time_limit;
 	return ready;
 }
 
-RC CalvinSequencerThread::run() {
+RC SDPCCSequencerThread::run() {
 	tsetup();
 
 	Message * msg;

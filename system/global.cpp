@@ -127,22 +127,13 @@ UInt32 g_part_cnt = PART_CNT;
 UInt32 g_virtual_part_cnt = VIRTUAL_PART_CNT;
 UInt32 g_core_cnt = CORE_CNT;
 
-#if LONG_TXN_SCHEDULE
+#if CC_ALG == SDPCC
 UInt32 g_scheduler_thread_cnt = SCHEDULER_CNT;
-#if CC_ALG == CALVIN
 UInt32 g_thread_cnt = THREAD_CNT + 1 - g_scheduler_thread_cnt;
-#else
-UInt32 g_thread_cnt = THREAD_CNT;
-#endif
 uint64_t the_first_scheduler_id = 0;
-// 调度器的水印 for Calvin ------------------
+// 调度器的水印 for SDPCC ------------------
 uint64_t * sids;
 uint64_t minSid = 0;
-// Aria的水印，分为4个阶段 -------------------
-#if CC_ALG == ARIA
-WaterMarkList* reservation_check_water_mark;
-WaterMarkList* check_commit_water_mark;
-#endif
 #else
 UInt32 g_thread_cnt = THREAD_CNT;
 uint64_t minSid = 0;
@@ -161,12 +152,10 @@ UInt32 g_stats_per_interval_thread_cnt = STATS_EVERY_INTERVAL;
 UInt32 g_send_thread_cnt = SEND_THREAD_CNT;
 
 #if CC_ALG == CALVIN
-    #if LONG_TXN_SCHEDULE
-    UInt32 g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
-    #else
     // sequencer + scheduler thread
     UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2 ;
-    #endif
+#elif CC_ALG == SDPCC
+    UInt32 g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
 #elif CC_ALG == SDOCC// || CC_ALG == SILO
     UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
 #else

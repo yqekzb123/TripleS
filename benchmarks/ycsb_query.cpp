@@ -116,7 +116,7 @@ void YCSBQuery::release_requests() {
 
 void YCSBQuery::reset() {
 	BaseQuery::clear();
-#if CC_ALG != CALVIN
+#if CC_ALG != CALVIN && CC_ALG != SDPCC
 	release_requests();
 #endif
 	requests.clear();
@@ -125,7 +125,7 @@ void YCSBQuery::reset() {
 void YCSBQuery::release() {
 	BaseQuery::release();
 	DEBUG_M("YCSBQuery::release() free\n");
-#if CC_ALG != CALVIN
+#if CC_ALG != CALVIN && CC_ALG != SDPCC
 	release_requests();
 #endif
 	requests.release();

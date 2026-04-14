@@ -26,37 +26,6 @@ struct LockEntry {
 };
 
 class Row_lock {
-#if LONG_TXN_SCHEDULE
-public:
-  void init(row_t * row);
-  RC lock_get(lock_t type, TxnManager * txn);
-  RC lock_release(TxnManager * txn);
-  bool has_write_lock();
-
-private:
-  pthread_mutex_t* latch;
-	bool 		conflict_check(lock_t type);
-	LockEntry* get_entry();
-	void 		return_entry(LockEntry* entry);
-  LockEntry* truncate_list(LockEntry* head, uint64_t txn_id);
-  RC lock_succeeded(TxnManager *txn, lock_t type);
-  RC lock_failed(TxnManager *txn);
-  void deprive_lock(LockEntry *start);
-  void move_to_waiter(LockEntry *start, LockEntry *end);
-	row_t * _row;
-  lock_t lock_type;
-  UInt32 owner_cnt;
-  UInt32 waiter_cnt;
-
-	// owners and waiters are double linked list
-	// waiters head is the oldest txn, tail is the youngest txn, so new txns are inserted into the tail
-    // all txns in owners list are older than waiters head
-  LockEntry * owners_head;
-  LockEntry * owners_tail;
-	LockEntry * waiters_head;
-	LockEntry * waiters_tail;
-  uint64_t own_starttime;
-#else
 public:
 	void init(row_t * row);
     RC lock_get(lock_t type, TxnManager * txn);
@@ -89,7 +58,6 @@ private:
 	LockEntry * waiters_tail;
   uint64_t max_owner_ts;
   uint64_t own_starttime;
-#endif
 };
 
 #endif

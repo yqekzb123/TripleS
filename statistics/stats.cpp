@@ -54,8 +54,8 @@ void Stats_thd::init(uint64_t thd_id) {
 #if STATS_EVERY_INTERVAL
   row_conflict_total_cnt = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * SECOND);
   row_conflict_highest_cnt = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * SECOND);
-  hdcc_silo_cnts = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * SECOND);
-  hdcc_calvin_cnts = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * SECOND);
+  // hdcc_silo_cnts = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * SECOND);
+  // hdcc_calvin_cnts = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * SECOND);
   tputs = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * SECOND);
 #endif
 
@@ -247,8 +247,8 @@ void Stats_thd::clear() {
   for (uint64_t i = 0; i < SECOND; i++) {
     row_conflict_total_cnt[i]=0;
     row_conflict_highest_cnt[i]=0;
-    hdcc_silo_cnts[i] = 0;
-    hdcc_calvin_cnts[i] = 0;
+    // hdcc_silo_cnts[i] = 0;
+    // hdcc_calvin_cnts[i] = 0;
     tputs[i] = 0;
   }
 #endif
@@ -1232,15 +1232,15 @@ void Stats_thd::print(FILE * outf, bool prog) {
     fprintf(outf,",hcnt%lu=%lu",i,row_conflict_highest_cnt[i]);
   }
 
-  fprintf(outf,"\nmixedlock_silo_cnts\n");
-  for(uint64_t i = 0; i < SECOND; i ++) {
-    fprintf(outf,",scnts%lu=%lu", i, hdcc_silo_cnts[i]);
-  }
+  // fprintf(outf,"\nmixedlock_silo_cnts\n");
+  // for(uint64_t i = 0; i < SECOND; i ++) {
+  //   fprintf(outf,",scnts%lu=%lu", i, hdcc_silo_cnts[i]);
+  // }
 
-  fprintf(outf,"\nmixedlock_calvin_cnts\n");
-  for(uint64_t i = 0; i < SECOND; i ++) {
-    fprintf(outf,",ccnts%lu=%lu", i, hdcc_calvin_cnts[i]);
-  }
+  // fprintf(outf,"\nmixedlock_calvin_cnts\n");
+  // for(uint64_t i = 0; i < SECOND; i ++) {
+  //   fprintf(outf,",ccnts%lu=%lu", i, hdcc_calvin_cnts[i]);
+  // }
 
   fprintf(outf,"\ntputs\n");
   for(uint64_t i = 0; i < SECOND; i ++) {
@@ -1430,8 +1430,8 @@ void Stats_thd::combine(Stats_thd * stats) {
   for(uint64_t i = 0; i < SECOND; i ++) {
     row_conflict_total_cnt[i] += stats->row_conflict_total_cnt[i];
     row_conflict_highest_cnt[i] += stats->row_conflict_highest_cnt[i];
-    hdcc_silo_cnts[i] += stats->hdcc_silo_cnts[i];
-    hdcc_calvin_cnts[i] += stats->hdcc_calvin_cnts[i];
+    // hdcc_silo_cnts[i] += stats->hdcc_silo_cnts[i];
+    // hdcc_calvin_cnts[i] += stats->hdcc_calvin_cnts[i];
     tputs[i] += stats->tputs[i];
   }
 #endif

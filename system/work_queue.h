@@ -59,23 +59,16 @@ public:
                       Message * msg, TxnManager * txn);
     TxnManager * get_txn_from_list_lockfree(uint64_t thd_id, TxnMsgLockList * list, uint64_t &key);
     Message * get_msg_from_list_lockfree(uint64_t thd_id, TxnMsgLockList * list, uint64_t &key);
-    // 用于Calvin的
-    #if CC_ALG == CALVIN
-    void insert_calvin_list_lockfree(uint64_t thd_id, TxnManager * txn);
-    TxnManager * get_from_calvin_list_lockfree(uint64_t thd_id, uint64_t &key);
-    #endif
+    // 用于SDPCC的
 
+#if CC_ALG == SDPCC
+    void insert_sdpcc_list_lockfree(uint64_t thd_id, TxnManager * txn);
+    TxnManager * get_from_sdpcc_list_lockfree(uint64_t thd_id, uint64_t &key);
+    Message * sdpcc_sched_dequeue(uint64_t thd_id);
+#endif
 
 #if CC_ALG == ARIA
     Message * txn_dequeue(uint64_t thd_id);
-    #if LONG_TXN_SCHEDULE
-    // 在流水线模式下，可以随时从任何队列里取事务。
-    void work_enqueue_lockfree_list(uint64_t thd_id, Message * msg, bool not_ready, ARIA_PHASE phase);
-    Message * work_dequeue_lockfree_list(uint64_t thd_id, ARIA_PHASE phase);
-    #else
-    void work_enqueue(uint64_t thd_id, Message * msg, bool not_ready, ARIA_PHASE phase);
-    Message * work_dequeue(uint64_t thd_id);
-    #endif
 #endif
 
 #if CC_ALG == SDOCC// || CC_ALG == SILO
@@ -109,9 +102,9 @@ public:
     // uint64_t get_new_wq_cnt() {return new_query_queue.size();}
 
     // PIP Calvin相关
-    #if CC_ALG == CALVIN
+    #if CC_ALG == SDPCC
     bool sched_ready;
-    TxnMsgLockList * calvin_scheduled_list_lockfree;
+    TxnMsgLockList * sdpcc_scheduled_list_lockfree;
     #endif
 
     #if CC_ALG == SDOCC// || CC_ALG == SILO

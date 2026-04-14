@@ -81,7 +81,7 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 		}
 #elif WORKLOAD == TPCC
 		TPCCClientQueryMessage* cl_msg = (TPCCClientQueryMessage*)wait_list[id].msg;
-#if CC_ALG==CALVIN
+#if CC_ALG==CALVIN || CC_ALG==SDPCC
 		if(cl_msg->txn_type == TPCC_NEW_ORDER) {
 			for(uint64_t i = 0; i < cl_msg->items.size(); i++) {
 					DEBUG_M("Sequencer::process_ack() items free\n");
@@ -382,7 +382,7 @@ void Sequencer::send_next_batch(uint64_t thd_id) {
 		INC_STATS(thd_id,seq_full_batch_cnt,1);
 	}
 	INC_STATS(thd_id,seq_prep_time,get_sys_clock() - prof_stat);
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	next_txn_id = 0;
 #endif
 }

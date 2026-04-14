@@ -98,7 +98,7 @@ RC WorkerThread::process(Message * msg) {
 				break;
       case CL_QRY:
 			case RTXN:
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
         rc = process_calvin_rtxn(msg);
 #elif CC_ALG == ARIA
         rc = process_aria_rtxn(msg);
@@ -279,7 +279,7 @@ void WorkerThread::abort() {
 }
 
 TxnManager * WorkerThread::get_transaction_manager(Message * msg) {
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC// || CC_ALG == SILO
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC// || CC_ALG == SILO
   TxnManager* local_txn_man = txn_table.get_transaction_manager(get_thd_id(), msg->get_txn_id(), msg->get_batch_id());
 #else
   TxnManager * local_txn_man = txn_table.get_transaction_manager(get_thd_id(),msg->get_txn_id(),0);
@@ -306,7 +306,7 @@ char type2char(DATxnType txn_type)
   }
 }
 
-#if LONG_TXN_SCHEDULE && CC_ALG == CALVIN
+#if CC_ALG == SDPCC
 RC WorkerThread::run() {
   tsetup();
   printf("Running WorkerThread %ld\n",_thd_id);
@@ -332,7 +332,7 @@ RC WorkerThread::run() {
     }
     // 如果没有msg，再去拿本地的事务
     if (!msg) {
-      txn_man = work_queue.get_from_calvin_list_lockfree(_thd_id, key);
+      txn_man = work_queue.get_from_sdpcc_list_lockfree(_thd_id, key);
       if (txn_man) {
         msg_orig = message_original::LockfreeQueue;
         msg = txn_man->last_msg;
@@ -553,7 +553,7 @@ RC WorkerThread::run() {
     #if CC_ALG == SDOCC
     if (rc == RETRY && IS_LOCAL(txn_man->get_txn_id()) && !((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued) {
       // !事务重新入队
-      uint64_t key = get_calvin_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+      uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
       bool watermark_passed = key <= check_water_mark->get_global_watermark();
       DEBUG("Thd %ld txn %ld,%ld re-enqueue to list because %swatermark_passed: %d, rc: %d, <watermark_key: %ld, min_sid: %ld>\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), !watermark_passed ? "!" : "", watermark_passed, rc, key, check_water_mark->get_global_watermark());
 
@@ -588,7 +588,7 @@ RC WorkerThread::run() {
 
 RC WorkerThread::process_rfin(Message * msg) {
   DEBUG("RFIN %ld\n",msg->get_txn_id());
-  assert(CC_ALG != CALVIN);
+  assert(CC_ALG != CALVIN && CC_ALG != SDPCC);
 
   M_ASSERT_V(!IS_LOCAL(msg->get_txn_id()), "RFIN local: %ld %ld/%d\n", msg->get_txn_id(),
              msg->get_txn_id() % g_node_cnt, g_node_id);
@@ -648,7 +648,7 @@ RC WorkerThread::process_rack_prep(Message * msg) {
   uint64_t key = 0;
   if(rc == RCOK) {
     // ! 检查水印
-    key = get_calvin_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+    key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
     watermark_passed = key <= check_water_mark->get_global_watermark();
     // watermark_passed 
   }
@@ -871,7 +871,7 @@ RC WorkerThread::process_rtxn_cont(Message * msg) {
 RC WorkerThread::process_rprepare(Message * msg) {
   DEBUG("RPREP %ld\n",msg->get_txn_id());
     RC rc = RCOK;
-#if LOGGING && CC_ALG != CALVIN
+#if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
     LogRecord * record = logger.createRecord(msg->get_txn_id(),L_FLUSH,0,0);
     if(g_repl_cnt > 0) {
       msg_queue.enqueue(get_thd_id(), Message::create_message(record, LOG_MSG),
@@ -1053,7 +1053,7 @@ RC WorkerThread::process_log_flushed(Message * msg) {
 RC WorkerThread::process_rfwd(Message * msg) {
   DEBUG("RFWD (%ld,%ld)\n",msg->get_batch_id(),msg->get_txn_id());
   txn_man->txn_stats.remote_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
-  assert(CC_ALG == CALVIN);
+  assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
   int responses_left = txn_man->received_response(((ForwardMessage*)msg)->rc);
   assert(responses_left >=0);
   if(txn_man->calvin_collect_phase_done()) {
@@ -1071,8 +1071,8 @@ RC WorkerThread::process_calvin_rtxn(Message * msg) {
   DEBUG("START %ld %f %lu\n", txn_man->get_txn_id(),
         simulation->seconds_from_start(get_sys_clock()), txn_man->txn_stats.starttime);
   assert(ISSERVERN(txn_man->return_id));
-  #if LONG_TXN_SCHEDULE && (CC_ALG == ARIA || CC_ALG == CALVIN)
-  uint64_t key = get_calvin_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+  #if CC_ALG == SDPCC
+  uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
   assert(key <= minSid);
   assert(txn_man->lock_ready_cnt <= 0);
   #endif
@@ -1241,15 +1241,8 @@ RC StatsPerIntervalThread::run(){
       txn_cnt_this_time = 0;
       last_second = now_time;
 
-      #if LONG_TXN_SCHEDULE
-      #if CC_ALG == CALVIN
-      work_queue.calvin_scheduled_list_lockfree->DEBUG_PRINT_LIST_LENGTH();
-      #elif CC_ALG == ARIA
-      work_queue.aria_read_lockfree->DEBUG_PRINT_LIST_LENGTH();
-      work_queue.aria_reserve_lockfree->DEBUG_PRINT_LIST_LENGTH();
-      work_queue.aria_check_lockfree->DEBUG_PRINT_LIST_LENGTH();
-      work_queue.aria_commit_lockfree->DEBUG_PRINT_LIST_LENGTH();
-      #endif
+      #if CC_ALG == SDPCC
+      work_queue.sdpcc_scheduled_list_lockfree->DEBUG_PRINT_LIST_LENGTH();
       #endif
       #if CC_ALG == SDOCC
       work_queue.sdocc_lockfree->DEBUG_PRINT_LIST_LENGTH();
@@ -1258,12 +1251,6 @@ RC StatsPerIntervalThread::run(){
       loop++;
     }
     // if (now_time - last_millisecond > ONE_MILLISECOND) {
-    #if CC_ALG == ARIA && LONG_TXN_SCHEDULE
-      reservation_check_water_mark->remove_consumed();
-      check_commit_water_mark->remove_consumed();
-      reservation_check_water_mark->update_local_watermark();
-      check_commit_water_mark->update_local_watermark();
-    #endif
     #if CC_ALG == SDOCC 
       check_water_mark->remove_consumed();
       bool updated = check_water_mark->update_local_watermark();

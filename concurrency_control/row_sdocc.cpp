@@ -16,7 +16,7 @@ void Row_sdocc::init(row_t* row) {
 bool Row_sdocc::add_reservation(std::vector<uint64_t>& reservations, pthread_mutex_t * latch, uint64_t batch_id,uint64_t return_id,uint64_t txn_id) {
     // 先加锁
     bool insert = false;
-    uint64_t key = get_calvin_key(batch_id,return_id,txn_id);
+    uint64_t key = get_batch_key(batch_id,return_id,txn_id);
     pthread_mutex_lock(latch);
     // 然后遍历reservations，找到合适的位置插入；
     // 如果key是最大的，就插在最后面；如果key在中间，就插在中间；如果key已经存在，就不插入了，直接返回。
@@ -40,7 +40,7 @@ bool Row_sdocc::add_reservation(std::vector<uint64_t>& reservations, pthread_mut
 }
 
 uint64_t Row_sdocc::get_reservations(std::vector<uint64_t>& reservations, pthread_mutex_t * latch, uint64_t batch_id,uint64_t return_id,uint64_t txn_id) {
-    uint64_t key = get_calvin_key(batch_id,return_id,txn_id);
+    uint64_t key = get_batch_key(batch_id,return_id,txn_id);
     uint64_t result = 0;
     pthread_mutex_lock(latch);
     for (size_t i = 0; i < reservations.size(); i++) {
@@ -57,7 +57,7 @@ uint64_t Row_sdocc::get_reservations(std::vector<uint64_t>& reservations, pthrea
 
 bool Row_sdocc::clean_reservation(std::vector<uint64_t>& reservations, pthread_mutex_t * latch, uint64_t batch_id,uint64_t return_id,uint64_t txn_id) {
     bool removed = false;
-    uint64_t key = get_calvin_key(batch_id,return_id,txn_id);
+    uint64_t key = get_batch_key(batch_id,return_id,txn_id);
     pthread_mutex_lock(latch);
     for (size_t i = 0; i < reservations.size(); i++) {
         if (reservations[i] == key) {
@@ -92,7 +92,7 @@ RC Row_sdocc::access(TxnManager * txn, access_t type, row_t * local_row){
 
 RC Row_sdocc::check(TxnManager * txn, access_t type, row_t * local_row, Access *a) {
     // return RCOK;
-    uint64_t key = get_calvin_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
+    uint64_t key = get_batch_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
     RC rc = RCOK;
     // 这里要干的事情是，先把自己的key作为reservation放到reservations里;
     if (type == RD || type == SCAN) {

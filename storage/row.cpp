@@ -29,6 +29,7 @@
 #include "row_silo.h"
 #include "row_aria.h"
 #include "row_sdocc.h"
+#include "row_sdpcc.h"
 #include "mem_alloc.h"
 #include "manager.h"
 #include <new>
@@ -72,6 +73,9 @@ void row_t::init_manager(row_t * row) {
 	manager = (Row_aria *) mem_allocator.align_alloc(sizeof(Row_aria));
 #elif CC_ALG == SDOCC
 	manager = new (mem_allocator.align_alloc(sizeof(Row_sdocc))) Row_sdocc();
+#elif CC_ALG == SDPCC
+	manager = (Row_sdpcc *) mem_allocator.align_alloc(sizeof(Row_sdpcc));
+	// manager = new (mem_allocator.align_alloc(sizeof(Row_sdpcc))) Row_sdpcc();
 #endif
 	manager->init(this);
 }
@@ -178,7 +182,7 @@ void row_t::free_row() {
 
 RC row_t::get_lock(access_t type, TxnManager * txn) {
 	RC rc = RCOK;
-#if CC_ALG == CALVIN
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	lock_t lt = (type == RD || type == SCAN)? LOCK_SH : LOCK_EX;
 	rc = this->manager->lock_get(lt, txn);
 #endif
@@ -279,7 +283,7 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 	access->data = txn->cur_row;
 	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
 	goto end;
-#elif CC_ALG == CALVIN
+#elif CC_ALG == CALVIN || CC_ALG == SDPCC
 	access->data = this;
 	goto end;
 #elif CC_ALG == SDOCC
@@ -340,9 +344,9 @@ uint64_t row_t::return_row(RC rc, access_t type, TxnManager *txn, row_t *row) {
 	}
 #endif
 */
-#if CC_ALG == WAIT_DIE || CC_ALG == NO_WAIT || CC_ALG == CALVIN
+#if CC_ALG == WAIT_DIE || CC_ALG == NO_WAIT || CC_ALG == CALVIN || CC_ALG == SDPCC
 	assert (row == NULL || row == this || type == XP);
-	if (CC_ALG != CALVIN && ROLL_BACK &&
+	if (CC_ALG != CALVIN && CC_ALG != SDPCC && ROLL_BACK &&
 			type == XP) {  // recover from previous writes. should not happen w/ Calvin
 		this->copy(row);
 	}
