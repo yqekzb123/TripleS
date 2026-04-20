@@ -199,6 +199,12 @@ void Stats_thd::clear() {
   work_queue_dequeue_time=0;
   work_queue_conflict_cnt=0;
 
+  // SDPCC small lock queue
+  small_lock_queue_wait_time=0;
+  small_lock_no_get_cnt=0;
+  small_lock_get_cnt=0;
+  small_lock_trace_cnt=0;
+
   // Worker thread
   worker_idle_time=0;
   worker_activate_txn_time=0;
@@ -277,6 +283,7 @@ void Stats_thd::clear() {
   twopl_getlock_time=0;
   twopl_release_cnt=0;
   twopl_release_time=0;
+  twopl_lock_trace_cnt=0;
 
   // Calvin
   seq_txn_cnt=0;
@@ -772,6 +779,25 @@ void Stats_thd::print(FILE * outf, bool prog) {
           work_queue_enqueue_time / BILLION, work_queue_dequeue_time / BILLION,
           work_queue_conflict_cnt);
 
+  // SDPCC small lock queue
+  double small_lock_queue_wait_avg_time = 0;
+  double small_lock_queue_trace_avg_cnt = 0;
+  if(small_lock_queue_wait_time > 0 && (small_lock_no_get_cnt + small_lock_get_cnt) > 0) 
+    small_lock_queue_wait_avg_time = small_lock_queue_wait_time / (small_lock_no_get_cnt + small_lock_get_cnt);
+  if (small_lock_trace_cnt > 0 && (small_lock_no_get_cnt + small_lock_get_cnt) > 0) {
+    small_lock_queue_trace_avg_cnt = ((double)small_lock_trace_cnt) / (small_lock_no_get_cnt + small_lock_get_cnt);
+  }
+  fprintf(outf,
+  ",small_lock_queue_wait_time=%f"
+  ",small_lock_no_get_cnt=%ld"
+  ",small_lock_get_cnt=%ld"
+  ",small_lock_trace_cnt=%ld"
+  ",small_lock_queue_wait_avg_time=%f"
+  ",small_lock_queue_trace_avg_cnt=%f",
+          small_lock_queue_wait_time / BILLION, small_lock_no_get_cnt, small_lock_get_cnt, 
+          small_lock_trace_cnt, small_lock_queue_wait_avg_time / BILLION,
+          small_lock_queue_trace_avg_cnt);
+
   // Worker thread
   double worker_process_avg_time = 0;
   if (worker_process_cnt > 0) worker_process_avg_time = worker_process_time / worker_process_cnt;
@@ -928,13 +954,14 @@ void Stats_thd::print(FILE * outf, bool prog) {
     ",twopl_getlock_cnt=%ld"
     ",twopl_getlock_time=%f"
     ",twopl_release_cnt=%ld"
-          ",twopl_release_time=%f",
+    ",twopl_release_time=%f"
+    ",twopl_lock_trace_cnt=%ld",
           twopl_already_owned_cnt, twopl_owned_cnt, twopl_sh_owned_cnt, twopl_ex_owned_cnt,
           twopl_sh_bypass_cnt, twopl_owned_time / BILLION, twopl_sh_owned_time / BILLION,
           twopl_ex_owned_time / BILLION, twopl_sh_owned_avg_time / BILLION,
           twopl_ex_owned_avg_time / BILLION, twopl_diff_time / BILLION, twopl_wait_time / BILLION,
           twopl_getlock_cnt, twopl_getlock_time / BILLION, twopl_release_cnt,
-          twopl_release_time / BILLION);
+          twopl_release_time / BILLION, twopl_lock_trace_cnt);
 
   // Calvin
   double seq_queue_wait_avg_time = 0;
@@ -1382,6 +1409,12 @@ void Stats_thd::combine(Stats_thd * stats) {
   work_queue_dequeue_time+=stats->work_queue_dequeue_time;
   work_queue_conflict_cnt+=stats->work_queue_conflict_cnt;
 
+  // Small lock queue
+  small_lock_queue_wait_time+=stats->small_lock_queue_wait_time;
+  small_lock_no_get_cnt+=stats->small_lock_no_get_cnt;
+  small_lock_get_cnt+=stats->small_lock_get_cnt;
+  small_lock_trace_cnt+=stats->small_lock_trace_cnt;
+
   // Worker thread
   worker_idle_time+=stats->worker_idle_time;
   worker_activate_txn_time+=stats->worker_activate_txn_time;
@@ -1460,6 +1493,7 @@ void Stats_thd::combine(Stats_thd * stats) {
   twopl_release_cnt+=stats->twopl_release_cnt;
   twopl_release_time+=stats->twopl_release_time;
   twopl_getlock_time+=stats->twopl_getlock_time;
+  twopl_lock_trace_cnt+=stats->twopl_lock_trace_cnt;
 
   // Calvin
   seq_txn_cnt+=stats->seq_txn_cnt;

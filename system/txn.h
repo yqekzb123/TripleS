@@ -212,7 +212,7 @@ public:
 		assert(CC_ALG == CALVIN || CC_ALG == SDPCC || !recon);
 		return recon;
 	};
-		bool recon;
+	bool recon;
 
 	// Hack
 	RC get_row(row_t * row, access_t type, row_t *& row_rtn);

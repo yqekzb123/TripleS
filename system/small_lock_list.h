@@ -244,6 +244,7 @@ public:
 
     // Try to take a node matching cond1 and cond2. Thread-safe via hand-over-hand locking.
     bool try_take(std::function<bool(list_node_entry*)> cond1, std::function<bool(list_node_entry*)> cond2, list_node_entry*& out, uint64_t thd_id) {
+        uint64_t trace_cnt = 1;
         ListNode<list_node_entry*>* prev = head;
         // 获取prev锁
         prev->mtx.lock();
@@ -293,6 +294,7 @@ public:
             prev->mtx.unlock();
             prev = curr;
             curr = curr->next;
+            trace_cnt++;
             // keep prev locked for next iteration
         }
         // unlock last prev if locked
@@ -302,6 +304,7 @@ public:
             std::string result = "[LockList" + name + "] thd " + std::to_string(thd_id) + " try_take visited keys: " + visit_log + "| NO TAKE";
             std::cout << result << std::endl;
         #endif
+        INC_STATS(thd_id,small_lock_trace_cnt,trace_cnt);
         return false;
     }
 };

@@ -153,11 +153,13 @@ UInt32 g_send_thread_cnt = SEND_THREAD_CNT;
 
 #if CC_ALG == CALVIN
     // sequencer + scheduler thread
-    UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2 ;
+    UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2;
 #elif CC_ALG == SDPCC
-    UInt32 g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
+    UInt32 g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
 #elif CC_ALG == SDOCC// || CC_ALG == SILO
-    UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
+    UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
+#elif CC_ALG == ARIA
+    UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
 #else
 UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt;
 #endif

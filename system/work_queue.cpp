@@ -115,7 +115,7 @@ Message * QWorkQueue::sequencer_dequeue(uint64_t thd_id) {
 		INC_STATS(thd_id,seq_queue_cnt,1);
 		// DEBUG("DEQUEUE (%ld,%ld) %ld; %ld; %d,
 		// 0x%lx\n",msg->txn_id,msg->batch_id,msg->return_node_id,queue_time,msg->rtype,(uint64_t)msg);
-	DEBUG_M("SeqQueue::dequeue work_queue_entry free\n");
+		DEBUG_M("SeqQueue::dequeue work_queue_entry free\n");
 		mem_allocator.free(entry,sizeof(work_queue_entry));
 		INC_STATS(thd_id,seq_queue_dequeue_time,get_sys_clock() - starttime);
 	}
@@ -709,6 +709,10 @@ Message * QWorkQueue::sdpcc_sched_dequeue(uint64_t thd_id) {
 		msg = entry->msg;
 		DEBUG("Sched Dequeue (%ld,%ld)\n",entry->batch_id,entry->txn_id);
 
+		// uint64_t queue_time = get_sys_clock() - entry->starttime;
+		// INC_STATS(thd_id,sched_queue_wait_time,queue_time);
+		// INC_STATS(thd_id,sched_queue_cnt,1);
+
 		if(msg->rtype == RDONE) {
 			// Advance to next queue or next epoch
 			DEBUG("Sched RDONE %ld %ld\n",sched_ptr,simulation->get_worker_epoch());
@@ -746,6 +750,7 @@ void QWorkQueue::insert_sdpcc_list_lockfree(uint64_t thd_id, TxnManager * txn) {
 }
 
 TxnManager * QWorkQueue::get_from_sdpcc_list_lockfree(uint64_t thd_id, uint64_t &key) {
+	uint64_t starttime = get_sys_clock();
 	// 第一个函数
 	std::function<bool(list_node_entry*)> func = [](list_node_entry * arg) -> bool {
 		list_node_entry * entry = arg;
@@ -769,6 +774,9 @@ TxnManager * QWorkQueue::get_from_sdpcc_list_lockfree(uint64_t thd_id, uint64_t 
 		DEBUG_LOCKFREE("[LockFreeList] get_from_sdpcc_list_lockfree cond2 skip txn %p key=%lu lock_ready_cnt=%d \n",entry->txn, entry->key, entry->txn->lock_ready_cnt);
 		return false;
 	};
+	std::function<bool(list_node_entry*)> func3 = [](list_node_entry * arg) -> bool {
+		return true;
+	};
 	list_node_entry * entry = NULL;
 	key = 0;
 
@@ -777,9 +785,12 @@ TxnManager * QWorkQueue::get_from_sdpcc_list_lockfree(uint64_t thd_id, uint64_t 
 	if (succ) {
 		// DEBUG("[LockFreeList] thd %ld get_from_sdpcc_list_lockfree key=%lu txn=%p\n", thd_id, entry->key, entry->txn);
 		TxnManager * txn = entry->txn;
-		// 现在没有释放
+		INC_STATS(thd_id,small_lock_get_cnt,1);
+		INC_STATS(thd_id,small_lock_queue_wait_time,get_sys_clock() - starttime);
 		return txn;
 	} else {
+		INC_STATS(thd_id,small_lock_no_get_cnt,1);
+		INC_STATS(thd_id,small_lock_queue_wait_time,get_sys_clock() - starttime);
 		return NULL;
 	}
 }

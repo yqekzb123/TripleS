@@ -80,8 +80,6 @@ void Thread::tsetup() {
   prog_time = run_starttime;
   heartbeat_time = run_starttime;
 	pthread_barrier_wait( &warmup_bar );
-
-
 }
 
 void Thread::progress_stats() {

@@ -160,6 +160,12 @@ public:
   double work_queue_dequeue_time;
   uint64_t work_queue_conflict_cnt;
 
+  // SDPCC small lock queue
+  double small_lock_queue_wait_time;
+  uint64_t small_lock_no_get_cnt;
+  uint64_t small_lock_get_cnt;
+  uint64_t small_lock_trace_cnt;
+
   // Abort queue
   uint64_t abort_queue_enqueue_cnt;
   uint64_t abort_queue_dequeue_cnt;
@@ -239,6 +245,7 @@ public:
   uint64_t twopl_release_cnt;
   double twopl_getlock_time;
   double twopl_release_time;
+  uint64_t twopl_lock_trace_cnt;
 
   // Calvin
   uint64_t seq_txn_cnt;

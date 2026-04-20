@@ -100,13 +100,12 @@ def ycsb_scaling():
 
 def ycsb_skew_pip():
     wl = 'YCSB'
-    nnodes = [2]
-    # algos=['CALVIN','ARIA','SDOCC','SDPCC']
-    # algos=['SDPCC']
+    nnodes = [1]
+    algos=['CALVIN','ARIA','SDOCC','SDPCC']
     # algos=['ARIA']
     # algos=['SDOCC']
     # algos=['SDPCC']
-    algos=['CALVIN']
+    # algos=['CALVIN']
     # algos=['SILO']
     base_table_size=1048576*8
     txn_write_perc = [1]
@@ -437,7 +436,7 @@ configs = {
     "MAX_TXN_PER_PART" : 500000,
     "WORKLOAD" : "YCSB",
     "CC_ALG" : "CNULL",
-    "MPR" : 1,    #分布式事务比列
+    "MPR" : 1.0,    #分布式事务比列
     "TPORT_TYPE":"TCP",
     "TPORT_PORT":"18000",
     "PART_CNT": "NODE_CNT",

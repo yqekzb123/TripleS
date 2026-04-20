@@ -13,7 +13,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 2
+#define NODE_CNT 1
 #define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -106,7 +106,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG CALVIN
+#define CC_ALG SDPCC
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -203,7 +203,7 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 16777216
+#define SYNTH_TABLE_SIZE 8388608
 #define ZIPF_THETA 1.5
 #define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2
@@ -245,7 +245,7 @@
 #define WH_UPDATE         false
 #define NUM_WH 32
 // % of transactions that access multiple partitions
-#define MPR 1
+#define MPR 1.0
 #define MPIR 0.01
 #define MPR_NEWORDER MPR
 #if NODE_CNT == 1

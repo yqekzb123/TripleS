@@ -75,7 +75,7 @@ void row_t::init_manager(row_t * row) {
 	manager = new (mem_allocator.align_alloc(sizeof(Row_sdocc))) Row_sdocc();
 #elif CC_ALG == SDPCC
 	manager = (Row_sdpcc *) mem_allocator.align_alloc(sizeof(Row_sdpcc));
-	// manager = new (mem_allocator.align_alloc(sizeof(Row_sdpcc))) Row_sdpcc();
+	// manager = (Row_lock *) mem_allocator.align_alloc(sizeof(Row_lock));
 #endif
 	manager->init(this);
 }

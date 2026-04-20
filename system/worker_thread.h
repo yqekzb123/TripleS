@@ -64,12 +64,6 @@ private:
     TxnManager * txn_man;
 };
 
-class WorkerNumThread : public Thread {
-public:
-    RC run();
-    void setup();
-
-};
 class StatsPerIntervalThread : public Thread {
 public:
     RC run();

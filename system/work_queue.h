@@ -69,6 +69,8 @@ public:
 
 #if CC_ALG == ARIA
     Message * txn_dequeue(uint64_t thd_id);
+    void work_enqueue(uint64_t thd_id, Message * msg, bool not_ready, ARIA_PHASE phase);
+    Message * work_dequeue(uint64_t thd_id);
 #endif
 
 #if CC_ALG == SDOCC// || CC_ALG == SILO

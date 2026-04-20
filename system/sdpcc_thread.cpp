@@ -121,8 +121,14 @@ RC SDPCCLockThread::run() {
 		}
 
 		txn_man->last_msg = msg;
-
+		// printf("Try to Enqueue txn %ld,%ld, sid=%lu rc=%d\n", txn_man->get_batch_id(),txn_man->get_txn_id(), key, rc);
+		// if (rc == RCOK) {
+		// 	work_queue.insert_sdpcc_list_lockfree(_thd_id, txn_man);	
+		// 	printf("Enqueue txn %ld,%ld, sid=%lu\n", txn_man->get_batch_id(),txn_man->get_txn_id(), key);
+		// }
+		// work_queue.enqueue(_thd_id,msg,false);
 		work_queue.insert_sdpcc_list_lockfree(_thd_id, txn_man);	
+			
 
 		txn_man->set_ready();
 

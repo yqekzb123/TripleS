@@ -55,7 +55,6 @@ InputThread * input_thds;
 OutputThread * output_thds;
 AbortThread * abort_thds;
 LogThread * log_thds;
-WorkerNumThread * worker_num_thds;
 #if CC_ALG == CALVIN
 CalvinLockThread * calvin_lock_thds;
 CalvinSequencerThread * calvin_seq_thds;
@@ -236,10 +235,10 @@ int main(int argc, char *argv[]) {
 	uint64_t sthd_cnt = g_send_thread_cnt;
 	uint64_t all_thd_cnt = thd_cnt + rthd_cnt + sthd_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt;
 #if LOGGING
-		all_thd_cnt += g_logger_thread_cnt;
+	all_thd_cnt += g_logger_thread_cnt;
 #endif
 #if CC_ALG == CALVIN
-		all_thd_cnt += 2; // sequencer + scheduler thread
+	all_thd_cnt += 2; // sequencer + scheduler thread
 #endif
 #if CC_ALG == SDPCC
 		all_thd_cnt += (g_scheduler_thread_cnt + 1); // sequencer + scheduler thread
@@ -247,11 +246,12 @@ int main(int argc, char *argv[]) {
 
 #if CC_ALG == ARIA
 	all_thd_cnt += 1;	//sequencer thread
-	all_thd_cnt -= 1; 	//abort thread
+	// all_thd_cnt -= 1; 	//abort thread
 #endif
 
 #if CC_ALG == SDOCC// || CC_ALG == SILO
 	all_thd_cnt += 1;	//sequencer thread
+	// all_thd_cnt -= 1; 	//abort thread
 #endif
 
 

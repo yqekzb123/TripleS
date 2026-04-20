@@ -1162,58 +1162,6 @@ ts_t WorkerThread::get_next_ts() {
 		return _curr_ts;
 	}
 }
-void WorkerNumThread::setup() {
-}
-
-RC WorkerNumThread::run() {
-  tsetup();
-  printf("Running WorkerNumThread %ld\n",_thd_id);
-
-  // uint64_t idle_starttime = 0;
-  int i = 0;
-	while(!simulation->is_done()) {
-    progress_stats();
-
-    uint64_t wq_size = work_queue.get_wq_cnt();
-    uint64_t tx_size = work_queue.get_txn_cnt();
-    uint64_t ewq_size = work_queue.get_enwq_cnt();
-    uint64_t dwq_size = work_queue.get_dewq_cnt();
-
-    uint64_t etx_size = work_queue.get_entxn_cnt();
-    uint64_t dtx_size = work_queue.get_detxn_cnt();
-
-    work_queue.set_detxn_cnt();
-    work_queue.set_dewq_cnt();
-    work_queue.set_entxn_cnt();
-    work_queue.set_enwq_cnt();
-
-    INC_STATS(_thd_id,work_queue_wq_cnt[i],wq_size);
-    INC_STATS(_thd_id,work_queue_tx_cnt[i],tx_size);
-
-    INC_STATS(_thd_id,work_queue_ewq_cnt[i],ewq_size);
-    INC_STATS(_thd_id,work_queue_dwq_cnt[i],dwq_size);
-
-    INC_STATS(_thd_id,work_queue_etx_cnt[i],etx_size);
-    INC_STATS(_thd_id,work_queue_dtx_cnt[i],dtx_size);
-    i++;
-    sleep(1);
-    // 就是帮我打印一下现在测试了多少秒
-    DEBUG("WorkerNumThread %ld: %d seconds\n",_thd_id,i);
-
-    // if(idle_starttime ==0)
-    //   idle_starttime = get_sys_clock();
-
-    // if(get_sys_clock() - idle_starttime > 1000000000) {
-    //   i++;
-    //   idle_starttime = 0;
-    // }
-    //uint64_t starttime = get_sys_clock();
-
-	}
-  printf("FINISH %ld:%ld\n",_node_id,_thd_id);
-  fflush(stdout);
-  return FINISH;
-}
 
 void StatsPerIntervalThread::setup(){
 

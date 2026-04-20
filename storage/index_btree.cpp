@@ -456,23 +456,23 @@ RC index_btree::find_leaf(glob_param params, idx_key_t key, idx_acc_t access_typ
 		leaf = c;
 		return RCOK;
 	}
-#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == SDOCC || CC_ALG == SDPCC
-	if (simulation->is_setup_done() && c->is_leaf) {
-		leaf = c;
-		RC rc;
-		row_t * row __attribute__((unused));
-		if (access_type == INDEX_INSERT) {
-			rc = params.txn->get_row(c->row, WR, row);
-		} else {
-			rc = params.txn->get_row(c->row, RD, row);
-		}
-		if (rc == RCOK || rc == WAIT) {
-			return RCOK;
-		} else {
-			return Abort;
-		}
-	}
-#endif
+// #if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == SDOCC || CC_ALG == SDPCC
+// 	if (simulation->is_setup_done() && c->is_leaf) {
+// 		leaf = c;
+// 		RC rc;
+// 		row_t * row __attribute__((unused));
+// 		if (access_type == INDEX_INSERT) {
+// 			rc = params.txn->get_row(c->row, WR, row);
+// 		} else {
+// 			rc = params.txn->get_row(c->row, RD, row);
+// 		}
+// 		if (rc == RCOK || rc == WAIT) {
+// 			return RCOK;
+// 		} else {
+// 			return Abort;
+// 		}
+// 	}
+// #endif
 	// key should be inserted into the right side of i
   	if (!latch_node(c, LATCH_SH)) return Abort;
 	while (!c->is_leaf) {
