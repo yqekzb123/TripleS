@@ -18,15 +18,18 @@
 #define _SDPCCTHREAD_H_
 
 #include "global.h"
-
+#include <vector>
 class Workload;
 
 class SDPCCLockThread : public Thread {
 public:
     RC run();
     void setup();
+    void handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid);
 private:
     TxnManager * m_txn;
+
+    std::vector<TxnManager*> tmp_txn_list;
 };
 
 class SDPCCSequencerThread : public Thread {

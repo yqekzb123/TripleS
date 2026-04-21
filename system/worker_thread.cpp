@@ -331,13 +331,13 @@ RC WorkerThread::run() {
       }
     }
     // 如果没有msg，再去拿本地的事务
-    if (!msg) {
-      txn_man = work_queue.get_from_sdpcc_list_lockfree(_thd_id, key);
-      if (txn_man) {
-        msg_orig = message_original::LockfreeQueue;
-        msg = txn_man->last_msg;
-      }
-    }
+    // if (!msg) {
+    //   txn_man = work_queue.get_from_sdpcc_list_lockfree(_thd_id, key);
+    //   if (txn_man) {
+    //     msg_orig = message_original::LockfreeQueue;
+    //     msg = txn_man->last_msg;
+    //   }
+    // }
     if (txn_man == NULL) {
       if (idle_starttime == 0) idle_starttime = get_sys_clock();
         continue;
@@ -1073,7 +1073,7 @@ RC WorkerThread::process_calvin_rtxn(Message * msg) {
   assert(ISSERVERN(txn_man->return_id));
   #if CC_ALG == SDPCC
   uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
-  assert(key <= minSid);
+  // assert(key <= minSid);
   assert(txn_man->lock_ready_cnt <= 0);
   #endif
   txn_man->txn_stats.local_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
@@ -1190,7 +1190,8 @@ RC StatsPerIntervalThread::run(){
       last_second = now_time;
 
       #if CC_ALG == SDPCC
-      work_queue.sdpcc_scheduled_list_lockfree->DEBUG_PRINT_LIST_LENGTH();
+      // work_queue.sdpcc_scheduled_list_lockfree->DEBUG_PRINT_LIST_LENGTH();
+      // work_queue.sdpcc_list->DEBUG_PRINT_LIST_LENGTH();
       #endif
       #if CC_ALG == SDOCC
       work_queue.sdocc_lockfree->DEBUG_PRINT_LIST_LENGTH();
@@ -1213,6 +1214,17 @@ RC StatsPerIntervalThread::run(){
         }
       }
     #endif 
+    #if CC_ALG == SDPCC
+      // work_queue.sdpcc_list->mark_head();
+      // 把第一个调度器的水印更新塞到这来，保证每个调度器的水印都能及时更新
+      uint64_t min = UINT64_MAX;
+			for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
+				uint64_t current_sid = sids[i];
+				if (current_sid < min) min = current_sid;
+			}
+			assert(min >= minSid);
+			minSid = min;
+    #endif
       // last_millisecond = now_time;
     // }
   }

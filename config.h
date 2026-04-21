@@ -13,7 +13,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 1
+#define NODE_CNT 2
 #define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -193,7 +193,7 @@
 
 #define LONG_TXN_WORKLOAD false
 // #define LONG_TXN_SCHEDULE false
-#define SCHEDULER_CNT 8
+#define SCHEDULER_CNT 4
 
 // ==== [YCSB] ====
 // SKEW_METHOD:
@@ -203,8 +203,8 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 8388608
-#define ZIPF_THETA 1.5
+#define SYNTH_TABLE_SIZE 16777216
+#define ZIPF_THETA 0.9
 #define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0

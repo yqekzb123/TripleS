@@ -284,6 +284,8 @@ void Stats_thd::clear() {
   twopl_release_cnt=0;
   twopl_release_time=0;
   twopl_lock_trace_cnt=0;
+  twopl_lock_trace_owners_cnt=0;
+  twopl_lock_trace_waiters_cnt=0;
 
   // Calvin
   seq_txn_cnt=0;
@@ -955,13 +957,15 @@ void Stats_thd::print(FILE * outf, bool prog) {
     ",twopl_getlock_time=%f"
     ",twopl_release_cnt=%ld"
     ",twopl_release_time=%f"
-    ",twopl_lock_trace_cnt=%ld",
+    ",twopl_lock_trace_cnt=%ld"
+    ",twopl_lock_trace_owners_cnt=%ld"
+    ",twopl_lock_trace_waiters_cnt=%ld",
           twopl_already_owned_cnt, twopl_owned_cnt, twopl_sh_owned_cnt, twopl_ex_owned_cnt,
           twopl_sh_bypass_cnt, twopl_owned_time / BILLION, twopl_sh_owned_time / BILLION,
           twopl_ex_owned_time / BILLION, twopl_sh_owned_avg_time / BILLION,
           twopl_ex_owned_avg_time / BILLION, twopl_diff_time / BILLION, twopl_wait_time / BILLION,
           twopl_getlock_cnt, twopl_getlock_time / BILLION, twopl_release_cnt,
-          twopl_release_time / BILLION, twopl_lock_trace_cnt);
+          twopl_release_time / BILLION, twopl_lock_trace_cnt, twopl_lock_trace_owners_cnt, twopl_lock_trace_waiters_cnt);
 
   // Calvin
   double seq_queue_wait_avg_time = 0;
@@ -1494,6 +1498,8 @@ void Stats_thd::combine(Stats_thd * stats) {
   twopl_release_time+=stats->twopl_release_time;
   twopl_getlock_time+=stats->twopl_getlock_time;
   twopl_lock_trace_cnt+=stats->twopl_lock_trace_cnt;
+  twopl_lock_trace_owners_cnt+=stats->twopl_lock_trace_owners_cnt;
+  twopl_lock_trace_waiters_cnt+=stats->twopl_lock_trace_waiters_cnt;
 
   // Calvin
   seq_txn_cnt+=stats->seq_txn_cnt;

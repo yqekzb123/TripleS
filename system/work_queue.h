@@ -24,6 +24,7 @@
 #include <boost/circular_buffer.hpp>
 #include "semaphore.h"
 #include "small_lock_list.h"
+#include "circle_list.h"
 //#include "message.h"
 
 class BaseQuery;
@@ -107,6 +108,7 @@ public:
     #if CC_ALG == SDPCC
     bool sched_ready;
     TxnMsgLockList * sdpcc_scheduled_list_lockfree;
+    CircleList* sdpcc_list;
     #endif
 
     #if CC_ALG == SDOCC// || CC_ALG == SILO
@@ -131,9 +133,9 @@ private:
     boost::lockfree::queue<work_queue_entry* > * new_txn_queue;
     boost::lockfree::queue<work_queue_entry* > * seq_queue;
     boost::lockfree::queue<work_queue_entry* > ** sched_queue;
-    #if CC_ALG == SDOCC// || CC_ALG == SILO
+#if CC_ALG == SDOCC// || CC_ALG == SILO
     boost::lockfree::queue<work_queue_entry* > * sdocc_queue;
-    #endif
+#endif
 
 #if CC_ALG == ARIA
     boost::lockfree::queue<work_queue_entry* > * aria_read_queue;

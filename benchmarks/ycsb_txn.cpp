@@ -31,7 +31,6 @@
 #include "query.h"
 #include "msg_queue.h"
 #include "message.h"
-#include "small_lock_list.h"
 #include "sdocc.h"
 
 void YCSBTxnManager::init(uint64_t thd_id, Workload * h_wl) {

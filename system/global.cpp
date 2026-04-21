@@ -42,6 +42,7 @@
 #include "client_txn.h"
 #include "sequencer.h"
 #include "sdocc_sequencer.h"
+#include "sdpcc_sequencer.h"
 #include "logger.h"
 #include "aria_sequencer.h"
 #include "water_mark.h"
@@ -70,6 +71,9 @@ AbortQueue abort_queue;
 MessageQueue msg_queue;
 Client_txn client_man;
 Sequencer seq_man;
+#if CC_ALG == SDPCC
+SDPCCSequencer sdpcc_seq_man;
+#endif
 #if CC_ALG == SDOCC// || CC_ALG == SILO
 SDOCCSequencer sdocc_seq_man;
 #endif

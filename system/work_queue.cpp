@@ -23,6 +23,7 @@
 #include "txn.h"
 #include "water_mark.h"
 #include <boost/lockfree/queue.hpp>
+#include "circle_list.h"
 
 void QWorkQueue::init() {
 
@@ -61,6 +62,7 @@ void QWorkQueue::init() {
 	#if CC_ALG == SDPCC
 		sched_ready = true;
 		sdpcc_scheduled_list_lockfree = new TxnMsgLockList("SdpccScheduledList");
+		sdpcc_list = new CircleList(g_inflight_max,g_node_cnt);
 	#endif
 	#if CC_ALG == ARIA
 		read_ready = true;
@@ -745,46 +747,30 @@ Message * QWorkQueue::sdpcc_sched_dequeue(uint64_t thd_id) {
 }
 
 void QWorkQueue::insert_sdpcc_list_lockfree(uint64_t thd_id, TxnManager * txn) {
-	insert_list_lockfree(thd_id, sdpcc_scheduled_list_lockfree, nullptr, txn);
+	// insert_list_lockfree(thd_id, sdpcc_scheduled_list_lockfree, nullptr, txn);
+	uint64_t key = get_batch_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
+	sdpcc_list->insert(thd_id, key, txn);
 	return;
 }
 
 TxnManager * QWorkQueue::get_from_sdpcc_list_lockfree(uint64_t thd_id, uint64_t &key) {
 	uint64_t starttime = get_sys_clock();
-	// 第一个函数
-	std::function<bool(list_node_entry*)> func = [](list_node_entry * arg) -> bool {
-		list_node_entry * entry = arg;
-		if (!entry) return false;
-		if (entry->key <= minSid) {
-			return true;
-		}
-		DEBUG_LOCKFREE("[LockFreeList] get_from_sdpcc_list_lockfree cond1 skip txn %p key=%lu minSid=%lu\n",entry->txn, entry->key, minSid);
-		return false;
-	};
-	// 第二个函数
-	std::function<bool(list_node_entry*)> func2 = [](list_node_entry * arg) -> bool {
-		list_node_entry * entry = arg;
-		if (!entry) return false;
-		if (entry->key <= minSid && entry->txn->lock_ready_cnt <= 0) {
-			if (entry->txn->lock_ready_cnt < 0) {
-				DEBUG_LOCKFREE("[LockFreeList] get_from_sdpcc_list_lockfree txn %p lock_ready_cnt=%d\n", entry->txn, entry->txn->lock_ready_cnt);
+	std::function<bool(circle_node_entry&)> judge_lock_watermark = [](circle_node_entry & arg) -> bool {
+		assert(arg.key <= minSid && arg.txn->lock_ready_cnt <= 0);
+		if (arg.key <= minSid && arg.txn->lock_ready_cnt <= 0) {
+			if (arg.txn->lock_ready_cnt < 0) {
+				DEBUG_LOCKFREE("[LockFreeList] get_from_sdpcc_list_lockfree txn %p lock_ready_cnt=%d\n", arg.txn, arg.txn->lock_ready_cnt);
 			}
 			return true;
 		}
-		DEBUG_LOCKFREE("[LockFreeList] get_from_sdpcc_list_lockfree cond2 skip txn %p key=%lu lock_ready_cnt=%d \n",entry->txn, entry->key, entry->txn->lock_ready_cnt);
+		DEBUG_LOCKFREE("[LockFreeList] get_from_sdpcc_list_lockfree cond2 skip txn %p key=%lu lock_ready_cnt=%d \n", arg.txn, arg.key, arg.txn->lock_ready_cnt);
 		return false;
 	};
-	std::function<bool(list_node_entry*)> func3 = [](list_node_entry * arg) -> bool {
-		return true;
-	};
-	list_node_entry * entry = NULL;
-	key = 0;
-
-	bool succ = sdpcc_scheduled_list_lockfree->try_take(func, func2, entry, thd_id);
+	TxnManager* txn = nullptr;
+	bool succ = sdpcc_list->try_take(judge_lock_watermark, txn, thd_id);
 
 	if (succ) {
 		// DEBUG("[LockFreeList] thd %ld get_from_sdpcc_list_lockfree key=%lu txn=%p\n", thd_id, entry->key, entry->txn);
-		TxnManager * txn = entry->txn;
 		INC_STATS(thd_id,small_lock_get_cnt,1);
 		INC_STATS(thd_id,small_lock_queue_wait_time,get_sys_clock() - starttime);
 		return txn;

@@ -21,6 +21,7 @@
 #include "sdpcc_thread.h"
 #include "sdocc_thread.h"
 #include "sdocc_sequencer.h"
+#include "sdpcc_sequencer.h"
 #include "client_query.h"
 #include "global.h"
 #include "io_thread.h"
@@ -204,6 +205,7 @@ int main(int argc, char *argv[]) {
 #if CC_ALG == SDPCC
 	printf("Initializing sequencer... ");
 	fflush(stdout);
+	sdpcc_seq_man.init(m_wl);
 	seq_man.init(m_wl);
 	printf("Done\n");
 #endif
@@ -241,7 +243,7 @@ int main(int argc, char *argv[]) {
 	all_thd_cnt += 2; // sequencer + scheduler thread
 #endif
 #if CC_ALG == SDPCC
-		all_thd_cnt += (g_scheduler_thread_cnt + 1); // sequencer + scheduler thread
+	all_thd_cnt += (g_scheduler_thread_cnt + 1); // sequencer + scheduler thread
 #endif
 
 #if CC_ALG == ARIA
@@ -317,7 +319,7 @@ int main(int argc, char *argv[]) {
 	pthread_barrier_init( &warmup_bar, NULL, all_thd_cnt);
 
 #if SET_AFFINITY
-	uint64_t cpu_cnt = 10;
+	uint64_t cpu_cnt = g_total_client_thread_cnt + g_total_thread_cnt * g_node_id;
 	cpu_set_t cpus;
 #endif
 	// spawn and run txns again.

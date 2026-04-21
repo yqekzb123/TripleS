@@ -246,6 +246,8 @@ public:
   double twopl_getlock_time;
   double twopl_release_time;
   uint64_t twopl_lock_trace_cnt;
+  uint64_t twopl_lock_trace_owners_cnt;
+  uint64_t twopl_lock_trace_waiters_cnt;
 
   // Calvin
   uint64_t seq_txn_cnt;

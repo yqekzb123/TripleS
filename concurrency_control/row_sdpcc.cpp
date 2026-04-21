@@ -55,6 +55,8 @@ RC Row_sdpcc::lock_get(lock_t type, TxnManager * txn) {
     entry->type = type;
 
     uint64_t trace_cnt = 0;
+    uint64_t trace_owners_cnt = 0;
+    uint64_t trace_waiters_cnt = 0;
 
     if (owners_head == NULL) {
         LIST_PUT_TAIL(owners_head, owners_tail, entry);
@@ -74,14 +76,15 @@ RC Row_sdpcc::lock_get(lock_t type, TxnManager * txn) {
         if (txn_cmp(owners_tail->txn, txn)) {
             // ! txn比owners_tail新，也就是说，当前事务应该塞到owners_list尾部或者waiters_list中
             // 找到waiters_list中第一个比txn新的位置
+            #if 0
+            // 如果从头部开始找
             // ! 下面这一段O(n)复杂度!!!
             LockEntry* pos = waiters_head;
             while (pos && txn_cmp(pos->txn, txn)) {
                 pos = pos->next;
                 trace_cnt++;
+                trace_waiters_cnt++;
             }
-
-            // 如果txn不和owners_list冲突，并且waiters_list为空或者txn比waiters_head老，那么就直接放到owners_list尾部
             if (!isConflict && (waiters_head == NULL || pos == waiters_head)) {
                 // the txn is not conflict with owners_list, AND waiters_list is empty or the txn is older than waiters_head
                 // put into owners_list
@@ -95,10 +98,43 @@ RC Row_sdpcc::lock_get(lock_t type, TxnManager * txn) {
                 } else {
                     // 否则插入到中间位置
                     LIST_INSERT_BEFORE(pos, entry, waiters_head);
+                    // LIST_INSERT_AFTER(pos, entry, waiters_tail);
                 }
                 // ATOM_CAS(txn->lock_ready,true,false);
                 rc = lock_failed(txn);
             }
+            #else 
+            // 5 要插进下面的1-10，按照顺序
+            // 1 2 3 4 X 6 7 8 9 10
+            // 如果从尾部开始
+            LockEntry* pos = waiters_tail;
+            while (pos && txn_cmp(txn, pos->txn)) {
+                pos = pos->prev;
+                trace_cnt++;
+                trace_waiters_cnt++;
+            }
+            // 以上面1-10的例子来算，对应txn 5的 pos其实是4，也就是说，5应该插在pos之后
+
+            // 如果txn不和owners_list冲突，并且waiters_list为空或者txn比waiters_head老，那么就直接放到owners_list尾部
+            if (!isConflict && (waiters_head == NULL || pos == waiters_head)) {
+                // the txn is not conflict with owners_list, AND waiters_list is empty or the txn is older than waiters_head
+                // put into owners_list
+                LIST_PUT_TAIL(owners_head, owners_tail, entry);
+                rc = lock_succeeded(txn, type);
+            } else {
+                // 如果txn和owners_list冲突，或者waiters_list不为空并且txn比waiters_head新，那么就放到waiters_list中
+                if (waiters_head == NULL || pos == NULL) {
+                    // 如果waiters_list为空，或者txn比waiters_list中所有事务都新，那么就直接放到waiters_list尾部
+                    // LIST_PUT_TAIL(waiters_head, waiters_tail, entry);
+                    LIST_PUT_HEAD(waiters_head, waiters_tail, entry);
+                } else {
+                    // 否则插入到中间位置
+                    LIST_INSERT_AFTER(pos, entry, waiters_tail);
+                }
+                // ATOM_CAS(txn->lock_ready,true,false);
+                rc = lock_failed(txn);
+            }
+            #endif
         } else {    
             // ! txn比owners_tail老，需要抢锁了。。。。。。。。
             // 找到owners_list中第一个比txn新的位置
@@ -107,6 +143,7 @@ RC Row_sdpcc::lock_get(lock_t type, TxnManager * txn) {
             while (pos && txn_cmp(pos->txn, txn)) {
                 pos = pos->next;
                 trace_cnt++;
+                trace_owners_cnt++;
             }
 
             if (!isConflict) {
@@ -169,6 +206,8 @@ RC Row_sdpcc::lock_get(lock_t type, TxnManager * txn) {
     INC_STATS(txn->get_thd_id(),twopl_getlock_cnt,1);
 
     INC_STATS(txn->get_thd_id(),twopl_lock_trace_cnt, trace_cnt);
+    INC_STATS(txn->get_thd_id(),twopl_lock_trace_owners_cnt, trace_owners_cnt);
+    INC_STATS(txn->get_thd_id(),twopl_lock_trace_waiters_cnt, trace_waiters_cnt);
 
     pthread_mutex_unlock(latch);
 	return rc;
@@ -224,7 +263,7 @@ RC Row_sdpcc::lock_release(TxnManager * txn) {
 #if DEBUG_TIMELINE
         printf("LOCK %ld %ld\n",entry->txn->get_txn_id(),get_sys_clock());
 #endif
-        DEBUG("2lock (%ld,%ld): owners %d, own type %d, req type %d, key %ld %lx\n",
+        DEBUG_LK("2lock (%ld,%ld): owners %d, own type %d, req type %d, key %ld %lx\n",
             entry->txn->get_batch_id(), entry->txn->get_txn_id(),  owner_cnt, lock_type, entry->type,
             _row->get_primary_key(), (uint64_t)_row);
         uint64_t timespan = get_sys_clock() - entry->txn->twopl_wait_start;
@@ -249,14 +288,15 @@ RC Row_sdpcc::lock_release(TxnManager * txn) {
             for more information, refer to txn.h
         */
         // ASSERT(entry->txn->lock_ready == false);
-        entry->txn->decr_lr();
-        // if(entry->txn->decr_lr() == 0) {
-        //     if(ATOM_CAS(entry->txn->lock_ready,false,true)) {
-        //         entry->txn->txn_stats.cc_block_time += timespan;
-        //         entry->txn->txn_stats.cc_block_time_short += timespan;
-        //         txn_table.restart_txn(txn->get_thd_id(), entry->txn->get_txn_id(), entry->txn->get_batch_id());
-        //     }
-        // }
+        // entry->txn->decr_lr();
+        if(entry->txn->decr_lr() == 0) {
+            if(ATOM_CAS(entry->txn->lock_ready,false,true)) {
+                entry->txn->txn_stats.cc_block_time += timespan;
+                entry->txn->txn_stats.cc_block_time_short += timespan;
+                txn_table.restart_txn(txn->get_thd_id(), entry->txn->get_txn_id(), entry->txn->get_batch_id());
+                DEBUG_SCH("[SDPCC_LOCK] %ld txn %ld,%ld re-enqueue txn %ld,%ld\n", txn->get_thd_id(), txn->get_batch_id(), txn->get_txn_id(), entry->txn->get_batch_id(), entry->txn->get_txn_id());
+            }
+        }
         if (lock_type == LOCK_NONE) {
             own_starttime = get_sys_clock();
         }
@@ -315,17 +355,18 @@ RC Row_sdpcc::lock_succeeded(TxnManager *txn, lock_t type) {
 }
 
 RC Row_sdpcc::lock_failed(TxnManager *txn) {
-    // ATOM_CAS(txn->lock_ready, true, false);
+    ATOM_CAS(txn->lock_ready, true, false);
     txn->incr_lr();
     return WAIT;
 }
 
 void Row_sdpcc::deprive_lock(LockEntry *start) {
     LockEntry *en = start;
+    // !歪日，这个抢锁，居然是O(n)复杂度的，感觉效率不太高啊
     while (en != NULL) {
         owner_cnt--;
         en->txn->incr_lr();
-        // ATOM_CAS(en->txn->lock_ready, true, false);
+        ATOM_CAS(en->txn->lock_ready, true, false);
         en = en->next;
     }
 }
