@@ -113,22 +113,30 @@ RC Row_sdpcc::lock_get(lock_t type, TxnManager * txn) {
                 trace_cnt++;
                 trace_waiters_cnt++;
             }
-            // 以上面1-10的例子来算，对应txn 5的 pos其实是4，也就是说，5应该插在pos之后
-
-            // 如果txn不和owners_list冲突，并且waiters_list为空或者txn比waiters_head老，那么就直接放到owners_list尾部
-            if (!isConflict && (waiters_head == NULL || pos == waiters_head)) {
+            // 注意: 这里是从尾部向前遍历，循环退出时 pos 的语义是
+            //   pos == NULL    -> txn 比所有 waiters 都老（应该插在 waiters head 或直接进 owners，视冲突而定）
+            //   pos == waiters_tail -> txn 比所有 waiters 都新（应该 append 到 waiters tail）
+            //   否则 pos 指向应该插入在其之后的位置
+            // 如果 txn 不和 owners_list 冲突，并且 waiters_list 为空或者 txn 比 waiters_list 中最老的还老（pos == NULL），
+            // 那么就直接放到 owners_list 尾部
+            if (!isConflict && (waiters_head == NULL || pos == NULL)) {
                 // the txn is not conflict with owners_list, AND waiters_list is empty or the txn is older than waiters_head
                 // put into owners_list
                 LIST_PUT_TAIL(owners_head, owners_tail, entry);
                 rc = lock_succeeded(txn, type);
             } else {
                 // 如果txn和owners_list冲突，或者waiters_list不为空并且txn比waiters_head新，那么就放到waiters_list中
-                if (waiters_head == NULL || pos == NULL) {
-                    // 如果waiters_list为空，或者txn比waiters_list中所有事务都新，那么就直接放到waiters_list尾部
-                    // LIST_PUT_TAIL(waiters_head, waiters_tail, entry);
+                if (waiters_head == NULL) {
+                    // waiters 为空，直接放入 tail（等价于 head）
+                    LIST_PUT_TAIL(waiters_head, waiters_tail, entry);
+                } else if (pos == NULL) {
+                    // txn 比所有 waiters 都老，但与 owners 冲突 -> 成为最老的 waiter（放到 head）
                     LIST_PUT_HEAD(waiters_head, waiters_tail, entry);
+                } else if (pos == waiters_tail) {
+                    // txn 比所有 waiters 都新 -> append 到 tail
+                    LIST_PUT_TAIL(waiters_head, waiters_tail, entry);
                 } else {
-                    // 否则插入到中间位置
+                    // 中间插入 -> 插在 pos 之后
                     LIST_INSERT_AFTER(pos, entry, waiters_tail);
                 }
                 // ATOM_CAS(txn->lock_ready,true,false);

@@ -193,7 +193,7 @@
 
 #define LONG_TXN_WORKLOAD false
 // #define LONG_TXN_SCHEDULE false
-#define SCHEDULER_CNT 4
+#define SCHEDULER_CNT 5
 
 // ==== [YCSB] ====
 // SKEW_METHOD:
@@ -204,7 +204,7 @@
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
 #define SYNTH_TABLE_SIZE 16777216
-#define ZIPF_THETA 0.9
+#define ZIPF_THETA 0.7
 #define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
