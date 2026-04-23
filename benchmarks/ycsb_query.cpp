@@ -137,8 +137,8 @@ uint64_t YCSBQuery::get_participants(Workload * wl) {
 	assert(participant_nodes.size()==0);
 	assert(active_nodes.size()==0);
 	for(uint64_t i = 0; i < g_node_cnt; i++) {
-			participant_nodes.add(0);
-			active_nodes.add(0);
+		participant_nodes.add(0);
+		active_nodes.add(0);
 	}
 	assert(participant_nodes.size()==g_node_cnt);
 	assert(active_nodes.size()==g_node_cnt);
