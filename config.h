@@ -106,7 +106,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG SILO
+#define CC_ALG CALVIN
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -164,7 +164,7 @@
 #define PRE_ABORT2					"true"
 #define ATOMIC_WORD					false
 // [SDOCC]
-#define RWSET_KNOWN false
+#define RWSET_KNOWN true
 /***********************************************/
 // Dynamic write perc and skew
 /***********************************************/
@@ -226,7 +226,7 @@
 #define CREATE_TXN_FILE false
 #define STRICT_PPT 0
 // 打开随机依赖
-#define OPEN_YCSB_DEPENDENCY true
+#define OPEN_YCSB_DEPENDENCY false
 #define ZIPF_0_PERC 0.0 // the percentage of zipf theta = 0
 
 
@@ -247,7 +247,7 @@
 #define WH_UPDATE         false
 #define NUM_WH 32
 // % of transactions that access multiple partitions
-#define MPR 1.0
+#define MPR 0.2
 #define MPIR 0.01
 #define MPR_NEWORDER MPR
 #if NODE_CNT == 1

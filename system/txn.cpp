@@ -431,6 +431,8 @@ void TxnManager::reset() {
 	last_sdocc_read_reservation = 0;
 	last_sdocc_write_reservation = 0;
 	sdocc_phase = SDOCC_INIT;
+	sdocc_send_remote = false;
+	sdocc_expected_rsp_cnt = 0;
 #endif
 	assert(txn);
 	assert(query);

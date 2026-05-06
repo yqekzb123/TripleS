@@ -202,6 +202,8 @@ public:
 	RC start_sdocc_check();
 	RC start_sdocc_commit();
 	SDOCC_PHASE sdocc_phase;
+	bool sdocc_send_remote;
+	uint64_t sdocc_expected_rsp_cnt;
 	#endif
 
 	RC start_abort();
@@ -332,7 +334,6 @@ public:
     // 如果此事务被插入到 sdpcc_scheduled_list_lockfree 中，
     // scheduled_entry 指向其对应的 list_node_entry（用于更新 snapshot）
     struct list_node_entry* scheduled_entry = nullptr;
-
 protected:
 
 	int rsp_cnt;

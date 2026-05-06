@@ -211,9 +211,11 @@ void WorkerThread::commit() {
   INC_STATS(get_thd_id(), trans_commit_count, 1);
   INC_STATS(get_thd_id(), trans_total_count, 1);
 
+  INC_STATS(get_thd_id(), sdocc_total_txn_cnt, 1);
   #if CC_ALG == SDOCC 
   INC_STATS(get_thd_id(), trans_abort_count, ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
   uint64_t retry_cnt = ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt;
+  INC_STATS(get_thd_id(), sdocc_total_retry_cnt, retry_cnt);
   if (retry_cnt >= 0 && retry_cnt < 99) {
     INC_STATS(get_thd_id(), sdocc_retry_cnt[retry_cnt], 1);
   } else if (retry_cnt >= 99) {
@@ -383,6 +385,11 @@ RC WorkerThread::run() {
   uint64_t ready_starttime;
   uint64_t idle_starttime = 0;
 
+  #if CC_ALG == SDOCC
+  // uint64_t current_minSid = 0;
+  uint64_t old_minSid = 0;
+  #endif
+
 	while(!simulation->is_done()) {
     txn_man = NULL;
     heartbeat();
@@ -551,20 +558,29 @@ RC WorkerThread::run() {
     }
     INC_STATS(get_thd_id(),worker_deactivate_txn_time,get_sys_clock() - ready_starttime);
     #if CC_ALG == SDOCC
+    // 如果需要重试
     if (rc == RETRY && IS_LOCAL(txn_man->get_txn_id()) && !((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued) {
-      // !事务重新入队
-      uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
-      bool watermark_passed = key <= check_water_mark->get_global_watermark();
-      DEBUG("Thd %ld txn %ld,%ld re-enqueue to list because %swatermark_passed: %d, rc: %d, <watermark_key: %ld, min_sid: %ld>\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), !watermark_passed ? "!" : "", watermark_passed, rc, key, check_water_mark->get_global_watermark());
-
-
-      assert(txn_man->sdocc_phase == SDOCC_CHECK);
-      // work_queue.insert_sdocc_list_lockfree(get_thd_id(), txn_man);
-      assert(txn_man->last_msg->get_rtype() == CL_QRY);
-      ((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued = true;
-      ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt++;
-      work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
+      tmp_txn_list.push_back(txn_man);
     }
+    uint64_t current_minSid = check_water_mark->get_global_watermark();
+    if (current_minSid != old_minSid) {
+      handle_tmp_txn(current_minSid,old_minSid);
+    }
+    
+    // for (auto& txn_man : tmp_txn_list) {
+    //   // !事务重新入队
+    //   uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+    //   bool watermark_passed = key <= check_water_mark->get_global_watermark();
+    //   DEBUG("Thd %ld txn %ld,%ld re-enqueue to list because %swatermark_passed: %d, rc: %d, <watermark_key: %ld, min_sid: %ld>\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), !watermark_passed ? "!" : "", watermark_passed, rc, key, check_water_mark->get_global_watermark());
+
+      // // 如果水印过了，说明是因为其他原因导致的重试，这种情况直接放回work queue
+      // assert(txn_man->sdocc_phase == SDOCC_CHECK);
+      // // work_queue.insert_sdocc_list_lockfree(get_thd_id(), txn_man);
+      // assert(txn_man->last_msg->get_rtype() == CL_QRY);
+      // ((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued = true;
+      // ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt++;
+      // work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
+    // }
     #endif
     // delete message
     ready_starttime = get_sys_clock();
@@ -584,6 +600,7 @@ RC WorkerThread::run() {
   fflush(stdout);
   return FINISH;
 }
+
 #endif
 
 RC WorkerThread::process_rfin(Message * msg) {
@@ -633,6 +650,8 @@ RC WorkerThread::process_rack_prep(Message * msg) {
 #endif
   if (responses_left > 0) return WAIT;
   INC_STATS(get_thd_id(), trans_validation_network, get_sys_clock() - txn_man->txn_stats.trans_validate_network_start_time);
+  INC_STATS(get_thd_id(), remote_round_cnt, 1);
+  INC_STATS(get_thd_id(), remote_validate_cnt, 1);
   // Done waiting
   #if CC_ALG == SDOCC
   // 对于SDOCC来说，即使远程因为水印需要retry，本地也得先验证一次
@@ -723,6 +742,8 @@ RC WorkerThread::process_rack_rfin(Message * msg) {
 
   // Done waiting
   txn_man->txn_stats.twopc_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
+  INC_STATS(get_thd_id(), remote_round_cnt, 1);
+  INC_STATS(get_thd_id(), remote_commit_cnt, 1);
 
 #if CC_ALG == ARIA
   Message * message = Message::create_message(txn_man, ARIA_ACK);
@@ -754,6 +775,9 @@ RC WorkerThread::process_rqry_rsp(Message * msg) {
   assert(IS_LOCAL(msg->get_txn_id()));
   INC_STATS(get_thd_id(), trans_process_network, get_sys_clock() - txn_man->txn_stats.trans_process_network_start_time);
   txn_man->txn_stats.remote_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
+
+  INC_STATS(get_thd_id(), remote_round_cnt, 1);
+  INC_STATS(get_thd_id(), remote_execution_cnt, 1);
 
   if(((QueryResponseMessage*)msg)->rc == Abort) {
     txn_man->start_abort();
@@ -954,6 +978,8 @@ RC WorkerThread::process_rtxn(Message * msg) {
         msg->copy_to_txn(txn_man);
         txn_man->sdocc_phase = SDOCC_PHASE::SDOCC_EXECUTION;
         txn_man->return_id = msg->return_node_id;
+        txn_man->sdocc_send_remote = false;
+        txn_man->sdocc_expected_rsp_cnt = 0;
       } else {
         assert(txn_man->sdocc_phase == SDOCC_PHASE::SDOCC_CHECK);
         // txn_man->txn_stats.starttime = get_sys_clock();
@@ -1162,6 +1188,37 @@ ts_t WorkerThread::get_next_ts() {
 		return _curr_ts;
 	}
 }
+
+#if CC_ALG == SDOCC
+
+void WorkerThread::handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid) {
+	DEBUG_SCH("[SDOCCThread] %ld handle tmp_txn_list, current_minSid %ld, old_minSid %ld\n", _thd_id,current_minSid, old_minSid);
+	// 开始尝试遍历vector中key小于current_minSid的，然后根据有没有加到锁，塞到队列里去.
+	uint64_t idx = 0;
+	for(idx = 0; idx < tmp_txn_list.size(); idx++) {
+	// for (auto txn_man:tmp_txn_list){
+		TxnManager *txn_man = tmp_txn_list[idx];
+		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+		DEBUG_SCH("[SDOCCThread] %ld handle txn %ld,%ld, key %ld, current_minSid %ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id(), key, current_minSid);
+		if (key > current_minSid) break;
+
+    // 如果水印过了，说明是因为其他原因导致的重试，这种情况直接放回work queue
+    assert(txn_man->sdocc_phase == SDOCC_CHECK);
+    // work_queue.insert_sdocc_list_lockfree(get_thd_id(), txn_man);
+    assert(txn_man->last_msg->get_rtype() == CL_QRY);
+    ((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued = true;
+    ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt++;
+    work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
+
+    DEBUG_SCH("[SDOCCThread] %ld enqueue txn %ld,%ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id());
+	}
+	// !还差一段，把小于idx的事务，都从队列里删掉
+	// tmp_txn_list.erase(0, idx - 1);
+	tmp_txn_list.erase(tmp_txn_list.begin(), tmp_txn_list.begin() + idx);
+
+	old_minSid = current_minSid;
+}
+#endif
 
 void StatsPerIntervalThread::setup(){
 

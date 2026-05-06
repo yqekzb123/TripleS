@@ -607,6 +607,7 @@ RC YCSBTxnManager::run_sdocc_txn() {
         for (uint64_t i = 0; i < g_node_cnt; i++) {
           if (i == g_node_id) continue;
           if (((YCSBQuery*)query)->participant_nodes[i] == 1) {
+            query->partitions_touched.add_unique(GET_PART_ID(0,i));
             msg_queue.enqueue(get_thd_id(), Message::create_message(this, RQRY), i);
           } 
         }

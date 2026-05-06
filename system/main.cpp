@@ -290,7 +290,7 @@ int main(int argc, char *argv[]) {
 	aria_seq_thds = new AriaSequencerThread[1];
 #endif
 
-#if CC_ALG == SDOCC || CC_ALG == SILO
+#if CC_ALG == SDOCC// || CC_ALG == SILO
 	sdocc_seq_thds = new SDOCCSequencerThread[1];
 #endif
 	// query_queue should be the last one to be initialized!!!
@@ -319,7 +319,7 @@ int main(int argc, char *argv[]) {
 	pthread_barrier_init( &warmup_bar, NULL, all_thd_cnt);
 
 #if SET_AFFINITY
-	uint64_t cpu_cnt = g_total_client_thread_cnt + g_total_thread_cnt * g_node_id;
+	uint64_t cpu_cnt = g_total_client_thread_cnt + g_total_thread_cnt * (g_node_id % 2);
 	cpu_set_t cpus;
 #endif
 	// spawn and run txns again.

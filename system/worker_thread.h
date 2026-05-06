@@ -62,6 +62,13 @@ private:
     ts_t        _curr_ts;
     ts_t        get_next_ts();
     TxnManager * txn_man;
+
+    #if CC_ALG == SDOCC
+    // 用来放还不能重试的事务
+    std::vector<TxnManager*> tmp_txn_list;
+
+    void handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid);
+    #endif
 };
 
 class StatsPerIntervalThread : public Thread {

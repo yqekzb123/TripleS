@@ -61,7 +61,13 @@ void Stats_thd::init(uint64_t thd_id) {
 
 #if CC_ALG == SDOCC
   sdocc_retry_cnt = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * 100);
-#endif 
+  sdocc_total_retry_cnt = 0;
+  #endif
+  sdocc_total_txn_cnt = 0;
+  remote_round_cnt = 0;
+  remote_validate_cnt = 0;
+  remote_execution_cnt = 0;
+  remote_commit_cnt = 0;
 
   DEBUG_M("Stats_thd::init mtx alloc\n");
   mtx= (double *) mem_allocator.align_alloc(sizeof(double) * 40);
@@ -418,7 +424,7 @@ void Stats_thd::print_client(FILE * outf, bool prog) {
   if (total_runtime > 0) tput = txn_cnt / (total_runtime / BILLION);
   fprintf(outf,
       "total_runtime=%f"
-      ",tput=%f"
+      ",tput=%.2f"
       ",txn_cnt=%ld"
       ",txn_sent_cnt=%ld"
       ",txn_run_time=%f"
@@ -1284,7 +1290,18 @@ void Stats_thd::print(FILE * outf, bool prog) {
   for(uint64_t i = 0; i < 100; i ++) {
     fprintf(outf,",rcnt%lu=%lu",i,sdocc_retry_cnt[i]);
   }
-#endif
+  double sdocc_avg_retry_time = (double)sdocc_total_retry_cnt/(double)sdocc_total_txn_cnt;
+  fprintf(outf,"\nsdocc_avg_retry_time=%lf,",sdocc_avg_retry_time);
+  #endif
+  double sdocc_avg_round_time = (double)remote_round_cnt/(double)sdocc_total_txn_cnt;
+  fprintf(outf,"avg_round_time=%lf,",sdocc_avg_round_time);
+  double sdocc_avg_exe_round_time = (double)remote_execution_cnt/(double)sdocc_total_txn_cnt;
+  fprintf(outf,"avg_exe_round_time=%lf,",sdocc_avg_exe_round_time);
+  double sdocc_avg_validate_round_time = (double)remote_validate_cnt/(double)sdocc_total_txn_cnt;
+  fprintf(outf,"avg_validate_round_time=%lf,",sdocc_avg_validate_round_time);
+  double sdocc_avg_commit_round_time = (double)remote_commit_cnt/(double)sdocc_total_txn_cnt;
+  fprintf(outf,"avg_commit_round_time=%lf\n",sdocc_avg_commit_round_time);
+
   //first_start_commit_latency.print(outf);
 
   //start_abort_commit_latency.print(outf);
@@ -1476,7 +1493,14 @@ void Stats_thd::combine(Stats_thd * stats) {
   for(uint64_t i = 0; i < 100; i ++) {
     sdocc_retry_cnt[i] += stats->sdocc_retry_cnt[i];
   }
-#endif
+  sdocc_total_retry_cnt+=stats->sdocc_total_retry_cnt;
+  #endif
+  sdocc_total_txn_cnt +=stats->sdocc_total_txn_cnt;
+  remote_round_cnt+=stats->remote_round_cnt;
+  remote_execution_cnt+=stats->remote_execution_cnt;
+  remote_validate_cnt+=stats->remote_validate_cnt;
+  remote_commit_cnt+=stats->remote_commit_cnt;
+
   // Concurrency control, general
   cc_conflict_cnt+=stats->cc_conflict_cnt;
   txn_wait_cnt+=stats->txn_wait_cnt;

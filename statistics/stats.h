@@ -223,6 +223,12 @@ public:
 
   // SDOCC, retry count
   uint64_t * sdocc_retry_cnt;
+  uint64_t sdocc_total_retry_cnt;
+  uint64_t sdocc_total_txn_cnt;
+  uint64_t remote_round_cnt;
+  uint64_t remote_execution_cnt;
+  uint64_t remote_validate_cnt;
+  uint64_t remote_commit_cnt;
 
   // Concurrency control, general
   uint64_t cc_conflict_cnt;
