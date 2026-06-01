@@ -536,19 +536,31 @@ RC WorkerThread::run() {
       if (ATOM_ADD_FETCH(simulation->batch_process_count, 1) == g_aria_batch_size) {
         bool isAriaCommit = simulation->aria_phase == ARIA_COMMIT;
         bool success = ATOM_CAS(simulation->batch_process_count, g_aria_batch_size, 0);
-        DEBUG_SCH("Worker %ld finished aria phase %d, batch_process_count %ld, success: %d\n", get_thd_id(), simulation->aria_phase, simulation->batch_process_count, success);
+        DEBUG_SCH("Worker %ld finished aria batch %ld phase %d, batch_process_count %ld, success: %d\n", get_thd_id(), simulation->current_batch_id, simulation->aria_phase, simulation->batch_process_count, success);
         assert(success);
         if (!isAriaCommit) {
           // 如果不是Commit阶段，而且是跨节点事务，且是ARIA_RESERVATION和ARIA_CHECK阶段，就走两阶段，和其他所有节点发送ACK
           if (g_mpr != 0 && (simulation->aria_phase == ARIA_RESERVATION || simulation->aria_phase == ARIA_CHECK)) {
             for (uint64_t i = 0; i < g_node_cnt; i++) {
               if (i == g_node_id) continue;
-              msg_queue.enqueue(_thd_id, Message::create_message(ARIA_ACK), i);
-              // DEBUG_SCH("Worker %ld sent ARIA_ACK to node %ld for phase %d\n", get_thd_id(), i, simulation->aria_phase);
+              Message* msg = Message::create_message(ARIA_ACK); 
+              ((AckMessage*)msg)->batch_id = simulation->current_batch_id;
+              ((AckMessage*)msg)->aria_phase = simulation->aria_phase;
+              msg_queue.enqueue(_thd_id, msg, i);
+              DEBUG_SCH("Worker %ld sent ARIA_ACK to node %ld for batch %ld phase %d\n", get_thd_id(), i, simulation->current_batch_id, simulation->aria_phase);
             }
-            while (simulation->barrier_count != g_node_cnt - 1 && !simulation->is_done()) {}
-            simulation->barrier_count = 0;
-            memset(simulation->barriers, 0, sizeof(uint64_t) * g_node_cnt);
+            uint64_t index = 0;
+            if (simulation->aria_phase == ARIA_RESERVATION) {
+              index = 0;
+            } else if (simulation->aria_phase == ARIA_CHECK) {
+              index = 1;
+            } else {
+              assert(false);
+            }
+            while (simulation->aria_barrier[index].barrier_count != g_node_cnt - 1 && !simulation->is_done()) {}
+            // while (simulation->barrier_count != g_node_cnt - 1 && !simulation->is_done()) {}
+            // simulation->barrier_count = 0;
+            // memset(simulation->barriers, 0, sizeof(uint64_t) * g_node_cnt);
             simulation->next_aria_phase();
           } else {
             simulation->next_aria_phase();
@@ -573,6 +585,7 @@ RC WorkerThread::run() {
         DEBUG_SCH("Thd %ld txn %ld,%ld needs retry, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
         ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt++;
         txn_man->retry_cnt = ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt;
+        txn_man->enter_tmp_queue_time = get_server_clock();
         tmp_txn_list.insert(txn_man);
         tmp_txn_list_size++;
         // tmp_txn_list.push_back(txn_man);
@@ -998,9 +1011,12 @@ RC WorkerThread::process_rtxn(Message * msg) {
         txn_man->return_id = msg->return_node_id;
         txn_man->sdocc_send_remote = false;
         txn_man->sdocc_expected_rsp_cnt = 0;
+        txn_man->txn_stats.starttime = get_sys_clock();
+        txn_man->txn_stats.restart_starttime = txn_man->txn_stats.starttime;
       } else {
         assert(txn_man->sdocc_phase == SDOCC_PHASE::SDOCC_CHECK);
         // txn_man->txn_stats.starttime = get_sys_clock();
+        txn_man->txn_stats.restart_starttime = get_server_clock();
         // txn_man->txn_stats.restart_starttime = txn_man->txn_stats.starttime;
       }
       // 这里是下一次重试的入口，将has_re_enqueued置为false，以便于允许下一次重试重新入队
@@ -1176,15 +1192,62 @@ RC WorkerThread::process_aria_rtxn(Message * msg) {
 // #endif
 
 RC WorkerThread::process_aria_ack(Message * msg) {
-  if (simulation->barriers[msg->get_return_id()]) {
-    work_queue.enqueue(_thd_id, msg, false);
+  AckMessage * ack = (AckMessage *)msg;
+  // 考虑几种情况吧，消息落后于当前阶段了，这个明显不对
+
+  int index = 0;
+  if (ack->aria_phase == ARIA_RESERVATION) {
+    index = 0;
+  } else if (ack->aria_phase == ARIA_CHECK) {
+    index = 1;
   } else {
-    simulation->barriers[msg->get_return_id()] = true;
-    DEBUG_SCH("Worker %ld reached barrier for node %ld\n", get_thd_id(), msg->get_return_id());
-    simulation->barrier_count++;
-    msg->release();
-    delete msg;
+    assert(false);
   }
+  assert(ack->batch_id == simulation->current_batch_id || ack->batch_id == simulation->current_batch_id + 1);
+
+  if (ack->batch_id < simulation->current_batch_id || 
+     (ack->batch_id == simulation->current_batch_id && ack->aria_phase < simulation->aria_phase)) {
+    assert(false);
+  } else if (ack->batch_id > simulation->current_batch_id || 
+     (ack->batch_id == simulation->current_batch_id && ack->aria_phase > simulation->aria_phase)) {
+    // 说明这个ACK是下一轮的
+    DEBUG_SCH("Worker %ld received future ARIA_ACK for node %ld, ack batch %ld phase %ld, current batch %ld phase %d\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->aria_phase, simulation->current_batch_id, simulation->aria_phase);
+  } else {
+    DEBUG_SCH("Worker %ld received ARIA_ACK for node %ld, batch %ld phase %ld\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->aria_phase);
+  }
+  assert(ack->batch_id == simulation->aria_barrier[index].batch_id);
+  simulation->aria_barrier[index].set_barrier(ack->get_return_id());
+  std::string str = simulation->aria_barrier[0].get_barrier_str("0") + simulation->aria_barrier[1].get_barrier_str("1");
+  DEBUG_SCH("%s\n", str.c_str());
+  msg->release();
+  delete msg;
+  // } else if (ack->batch_id == simulation->current_batch_id && ack->aria_phase == simulation->aria_phase) {
+  //   // 说明这个ACK是当前轮的，直接处理
+  //   if (simulation->aria_barrier[simulation->aria_barrier_index].check_barrier(ack->get_return_id())) {
+  //     // 如果对应的节点已经到达屏障了，说明这个ACK是重复的，出了问题
+  //     assert(false);
+  //   } else {
+  //     DEBUG_SCH("Worker %ld received ARIA_ACK for node %ld, batch %ld phase %ld\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->aria_phase);
+  //     // DEBUG_SCH("Worker %ld reached barrier for node %ld\n", get_thd_id(), msg->get_return_id());
+  //     simulation->aria_barrier[simulation->aria_barrier_index].set_barrier(ack->get_return_id());
+  //     std::string str = simulation->aria_barrier[0].get_barrier_str("0") + simulation->aria_barrier[1].get_barrier_str("1");
+  //     DEBUG_SCH("%s\n", str.c_str());
+  //     msg->release();
+  //     delete msg;
+  //   }
+  // }
+
+
+  // if (simulation->barriers[ack->get_return_id()]) {
+  //   work_queue.enqueue(_thd_id, msg, false);
+  //   DEBUG_SCH("Worker %ld received ARIA_ACK for node %ld, but already reached barrier, re-enqueueing, now phase %d\n", get_thd_id(), ack->get_return_id(), simulation->aria_phase);
+  // } else {
+  //   simulation->barriers[ack->get_return_id()] = true;
+  //   // DEBUG_SCH("Worker %ld reached barrier for node %ld\n", get_thd_id(), msg->get_return_id());
+  //   simulation->barrier_count++;
+  //   msg->release();
+  //   delete msg;
+  // }
   return RCOK;
 }
 #endif
@@ -1212,47 +1275,28 @@ ts_t WorkerThread::get_next_ts() {
 #if CC_ALG == SDOCC
 
 void WorkerThread::handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid) {
-	DEBUG_SCH("[SDOCCThread] %ld handle tmp_txn_list, current_minSid %ld, old_minSid %ld, tmp_txn_list size %ld\n", _thd_id,current_minSid, old_minSid, tmp_txn_list_size);
+  double start_time = get_sys_clock();
+  int out_cnt = 0;
   std::vector<TxnManager*> to_reenqueue = tmp_txn_list.pop_less_than(current_minSid);
   for (auto txn_man:to_reenqueue){
+  // TxnManager* txn_man = nullptr;
+  // for (;tmp_txn_list.get_next(current_minSid,txn_man);){
 		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
 		DEBUG_SCH("[SDOCCThread] %ld handle txn %ld,%ld, key %ld, current_minSid %ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id(), key, current_minSid);
 
     // 如果水印过了，说明是因为其他原因导致的重试，这种情况直接放回work queue
     assert(txn_man->sdocc_phase == SDOCC_CHECK);
-    // work_queue.insert_sdocc_list_lockfree(get_thd_id(), txn_man);
     assert(txn_man->last_msg->get_rtype() == CL_QRY);
-    // ((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued = true;
-    // ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt++;
+    INC_STATS(get_thd_id(), tmp_txn_time, get_sys_clock()-txn_man->enter_tmp_queue_time);
+    INC_STATS(get_thd_id(), tmp_txn_cnt, 1);
     work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
     tmp_txn_list_size--;
+    out_cnt++;
     DEBUG_SCH("[SDOCCThread] %ld enqueue txn %ld,%ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id());
   }
-  // DEBUG_SCH("[SDOCCThread] %ld handle tmp_txn_list, current_minSid %ld, old_minSid %ld, tmp_txn_list size %ld\n", _thd_id,current_minSid, old_minSid, tmp_txn_list.size());
-	// 开始尝试遍历vector中key小于current_minSid的，然后根据有没有加到锁，塞到队列里去.
-	// uint64_t idx = 0;
-	// for(idx = 0; idx < tmp_txn_list.size(); idx++) {
-	// // for (auto txn_man:tmp_txn_list){
-	// 	TxnManager *txn_man = tmp_txn_list[idx];
-	// 	uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
-	// 	DEBUG_SCH("[SDOCCThread] %ld handle txn %ld,%ld, key %ld, current_minSid %ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id(), key, current_minSid);
-	// 	if (key > current_minSid) break;
-
-  //   // 如果水印过了，说明是因为其他原因导致的重试，这种情况直接放回work queue
-  //   assert(txn_man->sdocc_phase == SDOCC_CHECK);
-  //   // work_queue.insert_sdocc_list_lockfree(get_thd_id(), txn_man);
-  //   assert(txn_man->last_msg->get_rtype() == CL_QRY);
-  //   // ((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued = true;
-  //   // ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt++;
-  //   work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
-
-  //   DEBUG_SCH("[SDOCCThread] %ld enqueue txn %ld,%ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id());
-	// }
-	// !还差一段，把小于idx的事务，都从队列里删掉
-	// tmp_txn_list.erase(0, idx - 1);
-	// tmp_txn_list.erase(tmp_txn_list.begin(), tmp_txn_list.begin() + idx);
-
 	old_minSid = current_minSid;
+  double end_time = get_sys_clock();
+  DEBUG_SCH("[SDOCCThread] %ld handle tmp_txn_list, current_minSid %ld, old_minSid %ld, tmp_txn_list size %ld, out_cnt %d, cosume time %lf\n", _thd_id,current_minSid, old_minSid, tmp_txn_list_size, out_cnt, (end_time - start_time)/BILLION);
 }
 #endif
 

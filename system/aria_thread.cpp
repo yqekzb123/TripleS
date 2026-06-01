@@ -29,6 +29,7 @@ RC AriaSequencerThread::run() {
         if (simulation->aria_phase == ARIA_COLLECT) {
             aria_seq.fill_batch(_thd_id);
             aria_seq.send_next_batch(_thd_id);
+            simulation->current_batch_id = aria_seq.get_batch_id();
             simulation->next_aria_phase();
             // printf("thd_id: %ld, phase: %d\n", _thd_id, simulation->aria_phase);
             assert(simulation->aria_phase == ARIA_READ);

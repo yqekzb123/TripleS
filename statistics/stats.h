@@ -231,6 +231,8 @@ public:
   uint64_t remote_commit_cnt;
   uint64_t rwset_known_cnt;
   uint64_t rwset_unknown_cnt;
+  double tmp_txn_time;
+  uint64_t tmp_txn_cnt;
 
 
   // Concurrency control, general

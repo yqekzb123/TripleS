@@ -77,6 +77,20 @@ public:
 		return out;
 	}
 
+	bool get_next(const uint64_t watermark, T& out) noexcept {
+		// T out;
+		if (head && comp2(head->value, watermark)) {
+			Node* n = head;
+			head = head->next;
+			out = std::move(n->value);
+			delete n;
+			--sz;
+			return true;
+		} else {
+			return false;
+		}
+	}
+
 	// 清空链表
 	void clear() noexcept {
 		Node* cur = head;

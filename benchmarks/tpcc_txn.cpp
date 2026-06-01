@@ -804,10 +804,18 @@ RC TPCCTxnManager::run_txn_state() {
 					row = (row_t *)item->location;
 					rc = run_stock_level_3(w_id, d_id, tpcc_query->o_id, row);
 				} else {
+					// #if CC_ALG == SDOCC
+					// rc = RCOK;
+					// #else
 					rc = Abort;
+					// #endif
 				}
 			} else {
+				// #if CC_ALG == SDOCC
+				// rc = RCOK;
+				// #else
 				rc = Abort;
+				// #endif
 			}
 			break;
 		case TPCC_STOCK_LEVEL4 :
@@ -827,7 +835,13 @@ RC TPCCTxnManager::run_txn_state() {
 			break;
 		case TPCC_FIN :
 			state = TPCC_FIN;
-			if (tpcc_query->rbk) return Abort;
+			if (tpcc_query->rbk) {
+				// #if CC_ALG == SDOCC
+				// return RCOK;
+				// #else
+				return Abort;
+				// #endif
+			}
 			//return finish(tpcc_query,false);
 			break;
 		default:
@@ -2380,11 +2394,13 @@ RC TPCCTxnManager::run_sdocc_txn() {
     #if RWSET_KNOWN
 	if (query->rwset_known) remote_wait = sdocc_expected_rsp_cnt == 0;
     #endif
-    if (is_done() && rc == RCOK && remote_wait) {// 如果执行完了，进入SDOCC检查阶段
+	// if (rc == Abort) rc = RCOK;
+    if (rc == Abort || (is_done() && rc == RCOK && remote_wait)) {// 如果执行完了，进入SDOCC检查阶段
       sdocc_phase = SDOCC_CHECK;
     } else if (rc == RETRY || rc == WAIT || rc == WAIT_REM) {
     } else if (!remote_wait) {
     } else {
+	  printf("Unexpected rc: %d, is_done: %d, remote_wait: %d\n", rc, is_done(), remote_wait);
       assert(false); 
     }
   }

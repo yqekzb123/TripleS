@@ -256,6 +256,7 @@ public:
 	ListNode<watermark_node_entry*>* list_node_pointer;
 
 	uint64_t retry_cnt; // 当前是第几次重试了
+	double enter_tmp_queue_time;
 	std::atomic<bool> has_re_enqueued; // 是否已经重试入队过了，避免重复入队
 	// bool has_re_enqueued; // 是否已经重试入队过了，避免重复入队
 #endif

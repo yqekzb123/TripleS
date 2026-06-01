@@ -195,6 +195,9 @@ public:
 #if CC_ALG == ARIA
   bool raw;
   bool war;
+
+  uint64_t aria_phase;
+  uint64_t batch_id;
 #endif
 #if CC_ALG == SDOCC
   uint64_t retry_cnt = 0;

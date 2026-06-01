@@ -218,8 +218,11 @@ Message* QWorkQueue::work_dequeue(uint64_t thd_id) {
 	Message * msg = NULL;
 	work_queue_entry * entry = NULL;
 	bool valid = false;
-
-	valid = work_queue->pop(entry);
+	// 加一个随机数，50%概率去取work_queue，25%概率去取read_queue，25%概率去取reserve_queue，check_queue和commit_queue暂时不考虑，之后可以根据实际情况调整。
+	int rand_num = rand() % 100;
+	if (rand_num < 50) {
+		valid = work_queue->pop(entry);
+	}
 	if (!valid) {
 		switch (simulation->aria_phase)
 		{

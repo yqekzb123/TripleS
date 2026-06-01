@@ -340,6 +340,8 @@ void Stats_thd::clear() {
   // SDOCC
   workqueue_dequeue_time=0;
   small_lock_queue_dequeue_time=0;
+  tmp_txn_time=0;
+  tmp_txn_cnt=0;
 
   // Logging
   log_write_cnt=0;
@@ -1289,6 +1291,11 @@ void Stats_thd::print(FILE * outf, bool prog) {
   fprintf(outf,"\n");
 #endif
   #if CC_ALG == SDOCC
+  fprintf(outf,"tmp_txn_time=%lf," 
+          "tmp_txn_cnt=%ld,"
+          "avg_tmp_txn_time=%lf",
+    tmp_txn_time/BILLION, tmp_txn_cnt, tmp_txn_time/tmp_txn_cnt/BILLION
+  );
   fprintf(outf,"\nsdocc_retry_cnts\n");
   for(uint64_t i = 0; i < 100; i ++) {
     fprintf(outf,",rcnt%lu=%lu",i,sdocc_retry_cnt[i]);
@@ -1494,7 +1501,7 @@ void Stats_thd::combine(Stats_thd * stats) {
     tputs[i] += stats->tputs[i];
   }
 #endif
-#if CC_ALG == SDOCC
+  #if CC_ALG == SDOCC
   for(uint64_t i = 0; i < 100; i ++) {
     sdocc_retry_cnt[i] += stats->sdocc_retry_cnt[i];
   }
@@ -1507,6 +1514,8 @@ void Stats_thd::combine(Stats_thd * stats) {
   remote_commit_cnt+=stats->remote_commit_cnt;
   rwset_known_cnt+=stats->rwset_known_cnt;
   rwset_unknown_cnt+=stats->rwset_unknown_cnt;
+  tmp_txn_time+=stats->tmp_txn_time;
+  tmp_txn_cnt+=stats->tmp_txn_cnt;
 
   // Concurrency control, general
   cc_conflict_cnt+=stats->cc_conflict_cnt;

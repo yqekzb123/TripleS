@@ -1203,6 +1203,8 @@ uint64_t AckMessage::get_size() {
 #if CC_ALG == ARIA
   size += sizeof(bool);
   size += sizeof(bool);
+  size += sizeof(uint64_t);
+  size += sizeof(uint64_t);
 #endif
 #if WORKLOAD == PPS && CC_ALG == CALVIN
   size += sizeof(size_t);
@@ -1258,6 +1260,9 @@ void AckMessage::copy_from_buf(char * buf) {
 #if CC_ALG == ARIA
   COPY_VAL(raw,buf,ptr);
   COPY_VAL(war,buf,ptr);
+
+  COPY_VAL(aria_phase, buf, ptr);
+  COPY_VAL(batch_id, buf, ptr);
 #endif
 #if CC_ALG == SDOCC
   COPY_VAL(retry_cnt,buf,ptr);
@@ -1286,6 +1291,9 @@ void AckMessage::copy_to_buf(char * buf) {
 #if CC_ALG == ARIA
   COPY_BUF(buf,raw,ptr);
   COPY_BUF(buf,war,ptr);
+
+  COPY_BUF(buf,aria_phase, ptr);
+  COPY_BUF(buf,batch_id, ptr);
 #endif
 #if CC_ALG == SDOCC
   COPY_BUF(buf,retry_cnt,ptr);

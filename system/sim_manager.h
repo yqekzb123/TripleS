@@ -18,6 +18,7 @@
 #define _SIMMAN_H_
 
 #include "global.h"
+#include <string>
 
 // Aria
 enum ARIA_PHASE {
@@ -34,6 +35,60 @@ enum SDOCC_PHASE {
   SDOCC_EXECUTION,
   SDOCC_CHECK,
   SDOCC_COMMIT
+};
+
+// 服了，整一个ARIA_BARRIER类，专门用来处理ARIA的barrier，放在SimManager里，感觉SimManager里东西太多了
+// 这个barrier维护一个循环数组吧，因为phase和batch只会提前一轮，所以只需要维护当前轮和下一轮的barrier就行了，数组大小为2，每轮切换的时候重置对应的barrier
+class AriaBarrier {
+public:
+// 这一段是标记
+  uint64_t batch_id;
+  ARIA_PHASE phase;
+  uint64_t g_node_cnt;
+// 下面这一段是检查
+  uint64_t barrier_count;
+  bool * barriers;
+  int current_barrier_index;
+  void init(uint64_t g_node_cnt, bool * barriers) {
+    this->g_node_cnt = g_node_cnt;
+    batch_id = 1;
+    // phase = ARIA_COLLECT;
+    barrier_count = 0;
+    this->barriers = barriers;
+    memset(this->barriers, 0, sizeof(bool) * g_node_cnt);
+    current_barrier_index = 0;
+  }
+  void init_batch(uint64_t batch_id){ 
+    this->batch_id = batch_id;
+  }
+  void reset_barrier() {
+    // batch_id = 0;
+    barrier_count = 0;
+    memset(barriers, 0, sizeof(bool) * g_node_cnt);
+  }
+  bool set_barrier(uint64_t node_id) {
+    if (barriers[node_id]) {
+      assert(false);
+      return false;
+    } else {
+      barriers[node_id] = true;
+      barrier_count++;
+      return true;
+    }
+  }
+  bool check_barrier(uint64_t node_id) {
+    return barriers[node_id];
+  }
+  std::string get_barrier_str(std::string prefix) {
+    // 帮我把整个barrier的状态打印出来吧，看看哪些节点到达了屏障，哪些没有
+    std::string str = prefix + " batch_id: " + std::to_string(batch_id) + " phase: " + std::to_string(phase) + " barrier_count: " + std::to_string(barrier_count) + " barriers: ";
+    for (uint64_t i = 0; i < g_node_cnt; i++) {
+      str += std::to_string(i) + ":" + (barriers[i] ? "1" : "0") + " ";
+    }
+    str += "\n";
+    return str;
+    // printf("%s\n", str.c_str());
+  }
 };
 
 class SimManager {
@@ -54,9 +109,15 @@ public:
   uint64_t inflight_cnt;
   uint64_t last_da_query_time;
   ARIA_PHASE aria_phase;
+  uint64_t current_batch_id;
   uint64_t batch_process_count;
-  uint64_t barrier_count;
-  bool * barriers;
+
+  // aria_barrier[0]固定用来reservation，
+  // aria_barrier[1]固定用来check，两个barrier交替使用
+  AriaBarrier aria_barrier[2];
+  uint64_t aria_barrier_index;
+  // uint64_t barrier_count;
+  // bool * barriers;
 
   void init();
   bool is_setup_done();

@@ -34,10 +34,19 @@ void SimManager::init() {
 	// aria_phase = ARIA_INIT;
 	// 
 	aria_phase = ARIA_COLLECT;
+	current_batch_id = 0;
 	batch_process_count = 0;
-	barrier_count = 0;
-	barriers = (bool *) mem_allocator.alloc(sizeof(bool) * g_node_cnt);
-	memset(barriers, 0, sizeof(bool) * g_node_cnt);
+	// barrier_count = 0;
+	bool* b1 = (bool *) mem_allocator.alloc(sizeof(bool) * g_node_cnt);
+	bool* b2 = (bool *) mem_allocator.alloc(sizeof(bool) * g_node_cnt);
+	// memset(barriers, 0, sizeof(bool) * g_node_cnt);
+	// aria_barrier.barrier_count[0] = 0;
+	// aria_barrier.barrier_count[1] = 0;
+	aria_barrier[0].init(g_node_cnt,b1);
+	aria_barrier[0].phase = ARIA_RESERVATION;
+	aria_barrier[1].init(g_node_cnt,b2);
+	aria_barrier[1].phase = ARIA_CHECK;
+	aria_barrier_index = 0;
 
 #if TIME_ENABLE
 	run_starttime = get_sys_clock();
@@ -135,5 +144,14 @@ double SimManager::seconds_from_start(uint64_t time) {
 }
 
 void SimManager::next_aria_phase() {
+	if (aria_phase == ARIA_RESERVATION) {
+		aria_barrier[0].reset_barrier();
+		aria_barrier[0].batch_id++; //应该到下一个batch了
+		// aria_barrier[1].init_batch(current_batch_id);
+	} else if (aria_phase == ARIA_CHECK) {
+		aria_barrier[1].reset_barrier();
+		aria_barrier[1].batch_id++; //应该到下一个batch了
+		// aria_barrier[0].init_batch(current_batch_id + 1);
+	} 
 	aria_phase = (ARIA_PHASE)((aria_phase + 1) % 5);
 }
