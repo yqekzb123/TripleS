@@ -44,6 +44,8 @@ public:
     Array<uint64_t> participant_nodes;
     // deterministic abort, to simulate txns that must abort due to deterministic conditions
     bool isDeterministicAbort;
+    // for SDOCC
+    bool rwset_known;
 };
 
 class QueryGenerator {

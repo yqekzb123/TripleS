@@ -219,6 +219,7 @@ extern UInt32 g_init_parallelism;
 extern double g_mpr;
 extern double g_mpr_neworder;
 extern double g_mpitem;
+extern double g_rwset_known_ratio;
 
 // TPCC
 extern UInt32 g_num_wh;

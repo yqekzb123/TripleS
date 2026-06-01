@@ -164,11 +164,20 @@ uint64_t TPCCQuery::participants(bool *& pps,Workload * wl) {
 
 bool TPCCQuery::readonly() { return false; }
 
+void TPCCQueryGenerator::init() {
+  mrand = (myrand *) mem_allocator.alloc(sizeof(myrand));
+	mrand->init(get_sys_clock());
+}
+
 BaseQuery * TPCCQueryGenerator::gen_payment(uint64_t home_partition) {
   TPCCQuery * query = new TPCCQuery;
 	set<uint64_t> partitions_accessed;
 
 	query->txn_type = TPCC_PAYMENT;
+
+  double r = (double)(mrand->next() % 10000) / 10000;
+	query->rwset_known = r < g_rwset_known_ratio;
+
   uint64_t home_warehouse;
 	if (FIRST_PART_LOCAL) {
     while (wh_to_part(home_warehouse = URand(1, g_num_wh)) != home_partition) {
@@ -227,6 +236,9 @@ BaseQuery * TPCCQueryGenerator::gen_payment(uint64_t home_partition) {
 BaseQuery * TPCCQueryGenerator::gen_new_order(uint64_t home_partition) {
   TPCCQuery * query = new TPCCQuery;
 	set<uint64_t> partitions_accessed;
+
+  double r = (double)(mrand->next() % 10000) / 10000;
+	query->rwset_known = r < g_rwset_known_ratio;
 
 	query->txn_type = TPCC_NEW_ORDER;
   query->items.init(g_max_items_per_txn);

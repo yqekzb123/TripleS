@@ -59,11 +59,14 @@ void Stats_thd::init(uint64_t thd_id) {
   tputs = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * SECOND);
 #endif
 
-#if CC_ALG == SDOCC
+  #if CC_ALG == SDOCC
   sdocc_retry_cnt = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * 100);
   sdocc_total_retry_cnt = 0;
   #endif
   sdocc_total_txn_cnt = 0;
+  rwset_known_cnt = 0;
+  rwset_unknown_cnt = 0;
+
   remote_round_cnt = 0;
   remote_validate_cnt = 0;
   remote_execution_cnt = 0;
@@ -538,7 +541,7 @@ void Stats_thd::print(FILE * outf, bool prog) {
   if(single_part_txn_cnt > 0)
     single_part_txn_avg_time = single_part_txn_run_time / single_part_txn_cnt;
   fprintf(outf,
-  ",tput=%f"
+  ",tput=%.2f"
   ",txn_cnt=%ld"
   ",remote_txn_cnt=%ld"
   ",local_txn_cnt=%ld"
@@ -1285,7 +1288,7 @@ void Stats_thd::print(FILE * outf, bool prog) {
   }
   fprintf(outf,"\n");
 #endif
-#if CC_ALG == SDOCC
+  #if CC_ALG == SDOCC
   fprintf(outf,"\nsdocc_retry_cnts\n");
   for(uint64_t i = 0; i < 100; i ++) {
     fprintf(outf,",rcnt%lu=%lu",i,sdocc_retry_cnt[i]);
@@ -1302,6 +1305,8 @@ void Stats_thd::print(FILE * outf, bool prog) {
   double sdocc_avg_commit_round_time = (double)remote_commit_cnt/(double)sdocc_total_txn_cnt;
   fprintf(outf,"avg_commit_round_time=%lf\n",sdocc_avg_commit_round_time);
 
+  fprintf(outf, "rwset_known_cnt=%lu,", rwset_known_cnt);
+  fprintf(outf, "rwset_unknown_cnt=%lu\n", rwset_unknown_cnt);
   //first_start_commit_latency.print(outf);
 
   //start_abort_commit_latency.print(outf);
@@ -1500,6 +1505,8 @@ void Stats_thd::combine(Stats_thd * stats) {
   remote_execution_cnt+=stats->remote_execution_cnt;
   remote_validate_cnt+=stats->remote_validate_cnt;
   remote_commit_cnt+=stats->remote_commit_cnt;
+  rwset_known_cnt+=stats->rwset_known_cnt;
+  rwset_unknown_cnt+=stats->rwset_unknown_cnt;
 
   // Concurrency control, general
   cc_conflict_cnt+=stats->cc_conflict_cnt;

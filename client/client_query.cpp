@@ -122,6 +122,7 @@ Client_query_queue::initQueriesParallel(uint64_t thd_id) {
 	gen->init();
 #elif WORKLOAD == TPCC
 	TPCCQueryGenerator * gen = new TPCCQueryGenerator;
+	gen->init();
 #elif WORKLOAD == PPS
 	PPSQueryGenerator * gen = new PPSQueryGenerator;
 #endif

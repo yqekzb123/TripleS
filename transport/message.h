@@ -49,6 +49,7 @@ public:
   uint64_t batch_id;
   #if CC_ALG == SDOCC
   uint64_t sdocc_phase;
+  bool rwset_known=false;
   #endif
   uint64_t return_node_id;
   uint64_t client_id;
@@ -195,6 +196,9 @@ public:
   bool raw;
   bool war;
 #endif
+#if CC_ALG == SDOCC
+  uint64_t retry_cnt = 0;
+#endif
 
   // For Calvin PPS: part keys from secondary lookup for sequencer response
   Array<uint64_t> part_keys;
@@ -213,6 +217,9 @@ public:
   uint64_t pid;
   RC rc;
   uint64_t txn_id;
+  #if CC_ALG == SDOCC
+  uint64_t retry_cnt = 0;
+  #endif
 };
 
 class ForwardMessage : public Message {
@@ -274,6 +281,7 @@ public:
   uint64_t first_startts;
   Array<uint64_t> partitions;
   bool isDeterministicAbort;
+  bool rwset_known;
 
   #if CC_ALG == ARIA
   ARIA_PHASE aria_phase;
@@ -283,7 +291,7 @@ public:
   #if CC_ALG == SDOCC
   ListNode<watermark_node_entry*>* list_node_pointer;
 
-  bool has_re_enqueued = false;
+  std::atomic<bool> has_re_enqueued{0};
   uint64_t retry_cnt = 0;
   #endif
 };
@@ -379,6 +387,7 @@ public:
 
   uint64_t pid;
   bool isDeterministicAbort;
+  bool rwset_known;
 #if CC_ALG == WAIT_DIE 
   uint64_t ts;
 #endif

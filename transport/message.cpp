@@ -216,6 +216,7 @@ uint64_t Message::mget_size() {
 #endif
 #if CC_ALG == SDOCC
   size += sizeof(uint64_t);
+  // size += sizeof(bool);
 #endif
   // for stats, send message queue time
   size += sizeof(uint64_t);
@@ -233,6 +234,7 @@ void Message::mcopy_from_txn(TxnManager * txn) {
 #endif
 #if CC_ALG == SDOCC
   sdocc_phase = txn->sdocc_phase;
+  // rwset_known = txn->rwset_known;
 #endif
 }
 
@@ -241,6 +243,7 @@ void Message::mcopy_to_txn(TxnManager* txn) {
 #if CC_ALG == SDOCC
   txn->set_batch_id(batch_id);
   txn->sdocc_phase = (SDOCC_PHASE)sdocc_phase;
+  // txn->rwset_known = rwset_known;
 #endif
 }
 
@@ -253,6 +256,7 @@ void Message::mcopy_from_buf(char * buf) {
 #endif
 #if CC_ALG == SDOCC
   COPY_VAL(sdocc_phase,buf,ptr);
+  // COPY_VAL(rwset_known,buf,ptr);
 #endif
   COPY_VAL(mq_time,buf,ptr);
 
@@ -284,6 +288,7 @@ void Message::mcopy_to_buf(char * buf) {
 #endif
 #if CC_ALG == SDOCC
   COPY_BUF(buf,sdocc_phase,ptr);
+  // COPY_BUF(buf,rwset_known,ptr);
 #endif
   COPY_BUF(buf,mq_time,ptr);
 
@@ -430,6 +435,7 @@ uint64_t QueryMessage::get_size() {
   size += sizeof(aria_phase);
 #endif
   size += sizeof(bool);
+  size += sizeof(bool);
   return size;
 }
 
@@ -442,6 +448,7 @@ void QueryMessage::copy_from_txn(TxnManager * txn) {
 #if CC_ALG == OCC
   start_ts = txn->get_start_timestamp();
 #endif
+  rwset_known = txn->query->rwset_known;
 }
 
 void QueryMessage::copy_to_txn(TxnManager * txn) {
@@ -453,7 +460,8 @@ void QueryMessage::copy_to_txn(TxnManager * txn) {
 #if CC_ALG == OCC 
   txn->set_start_timestamp(start_ts);
 #endif
-
+  // txn->query->isDeterministicAbort = isDeterministicAbort;
+  txn->query->rwset_known = rwset_known;
 }
 
 void QueryMessage::copy_from_buf(char * buf) {
@@ -471,6 +479,7 @@ void QueryMessage::copy_from_buf(char * buf) {
   COPY_VAL(aria_phase,buf,ptr);
 #endif
   COPY_VAL(isDeterministicAbort, buf, ptr);
+  COPY_VAL(rwset_known, buf, ptr);
 }
 
 void QueryMessage::copy_to_buf(char * buf) {
@@ -488,6 +497,7 @@ void QueryMessage::copy_to_buf(char * buf) {
   COPY_BUF(buf,aria_phase,ptr);
 #endif
   COPY_BUF(buf, isDeterministicAbort, ptr);
+  COPY_BUF(buf, rwset_known, ptr);
 }
 
 /************************/
@@ -537,6 +547,7 @@ void YCSBClientQueryMessage::copy_from_txn(TxnManager * txn) {
 */
   requests.copy(((YCSBQuery*)(txn->query))->requests);
   isDeterministicAbort = txn->query->isDeterministicAbort;
+  rwset_known = txn->query->rwset_known;
 }
 
 void YCSBClientQueryMessage::copy_to_txn(TxnManager * txn) {
@@ -950,6 +961,7 @@ uint64_t ClientQueryMessage::get_size() {
   size += sizeof(size_t);
   size += sizeof(uint64_t) * partitions.size();
   size += sizeof(bool);
+  size += sizeof(bool);
   #if CC_ALG == ARIA
   size += sizeof(ARIA_PHASE);
   #endif
@@ -963,6 +975,7 @@ void ClientQueryMessage::copy_from_query(BaseQuery * query) {
   partitions.clear();
   partitions.copy(query->partitions);
   isDeterministicAbort = query->isDeterministicAbort;
+  rwset_known = query->rwset_known;
 }
 
 void ClientQueryMessage::copy_from_txn(TxnManager * txn) {
@@ -972,6 +985,7 @@ void ClientQueryMessage::copy_from_txn(TxnManager * txn) {
   partitions.copy(txn->query->partitions);
   client_startts = txn->client_startts;
   isDeterministicAbort = txn->query->isDeterministicAbort;
+  rwset_known = txn->query->rwset_known;
   #if CC_ALG == ARIA
   aria_phase = txn->aria_phase;
   #endif
@@ -985,6 +999,7 @@ void ClientQueryMessage::copy_to_txn(TxnManager * txn) {
   txn->client_startts = client_startts;
   txn->client_id = return_node_id;
   txn->query->isDeterministicAbort = isDeterministicAbort;
+  txn->query->rwset_known = rwset_known;
   #if CC_ALG == ARIA
   txn->aria_phase = aria_phase;
   txn->rld_pointer = rld_pointer;
@@ -1010,6 +1025,7 @@ void ClientQueryMessage::copy_from_buf(char * buf) {
     partitions.add(part);
   }
   COPY_VAL(isDeterministicAbort, buf, ptr);
+  COPY_VAL(rwset_known, buf, ptr);
   #if CC_ALG == ARIA
   COPY_VAL(aria_phase, buf, ptr);
   #endif
@@ -1027,6 +1043,7 @@ void ClientQueryMessage::copy_to_buf(char * buf) {
     COPY_BUF(buf,part,ptr);
   }
   COPY_BUF(buf, isDeterministicAbort, ptr);
+  COPY_BUF(buf, rwset_known, ptr);
   #if CC_ALG == ARIA
   COPY_BUF(buf, aria_phase, ptr);
   #endif
@@ -1141,11 +1158,17 @@ void ForwardMessage::copy_to_buf(char * buf) {
 uint64_t PrepareMessage::get_size() {
   uint64_t size = Message::mget_size();
   //size += sizeof(uint64_t);
+  #if CC_ALG == SDOCC
+  size += sizeof(uint64_t);
+  #endif
   return size;
 }
 
 void PrepareMessage::copy_from_txn(TxnManager * txn) {
   Message::mcopy_from_txn(txn);
+  #if CC_ALG == SDOCC
+  retry_cnt = txn->retry_cnt;
+  #endif
 }
 void PrepareMessage::copy_to_txn(TxnManager * txn) {
   Message::mcopy_to_txn(txn);
@@ -1153,12 +1176,18 @@ void PrepareMessage::copy_to_txn(TxnManager * txn) {
 void PrepareMessage::copy_from_buf(char * buf) {
   Message::mcopy_from_buf(buf);
   uint64_t ptr = Message::mget_size();
+  #if CC_ALG == SDOCC
+  COPY_VAL(retry_cnt,buf,ptr);
+  #endif
   assert(ptr == get_size());
 }
 
 void PrepareMessage::copy_to_buf(char * buf) {
   Message::mcopy_to_buf(buf);
   uint64_t ptr = Message::mget_size();
+  #if CC_ALG == SDOCC
+  COPY_BUF(buf,retry_cnt,ptr);
+  #endif
   assert(ptr == get_size());
 }
 
@@ -1179,6 +1208,9 @@ uint64_t AckMessage::get_size() {
   size += sizeof(size_t);
   size += sizeof(uint64_t) * part_keys.size();
 #endif
+#if CC_ALG == SDOCC
+  size += sizeof(uint64_t);
+#endif
   return size;
 }
 
@@ -1196,6 +1228,9 @@ void AckMessage::copy_from_txn(TxnManager * txn) {
   raw = txn->raw;
   war = txn->war;
 #endif
+#if CC_ALG == SDOCC
+  retry_cnt = txn->retry_cnt;
+#endif
 
 #if WORKLOAD == PPS && CC_ALG == CALVIN
   PPSQuery* pps_query = (PPSQuery*)(txn->query);
@@ -1207,7 +1242,6 @@ void AckMessage::copy_to_txn(TxnManager * txn) {
   Message::mcopy_to_txn(txn);
   //query->rc = rc;
 #if WORKLOAD == PPS && CC_ALG == CALVIN
-
   PPSQuery* pps_query = (PPSQuery*)(txn->query);
   pps_query->part_keys.append(part_keys);
 #endif
@@ -1224,6 +1258,9 @@ void AckMessage::copy_from_buf(char * buf) {
 #if CC_ALG == ARIA
   COPY_VAL(raw,buf,ptr);
   COPY_VAL(war,buf,ptr);
+#endif
+#if CC_ALG == SDOCC
+  COPY_VAL(retry_cnt,buf,ptr);
 #endif
 #if WORKLOAD == PPS && CC_ALG == CALVIN
 
@@ -1249,6 +1286,9 @@ void AckMessage::copy_to_buf(char * buf) {
 #if CC_ALG == ARIA
   COPY_BUF(buf,raw,ptr);
   COPY_BUF(buf,war,ptr);
+#endif
+#if CC_ALG == SDOCC
+  COPY_BUF(buf,retry_cnt,ptr);
 #endif
 #if WORKLOAD == PPS && CC_ALG == CALVIN
 

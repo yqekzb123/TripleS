@@ -100,6 +100,7 @@ public:
   //std::vector<ycsb_request> requests;
   Array<ycsb_request*> requests;
   void* orig_request;
+
   /*
   uint64_t rid;
   uint64_t access_cnt;

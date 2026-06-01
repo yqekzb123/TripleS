@@ -231,6 +231,8 @@ BaseQuery * YCSBQueryGenerator::gen_requests_hot(uint64_t home_partition_id, Wor
 	uint64_t access_cnt = 0;
 	set<uint64_t> all_keys;
 	set<uint64_t> partitions_accessed;
+	double r = (double)(mrand->next() % 10000) / 10000;
+	query->rwset_known = r < g_rwset_known_ratio;
 	double r_mpt = (double)(mrand->next() % 10000) / 10000;
 	uint64_t part_limit;
 	if(r_mpt < g_mpr)
@@ -356,6 +358,9 @@ BaseQuery * YCSBQueryGenerator::gen_requests_zipf(uint64_t home_partition_id, Wo
 #else
 	uint64_t req_size = g_req_per_query;
 #endif
+
+	double rw = (double)(mrand->next() % 10000) / 10000;
+	query->rwset_known = rw < g_rwset_known_ratio;
 
 	int rid = 0;
 	for (UInt32 i = 0; i < req_size; i ++) {

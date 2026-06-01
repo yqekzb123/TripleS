@@ -205,6 +205,7 @@ public:
 	bool sdocc_send_remote;
 	uint64_t sdocc_expected_rsp_cnt;
 	#endif
+	// bool rwset_known = false;
 
 	RC start_abort();
 	RC abort();
@@ -255,7 +256,8 @@ public:
 	ListNode<watermark_node_entry*>* list_node_pointer;
 
 	uint64_t retry_cnt; // 当前是第几次重试了
-	bool has_re_enqueued; // 是否已经重试入队过了，避免重复入队
+	std::atomic<bool> has_re_enqueued; // 是否已经重试入队过了，避免重复入队
+	// bool has_re_enqueued; // 是否已经重试入队过了，避免重复入队
 #endif
 
 	bool send_RQRY_RSP;

@@ -382,7 +382,8 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	last_sdocc_read_reservation = 0;
 	last_sdocc_write_reservation = 0;
 	retry_cnt = 0;
-	has_re_enqueued = false;
+	// store(0, std::memory_order_relaxed);
+	has_re_enqueued.store(false, std::memory_order_relaxed);
 #endif
 
 	registed_ = false;
@@ -685,7 +686,7 @@ RC TxnManager::start_commit() {
 
 void TxnManager::send_prepare_messages() {
 	rsp_cnt = query->partitions_touched.size() - 1;
-	DEBUG("%ld Send PREPARE messages to %d\n",get_txn_id(),rsp_cnt);
+	DEBUG_WRK("%ld Send PREPARE messages to %d\n",get_txn_id(),rsp_cnt);
 	for(uint64_t i = 0; i < query->partitions_touched.size(); i++) {
 		if(GET_NODE_ID(query->partitions_touched[i]) == g_node_id) {
 			continue;
@@ -701,7 +702,7 @@ void TxnManager::send_prepare_messages() {
 void TxnManager::send_finish_messages() {
 	rsp_cnt = query->partitions_touched.size() - 1;
 	assert(IS_LOCAL(get_txn_id()));
-	DEBUG("%ld Send FINISH messages to %d\n",get_txn_id(),rsp_cnt);
+	DEBUG_WRK("%ld Send FINISH messages to %d\n",get_txn_id(),rsp_cnt);
 	for(uint64_t i = 0; i < query->partitions_touched.size(); i++) {
 		if(GET_NODE_ID(query->partitions_touched[i]) == g_node_id) {
 			continue;

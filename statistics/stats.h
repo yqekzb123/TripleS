@@ -229,6 +229,9 @@ public:
   uint64_t remote_execution_cnt;
   uint64_t remote_validate_cnt;
   uint64_t remote_commit_cnt;
+  uint64_t rwset_known_cnt;
+  uint64_t rwset_unknown_cnt;
+
 
   // Concurrency control, general
   uint64_t cc_conflict_cnt;

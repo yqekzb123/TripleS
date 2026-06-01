@@ -19,6 +19,8 @@
 
 #include "global.h"
 #include "thread.h"
+#include "ordered_list.h"
+#include "txn.h"
 class Workload;
 class Message;
 
@@ -64,8 +66,28 @@ private:
     TxnManager * txn_man;
 
     #if CC_ALG == SDOCC
+    // 帮我写一个进行比较的函数
+    struct CompareTxnManager {
+        // bool operator() (TxnManager* a, uint64_t watermark) const {
+        //     uint64_t key_a = get_batch_key(a->get_batch_id(), a->return_id, a->get_txn_id());
+        //     return key_a < watermark;
+        // }
+        bool operator() (TxnManager* a, TxnManager* b) const {
+            uint64_t key_a = get_batch_key(a->get_batch_id(), a->return_id, a->get_txn_id());
+            uint64_t key_b = get_batch_key(b->get_batch_id(), b->return_id, b->get_txn_id());
+            return key_a < key_b;
+        }
+    };
+    struct CompareTxnWater {
+        bool operator() (TxnManager* a, uint64_t watermark) const {
+            uint64_t key_a = get_batch_key(a->get_batch_id(), a->return_id, a->get_txn_id());
+            return key_a < watermark;
+        }
+    };
     // 用来放还不能重试的事务
-    std::vector<TxnManager*> tmp_txn_list;
+    OrderedList<TxnManager*,CompareTxnManager,CompareTxnWater> tmp_txn_list;
+    uint64_t tmp_txn_list_size = 0;
+    // std::vector<TxnManager*> tmp_txn_list;
 
     void handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid);
     #endif

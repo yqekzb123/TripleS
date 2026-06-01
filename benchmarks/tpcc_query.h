@@ -41,8 +41,8 @@ struct Item_no {
 
 class TPCCQueryGenerator : public QueryGenerator {
 public:
-  BaseQuery * create_query(Workload * h_wl, uint64_t home_partition_id);
-
+  	BaseQuery * create_query(Workload * h_wl, uint64_t home_partition_id);
+	void init();
 private:
 	BaseQuery * gen_requests(uint64_t home_partition_id, Workload * h_wl);
 	BaseQuery * gen_payment(uint64_t home_partition);

@@ -34,6 +34,7 @@
 #if CC_ALG == SDPCC
 #include "row_sdpcc.h"
 #endif
+#include "sdocc.h"
 
 void TPCCTxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	TxnManager::init(thd_id, h_wl);
@@ -311,7 +312,7 @@ RC TPCCTxnManager::acquire_locks() {
 			item = index_read(index, key, wh_to_part(w_id));
 			row = (row_t *) item->location;
 #if CC_ALG == CALVIN || CC_ALG == SDPCC
-			while (row->manager->has_write_lock()) {
+			while (item->next != nullptr && row->manager->has_write_lock()) {
 				item = item->next;
 				row = (row_t *)item->location;
 			}
@@ -555,6 +556,11 @@ bool TPCCTxnManager::is_local_item(uint64_t idx) {
 
 
 RC TPCCTxnManager::send_remote_request() {
+	#if RWSET_KNOWN
+	if (CC_ALG == SDOCC && query->rwset_known) {
+		return RCOK;
+	}
+	#endif
 	assert(IS_LOCAL(get_txn_id()));
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
 	TPCCRemTxnType next_state = TPCC_FIN;
@@ -647,80 +653,94 @@ RC TPCCTxnManager::run_txn_state() {
 	INC_STATS(get_thd_id(),trans_benchmark_compute_time,get_sys_clock() - starttime);
 	switch (state) {
 		case TPCC_PAYMENT0 :
-						if(w_loc)
-										rc = run_payment_0(w_id, d_id, d_w_id, h_amount, row);
-						else {
-							rc = send_remote_request();
-						}
-						break;
+			if(w_loc)
+				rc = run_payment_0(w_id, d_id, d_w_id, h_amount, row);
+			else {
+				#if CC_ALG == SDOCC && RWSET_KNOWN
+				rc = RCOK;
+				#else
+				rc = send_remote_request();
+				#endif
+			}
+			break;
 		case TPCC_PAYMENT1 :
-						rc = run_payment_1(w_id, d_id, d_w_id, h_amount, row);
-						break;
+			if(w_loc) rc = run_payment_1(w_id, d_id, d_w_id, h_amount, row);
+			break;
 		case TPCC_PAYMENT2 :
-						rc = run_payment_2(w_id, d_id, d_w_id, h_amount, row);
-						break;
+			if(w_loc) rc = run_payment_2(w_id, d_id, d_w_id, h_amount, row);
+			break;
 		case TPCC_PAYMENT3 :
-						rc = run_payment_3(w_id, d_id, d_w_id, h_amount, row);
-						break;
+			if(w_loc) rc = run_payment_3(w_id, d_id, d_w_id, h_amount, row);
+			break;
 		case TPCC_PAYMENT4 :
-						if(c_w_loc)
-								rc = run_payment_4( w_id,  d_id, c_id, c_w_id,  c_d_id, c_last, h_amount, by_last_name, row);
-						else {
-								rc = send_remote_request();
-						}
-						break;
+			if(c_w_loc)
+				rc = run_payment_4( w_id,  d_id, c_id, c_w_id,  c_d_id, c_last, h_amount, by_last_name, row);
+			else {
+				#if CC_ALG == SDOCC && RWSET_KNOWN
+				rc = RCOK;
+				#else
+				rc = send_remote_request();
+				#endif
+			}
+			break;
 		case TPCC_PAYMENT5 :
-						rc = run_payment_5( w_id,  d_id, c_id, c_w_id,  c_d_id, c_last, h_amount, by_last_name, row);
-						break;
+			if(c_w_loc) rc = run_payment_5( w_id,  d_id, c_id, c_w_id,  c_d_id, c_last, h_amount, by_last_name, row);
+			break;
 		case TPCC_NEWORDER0 :
-						if(w_loc)
-								rc = new_order_0( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
-						else {
-								rc = send_remote_request();
-						}
+			if(w_loc)
+				rc = new_order_0( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+			else {
+				#if CC_ALG == SDOCC && RWSET_KNOWN
+				rc = RCOK;
+				#else
+				rc = send_remote_request();
+				#endif
+			}
 			break;
 		case TPCC_NEWORDER1 :
-						rc = new_order_1( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
-						break;
+			if(w_loc) rc = new_order_1( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+			break;
 		case TPCC_NEWORDER2 :
-						rc = new_order_2( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
-						break;
+			if(w_loc) rc = new_order_2( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+			break;
 		case TPCC_NEWORDER3 :
-						rc = new_order_3( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
-						break;
+			if(w_loc) rc = new_order_3( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+			break;
 		case TPCC_NEWORDER4 :
-						rc = new_order_4( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
-						break;
+			if(w_loc) rc = new_order_4( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+			break;
 		case TPCC_NEWORDER5 :
-						rc = new_order_5( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
-						break;
+			if(w_loc) rc = new_order_5( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+			break;
 		case TPCC_NEWORDER5_1 :
-						rc = new_order_5_1( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
-						break;
+			if(w_loc) rc = new_order_5_1( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+			break;
 		case TPCC_NEWORDER5_2 :
-						rc = new_order_5_2( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
-						break;
+			if(w_loc) rc = new_order_5_2( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+			break;
 		case TPCC_NEWORDER9_1 :
-						rc = new_order_9_1( w_id, d_id, remote, tpcc_query->o_id, row);
-						break;
+			if(w_loc) rc = new_order_9_1( w_id, d_id, remote, tpcc_query->o_id, row);
+			break;
 		case TPCC_NEWORDER6 :
-			rc = new_order_6(ol_i_id, row);
+			if(w_loc) rc = new_order_6(ol_i_id, row);
 			break;
 		case TPCC_NEWORDER7 :
-			rc = new_order_7(ol_i_id, row);
+			if(w_loc) rc = new_order_7(ol_i_id, row);
 			break;
 		case TPCC_NEWORDER8 :
-					if(ol_supply_w_loc) {
-				rc = new_order_8(w_id, d_id, remote, ol_i_id, ol_supply_w_id, ol_quantity, ol_number, o_id,
-												 row);
+			if(ol_supply_w_loc) {
+				rc = new_order_8(w_id, d_id, remote, ol_i_id, ol_supply_w_id, ol_quantity, ol_number, o_id, row);
 			} else {
-									rc = send_remote_request();
-					}
-							break;
+				#if CC_ALG == SDOCC && RWSET_KNOWN
+				rc = RCOK;
+				#else
+				rc = send_remote_request();
+				#endif
+			}
+			break;
 		case TPCC_NEWORDER9 :
-			rc = new_order_9(w_id, d_id, remote, ol_i_id, ol_supply_w_id, ol_quantity, ol_number,
-											 ol_amount, o_id, row);
-						break;
+			if(ol_supply_w_loc) rc = new_order_9(w_id, d_id, remote, ol_i_id, ol_supply_w_id, ol_quantity, ol_number, ol_amount, o_id, row);
+			break;
 		case TPCC_ORDER_STATUS0 :
 			rc = run_order_status_0(w_id, d_id, by_last_name, c_id, c_last, row);
 			break;
@@ -806,12 +826,12 @@ RC TPCCTxnManager::run_txn_state() {
 			next_item_id ++;
 			break;
 		case TPCC_FIN :
-				state = TPCC_FIN;
+			state = TPCC_FIN;
 			if (tpcc_query->rbk) return Abort;
-						//return finish(tpcc_query,false);
-				break;
+			//return finish(tpcc_query,false);
+			break;
 		default:
-				assert(false);
+			assert(false);
 	}
 	starttime = get_sys_clock();
 	if (rc == RCOK) next_tpcc_state();
@@ -1972,7 +1992,7 @@ RC TPCCTxnManager::send_remote_write_requests() {
 RC TPCCTxnManager::process_aria_remote(ARIA_PHASE aria_phase) {
 	RC rc = RCOK;
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
-	DEBUG("(%ld,%ld) Run calvin txn\n",txn->txn_id,txn->batch_id);
+	DEBUG_WRK("(%ld,%ld) Run calvin txn\n",txn->txn_id,txn->batch_id);
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;
 	uint64_t c_id = tpcc_query->c_id;
@@ -2293,3 +2313,177 @@ RC TPCCTxnManager::do_insert() {
 	return RCOK;
 }
 #endif
+
+
+#if CC_ALG == SDOCC
+RC TPCCTxnManager::run_sdocc_txn() {
+  RC rc = RCOK;
+  RC rc2= RCOK;
+  assert(CC_ALG == SDOCC);
+  // Implement SDOCC transaction logic here
+  assert(sdocc_phase == SDOCC_EXECUTION || sdocc_phase == SDOCC_CHECK);
+  
+  if (sdocc_phase == SDOCC_EXECUTION) {
+    DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
+    if(IS_LOCAL(txn->txn_id) && (state == TPCC_PAYMENT0 || state == TPCC_NEWORDER0 || state == TPCC_ORDER_STATUS0 || state == TPCC_DELIVERY0 || state == TPCC_STOCK_LEVEL0)) {
+		DEBUG("Running txn %ld\n",txn->txn_id);
+#if DISTR_DEBUG
+		query->print();
+#endif
+		query->partitions_touched.add_unique(GET_PART_ID(0,g_node_id));
+	}
+    uint64_t starttime = get_sys_clock();
+
+    #if RWSET_KNOWN
+    // 远程发消息部分
+    if (IS_LOCAL(get_txn_id()) && !sdocc_send_remote && query->rwset_known &&
+		(state == TPCC_PAYMENT0 || state == TPCC_NEWORDER0) // 只有payment和new order需要发远程消息
+	) {
+      sdocc_expected_rsp_cnt = ((TPCCQuery*)query)->get_participants(_wl);
+      if(query->participant_nodes[g_node_id] == 1) {
+        sdocc_expected_rsp_cnt--;
+      }
+
+      // 远程发消息部分
+      if (sdocc_expected_rsp_cnt > 0) {
+        rc2 = WAIT_REM;
+        for (uint64_t i = 0; i < g_node_cnt; i++) {
+          if (i == g_node_id) continue;
+          if (((TPCCQuery*)query)->participant_nodes[i] == 1) {
+            query->partitions_touched.add_unique(GET_PART_ID(0,i));
+            msg_queue.enqueue(get_thd_id(), Message::create_message(this, RQRY), i);
+          } 
+        }
+      }
+      sdocc_send_remote = true;
+      INC_STATS(get_thd_id(), rwset_known_cnt, 1);
+    } else if (!query->rwset_known) {
+      INC_STATS(get_thd_id(), rwset_unknown_cnt, 1);
+    }
+    #endif
+
+    // 本地执行部分
+    while(rc == RCOK && !is_done()) {
+      rc = run_txn_state();
+    }
+    // assert(rc == RCOK);
+
+    uint64_t curr_time = get_sys_clock();
+    txn_stats.process_time += curr_time - starttime;
+    txn_stats.process_time_short += curr_time - starttime;
+    txn_stats.wait_starttime = get_sys_clock();
+
+    // if (rc2 == WAIT_REM) {
+    //   rc = WAIT_REM;
+    // }
+    bool remote_wait = true;
+    #if RWSET_KNOWN
+	if (query->rwset_known) remote_wait = sdocc_expected_rsp_cnt == 0;
+    #endif
+    if (is_done() && rc == RCOK && remote_wait) {// 如果执行完了，进入SDOCC检查阶段
+      sdocc_phase = SDOCC_CHECK;
+    } else if (rc == RETRY || rc == WAIT || rc == WAIT_REM) {
+    } else if (!remote_wait) {
+    } else {
+      assert(false); 
+    }
+  }
+  // assert(IS_LOCAL(get_txn_id()));
+  if (IS_LOCAL(get_txn_id()) && sdocc_phase == SDOCC_CHECK) {
+    // Perform SDOCC check logic here
+    DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
+    rc = start_sdocc_check();
+  } 
+  return rc;
+}
+
+RC TPCCTxnManager::send_remote_subtxn() {
+	return RCOK;
+	// assert(IS_LOCAL(get_txn_id()));
+	// TPCCQuery* tpcc_query = (TPCCQuery*) query;
+	// // TPCCRemTxnType next_state = TPCC_FIN;
+	// RC rc = RCOK;
+	// unordered_set<uint64_t> node_id;
+
+	// // 
+	// uint64_t w_id = tpcc_query->w_id;
+	// generate_center_master(w_id, WR);
+
+	// // for payment
+	// uint64_t d_w_id = tpcc_query->d_w_id;
+	// uint64_t c_w_id = tpcc_query->c_w_id;
+	// if (tpcc_query->txn_type == TPCC_PAYMENT) {
+	// 	generate_center_master(d_w_id, WR);
+	// 	generate_center_master(c_w_id, WR);
+	// }
+	// // for neworder
+	// if (tpcc_query->txn_type == TPCC_NEW_ORDER) {
+	// 	for(uint64_t i = 0; i < tpcc_query->ol_cnt; i++) {
+	// 		uint64_t ol_number = i;
+	// 		uint64_t ol_supply_w_id = tpcc_query->items[ol_number]->ol_supply_w_id;
+	// 		generate_center_master(ol_supply_w_id, WR);
+	// 	}
+	// }
+	// rsp_cnt = 0;
+	// for(int i=0;i<query->centers_touched.size();i++){
+	// 	if(is_primary[query->centers_touched[i]]) ++rsp_cnt;
+	// }
+	// --rsp_cnt; //exclude this center
+
+	// uint64_t center_id1 = GET_CENTER_ID(GET_FOLLOWER1_NODE(wh_to_part(w_id)));
+	// uint64_t center_id2 = GET_CENTER_ID(GET_FOLLOWER2_NODE(wh_to_part(w_id)));
+	// if(is_primary[center_id1] || is_primary[center_id2]){
+	// 	//no extra wait for req i
+	// 	wh_extra_wait[0] = -1;
+	// 	wh_extra_wait[1] = -1;			
+	// }else{
+	// 	wh_need_wait = true;
+	// 	wh_extra_wait[0] = center_id1;
+	// 	wh_extra_wait[1] = center_id2;
+	// }
+
+	// if (tpcc_query->txn_type == TPCC_PAYMENT){
+	// 	// customer wait
+	// 	center_id1 = GET_CENTER_ID(GET_FOLLOWER1_NODE(wh_to_part(c_w_id)));
+	// 	center_id2 = GET_CENTER_ID(GET_FOLLOWER2_NODE(wh_to_part(c_w_id)));
+	// 	if(is_primary[center_id1] || is_primary[center_id2]){
+	// 		//no extra wait for req i
+	// 		cus_extra_wait[0] = -1;
+	// 		cus_extra_wait[1] = -1;			
+	// 	}else{
+	// 		cus_need_wait = true;
+	// 		cus_extra_wait[0] = center_id1;
+	// 		cus_extra_wait[1] = center_id2;
+	// 	}
+	// }
+
+	// if (tpcc_query->txn_type == TPCC_NEW_ORDER) {
+	// 	for(uint64_t i = 0; i < tpcc_query->ol_cnt; i++) {
+	// 		uint64_t ol_number = i;
+	// 		uint64_t ol_supply_w_id = tpcc_query->items[ol_number]->ol_supply_w_id;
+	// 		center_id1 = GET_CENTER_ID(GET_FOLLOWER1_NODE(wh_to_part(ol_supply_w_id)));
+	// 		center_id2 = GET_CENTER_ID(GET_FOLLOWER2_NODE(wh_to_part(ol_supply_w_id)));
+
+	// 		if(is_primary[center_id1] || is_primary[center_id2]){
+	// 			//no extra wait for req i
+	// 			extra_wait[i][0] = -1;
+	// 			extra_wait[i][1] = -1;			
+	// 		}else{
+	// 			req_need_wait[i] = true;
+	// 			extra_wait[i][0] = center_id1;
+	// 			extra_wait[i][1] = center_id2;
+	// 		}
+	// 	}
+	// }
+
+	// for(int i = 0; i < g_center_cnt; i++) {
+	// 	if(remote_center[i].size() > 0 && i != g_center_id) {//send message to all masters
+	// 		msg_queue.enqueue(get_thd_id(),Message::create_message(this,RQRY),center_master[i]);
+	// 		// printf("txn %lu, send message to %d\n", get_txn_id(), center_master[i]);
+	// 	}
+		
+	// }
+	// return rc;
+}
+#endif
+

@@ -220,6 +220,7 @@ UInt32 g_aria_batch_size = ARIA_BATCH_SIZE;
 double g_mpr = MPR;
 double g_mpr_neworder = MPR_NEWORDER;
 double g_mpitem = MPIR;
+double g_rwset_known_ratio = RWSET_KNOWN_RATIO;
 
 // PPS (Product-Part-Supplier)
 UInt32 g_max_parts_per = MAX_PPS_PARTS_PER;

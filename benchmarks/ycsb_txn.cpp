@@ -126,7 +126,7 @@ bool YCSBTxnManager::is_local_request(uint64_t idx) {
 
 RC YCSBTxnManager::send_remote_request() {
   #if RWSET_KNOWN
-  if (CC_ALG == SDOCC) {
+  if (CC_ALG == SDOCC && query->rwset_known) {
     return RCOK;
   }
   #endif
@@ -595,7 +595,7 @@ RC YCSBTxnManager::run_sdocc_txn() {
 
     #if RWSET_KNOWN
     // 远程发消息部分
-    if (IS_LOCAL(get_txn_id()) && !sdocc_send_remote) {
+    if (query->rwset_known && IS_LOCAL(get_txn_id()) && !sdocc_send_remote) {
       sdocc_expected_rsp_cnt = ((YCSBQuery*)query)->get_participants(_wl);
       if(query->participant_nodes[g_node_id] == 1) {
         sdocc_expected_rsp_cnt--;
@@ -613,6 +613,9 @@ RC YCSBTxnManager::run_sdocc_txn() {
         }
       }
       sdocc_send_remote = true;
+      INC_STATS(get_thd_id(), rwset_known_cnt, 1);
+    } else if (!query->rwset_known) {
+      INC_STATS(get_thd_id(), rwset_unknown_cnt, 1);
     }
     #endif
 
@@ -627,13 +630,19 @@ RC YCSBTxnManager::run_sdocc_txn() {
     txn_stats.process_time_short += curr_time - starttime;
     txn_stats.wait_starttime = get_sys_clock();
 
-    if (rc2 == WAIT_REM) {
-      rc = WAIT_REM;
+    // if (rc2 == WAIT_REM) {
+    //   rc = WAIT_REM;
+    // }
+    bool remote_wait = true;
+    #if RWSET_KNOWN
+    if (query->rwset_known) {
+      remote_wait = sdocc_expected_rsp_cnt == 0;
     }
-
-    if (is_done() && rc == RCOK) {// 如果执行完了，进入SDOCC检查阶段 
+    #endif
+    if (is_done() && rc == RCOK && remote_wait) {// 如果执行完了，进入SDOCC检查阶段
       sdocc_phase = SDOCC_CHECK;
     } else if (rc == RETRY || rc == WAIT || rc == WAIT_REM) {
+    } else if (!remote_wait) {
     } else {
       assert(false); 
     }

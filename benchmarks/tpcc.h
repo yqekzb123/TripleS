@@ -163,7 +163,8 @@ public:
 #endif
 #if CC_ALG == SDOCC
   // !还没实现
-  RC run_sdocc_txn() { return RCOK; }
+  RC run_sdocc_txn();
+  RC send_remote_subtxn();
 #endif
   RC run_tpcc_phase2();
   RC run_tpcc_phase5();

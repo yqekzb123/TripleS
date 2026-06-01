@@ -92,7 +92,7 @@ uint64_t row_t::get_field_cnt() { return get_schema()->field_cnt; }
 void row_t::set_value(int id, void * ptr) {
 	int datasize = get_schema()->get_field_size(id);
 	int pos = get_schema()->get_field_index(id);
-	DEBUG("set_value pos %d datasize %d -- %lx\n", pos, datasize, (uint64_t)this);
+	// DEBUG("set_value pos %d datasize %d G-- %lx\n", pos, datasize, (uint64_t)this);
 #if SIM_FULL_ROW
 	memcpy( &data[pos], ptr, datasize);
 #else

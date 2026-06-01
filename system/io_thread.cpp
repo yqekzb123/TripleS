@@ -62,6 +62,16 @@ void InputThread::setup() {
 				continue;
 			}
 #endif
+#if CC_ALG == SDOCC
+			if (msg->rtype == WATERMARK) {
+				DEBUG_SCH("OutputThread %ld receive watermark %ld from node %ld\n", get_thd_id(), ((WaterMarkMessage*)msg)->get_watermark(), msg->get_return_id());
+				check_water_mark->receive_watermark(msg->get_return_id(), ((WaterMarkMessage*)msg)->get_watermark());
+				msg->release();
+				delete msg;
+				msgs->erase(msgs->begin());
+				continue;
+			}
+#endif
 				work_queue.enqueue(get_thd_id(),msg,false);
 			}
 			msgs->erase(msgs->begin());
