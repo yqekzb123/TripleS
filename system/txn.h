@@ -172,6 +172,9 @@ public:
 	virtual RC		run_sdocc_txn() = 0;
 	// virtual RC		process_sdocc_remote(SDOCC_PHASE sdocc_phase) = 0;
 #endif
+#if CC_ALG == CARACAL
+	virtual RC		run_caracal_txn() = 0;
+#endif
 
 	virtual RC      acquire_locks() = 0;
 	virtual RC 		send_remote_request() = 0;
@@ -237,6 +240,18 @@ public:
 
 	ListNode<watermark_node_entry*>* rld_pointer;
 	ListNode<watermark_node_entry*>* cld_pointer;
+#endif
+
+#if CC_ALG == CARACAL
+	CARACAL_PHASE caracal_phase;     // simulation的大阶段
+	CARACAL_TXN_PHASE caracal_txn_phase; // 事务内部的小阶段
+	uint32_t caracal_expected_rsp_cnt;
+	// vector<vector<ycsb_request *>> read_set;
+	// vector<vector<ycsb_request *>> write_set;
+	bool caracal_exec_phase_done();
+	bool caracal_collect_phase_done();
+
+	Array<row_t*> caracal_append_rows;
 #endif
 
 #if CC_ALG == SILO

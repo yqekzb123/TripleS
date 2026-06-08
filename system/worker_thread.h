@@ -52,6 +52,16 @@ public:
     RC process_aria_rtxn(Message * msg);
     RC process_aria_ack(Message * msg);
 #endif
+#if CC_ALG == CARACAL
+    // 用于阶段同步，同步各个线程的 
+    RC process_caracal_phase_ack(Message * msg);
+    // 用于阶段同步，同步各个线程的事务的完成情况
+    RC process_caracal_txn_ack(Message * msg);
+    RC process_caracal_rtxn(Message * msg);
+    RC phase_end();
+    RC process_caracal_rfwd(Message * msg);
+    void caracal_wrapup();
+#endif
     RC process_rtxn_cont(Message * msg);
     RC process_log_msg(Message * msg);
     RC process_log_msg_rsp(Message * msg);

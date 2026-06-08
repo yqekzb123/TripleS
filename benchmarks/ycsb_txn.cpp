@@ -286,7 +286,6 @@ RC YCSBTxnManager::run_ycsb_0(ycsb_request * req,row_t *& row_local) {
   INC_STATS(get_thd_id(),trans_benchmark_compute_time,get_sys_clock() - starttime);
   rc = get_row(row, type,row_local);
   return rc;
-
 }
 
 RC YCSBTxnManager::run_ycsb_1(access_t acctype, row_t * row_local) {
@@ -458,7 +457,30 @@ RC YCSBTxnManager::run_ycsb() {
     assert(rc == RCOK);
   }
   return rc;
+}
 
+RC YCSBTxnManager::run_caracal_ycsb() {
+  RC rc = RCOK;
+  assert(CC_ALG == CARACAL);
+  YCSBQuery* ycsb_query = (YCSBQuery*) query;
+
+  while(rc == RCOK && !is_done()) {
+    ycsb_request * req = ycsb_query->requests[next_record_id];
+    uint64_t part_id = _wl->key_to_part( req->key );
+    bool loc = GET_NODE_ID(part_id) == g_node_id;
+    if ((this->caracal_txn_phase == CARACAL_TXN_RD && req->acctype == WR) ||
+        (this->caracal_txn_phase == CARACAL_TXN_WR && req->acctype == RD) || !loc) {
+      next_record_id++;
+      continue;
+    }
+    rc = run_ycsb_0(req,row);
+    if (rc != RCOK) return rc;
+    rc = run_ycsb_1(req->acctype,row);
+    if (rc != RCOK) return rc;
+
+    next_record_id++;
+  }
+  return rc;
 }
 
 // Aria函数部分
@@ -653,6 +675,127 @@ RC YCSBTxnManager::run_sdocc_txn() {
     DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
     rc = start_sdocc_check();
   } 
+  return rc;
+}
+#endif
+
+// Caracal函数部分
+#if CC_ALG == CARACAL
+RC YCSBTxnManager::run_caracal_txn() {
+  RC rc = RCOK;
+  uint64_t starttime = get_sys_clock();
+  YCSBQuery* ycsb_query = (YCSBQuery*) query;
+  DEBUG_WRK("thd [%ld] Run caracal txn[%ld,%ld] phase %d-%d\n",get_thd_id(),txn->batch_id,txn->txn_id, simulation->caracal_phase, this->caracal_txn_phase);
+  assert(caracal_phase == simulation->caracal_phase);
+  switch (simulation->caracal_phase)
+  {
+  case CARACAL_INIT:
+    DEBUG_WRK("[%ld] (%ld,%ld) init phase: acquire locks\n",get_thd_id(),txn->batch_id,txn->txn_id);
+    for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
+      ycsb_request * req = ycsb_query->requests[rid];
+      uint64_t part_id = _wl->key_to_part( req->key );
+      if (GET_NODE_ID(part_id) != g_node_id) continue;
+      if (req->acctype != WR) continue; // 只对写操作做version增加处理
+      // DEBUG_WRK("[%ld] LK Acquire (%ld,%ld) %d,%ld -> %ld\n", get_thd_id(), get_batch_id(), get_txn_id(), req->acctype, req->key, GET_NODE_ID(part_id));
+      INDEX * index = _wl->the_index;
+      itemid_t * item;
+      item = index_read(index, req->key, part_id);
+      row_t * row = ((row_t *)item->location);
+      RC rc2 = get_lock(row,req->acctype);
+      if(rc2 != RCOK) {
+        rc = rc2;
+      }
+    }
+    assert(caracal_phase == CARACAL_INIT);
+    caracal_phase = (CARACAL_PHASE) (caracal_phase + 1);
+    assert(simulation->caracal_phase == CARACAL_INIT);
+    DEBUG_WRK("[%ld] (%ld,%ld) finish init phase, move to execution phase\n",get_thd_id(),txn->batch_id,txn->txn_id);
+    // 考虑如果是远程操作，就需要等远程的锁都拿好了才能进入执行阶段，所以远程操作还得发送一个ACK给事务主节点
+    this->caracal_txn_phase = CARACAL_TXN_ANALYSIS;
+    break;
+  case CARACAL_EXECUTION:
+    DEBUG_WRK("[%ld] (%ld,%ld) execution phase\n",get_thd_id(),txn->batch_id,txn->txn_id);
+    while(!caracal_exec_phase_done() && rc == RCOK) {
+      switch (caracal_txn_phase) {
+        case CARACAL_TXN_ANALYSIS:
+          DEBUG_WRK("[%ld] (%ld,%ld) analyze read/write set\n",get_thd_id(),txn->batch_id,txn->txn_id);
+          // !第一段，先确定需要同步多少节点
+          caracal_expected_rsp_cnt = ycsb_query->get_participants(_wl);
+          assert(caracal_expected_rsp_cnt > 0);
+          #if YCSB_ABORT_MODE || OPEN_YCSB_DEPENDENCY
+            if(query->participant_nodes[g_node_id] == 1) {
+              caracal_expected_rsp_cnt--;
+            }
+          #else
+            caracal_expected_rsp_cnt = 0;
+          #endif
+          DEBUG_WRK("[%ld] (%ld,%ld) expects %d responses;\n", get_thd_id(), txn->batch_id, txn->txn_id, 
+          caracal_expected_rsp_cnt);
+
+          this->caracal_txn_phase = CARACAL_TXN_RD;
+          next_record_id = 0;
+          break;
+        case CARACAL_TXN_RD:
+          // 远程执行部分
+          DEBUG_WRK("[%ld] (%ld,%ld) local reads\n",get_thd_id(),txn->batch_id,txn->txn_id);
+          rc = run_caracal_ycsb();
+          assert(rc == RCOK || rc == WAIT);
+          if (rc == RCOK) {
+            // 属于是要读取的数据还没写入，得等。
+            this->caracal_txn_phase = CARACAL_TXN_SYNC;
+          }
+          break;
+        case CARACAL_TXN_SYNC:
+          DEBUG_WRK("[%ld] (%ld,%ld) serve remote reads\n",get_thd_id(),txn->batch_id,txn->txn_id);
+          if(query->participant_nodes[g_node_id] == 1) {
+            rc = send_remote_reads();
+          }
+          if(query->active_nodes[g_node_id] == 1) {
+            this->caracal_txn_phase = CARACAL_TXN_COLLECT;
+            if(caracal_collect_phase_done()) {
+              rc = RCOK;
+            } else {
+              DEBUG_WRK("[%ld] (%ld,%ld) wait in collect phase; %d / %d rfwds received\n", get_thd_id(),
+                txn->batch_id, txn->txn_id, rsp_cnt, caracal_expected_rsp_cnt);
+              rc = WAIT_REM;
+            }
+          } else { // Done
+            rc = RCOK;
+            this->caracal_txn_phase = CARACAL_TXN_DONE;
+          }
+          break;
+        case CARACAL_TXN_COLLECT:
+          // Phase 4: Collect remote reads
+          this->caracal_txn_phase = CARACAL_TXN_WR;
+          next_record_id = 0;
+          break;
+        case CARACAL_TXN_WR:
+          DEBUG_WRK("[%ld] (%ld,%ld) execute writes\n",get_thd_id(),txn->batch_id,txn->txn_id);
+          rc = run_caracal_ycsb();
+          this->caracal_txn_phase = CARACAL_TXN_DONE;
+          break;
+        default:
+          assert(false);
+      }
+    }
+    
+    // 先检查是不是真跑完了
+    if (caracal_exec_phase_done() && rc == RCOK) {
+      // 真跑完了以后，
+      assert(caracal_phase == CARACAL_EXECUTION);
+      caracal_phase = (CARACAL_PHASE) (caracal_phase + 1);
+      assert(simulation->caracal_phase == CARACAL_EXECUTION);
+    }
+    break;
+  default:
+    assert(false);
+    break;
+  }
+  uint64_t curr_time = get_sys_clock();
+  txn_stats.process_time += curr_time - starttime;
+  txn_stats.process_time_short += curr_time - starttime;
+  txn_stats.wait_starttime = get_sys_clock();
+  INC_STATS(get_thd_id(),worker_activate_txn_time,curr_time - starttime);
   return rc;
 }
 #endif

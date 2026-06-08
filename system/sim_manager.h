@@ -37,13 +37,37 @@ enum SDOCC_PHASE {
   SDOCC_COMMIT
 };
 
+// 用于整体阶段的，给simulation用的
+enum CARACAL_PHASE {
+  CARACAL_COLLECT = 0,
+  CARACAL_INIT,   // 第一个大阶段，初始化，append版本
+  CARACAL_EXECUTION,     // 第二个大阶段，这个阶段下应该得拆分成，读、同步、写
+  CARACAL_COMMIT  //所谓的结束阶段
+};
+
+enum CARACAL_TXN_PHASE {
+  CARACAL_TXN_ANALYSIS = 0,
+  CARACAL_TXN_RD,
+  CARACAL_TXN_SYNC,
+  CARACAL_TXN_COLLECT,
+  CARACAL_TXN_WR,
+  CARACAL_TXN_DONE
+};
+
+// union PHASE {
+//   ARIA_PHASE aria_phase;
+//   SDOCC_PHASE sdocc_phase;
+//   CARACAL_PHASE caracal_phase;
+// };
+
 // 服了，整一个ARIA_BARRIER类，专门用来处理ARIA的barrier，放在SimManager里，感觉SimManager里东西太多了
 // 这个barrier维护一个循环数组吧，因为phase和batch只会提前一轮，所以只需要维护当前轮和下一轮的barrier就行了，数组大小为2，每轮切换的时候重置对应的barrier
+template <typename PHASE>
 class AriaBarrier {
 public:
 // 这一段是标记
   uint64_t batch_id;
-  ARIA_PHASE phase;
+  PHASE phase;
   uint64_t g_node_cnt;
 // 下面这一段是检查
   uint64_t barrier_count;
@@ -51,7 +75,13 @@ public:
   int current_barrier_index;
   void init(uint64_t g_node_cnt, bool * barriers) {
     this->g_node_cnt = g_node_cnt;
+    #if CC_ALG == ARIA
     batch_id = 1;
+    #elif CC_ALG == CARACAL
+    batch_id = 0;
+    #else
+    batch_id = 0;
+    #endif
     // phase = ARIA_COLLECT;
     barrier_count = 0;
     this->barriers = barriers;
@@ -110,14 +140,23 @@ public:
   uint64_t last_da_query_time;
   ARIA_PHASE aria_phase;
   uint64_t current_batch_id;
+
   uint64_t batch_process_count;
+  uint64_t batch_local_process_count;
+  uint64_t batch_remote_process_count;
+  uint64_t batch_remote_send_count;
 
   // aria_barrier[0]固定用来reservation，
   // aria_barrier[1]固定用来check，两个barrier交替使用
-  AriaBarrier aria_barrier[2];
+  AriaBarrier<ARIA_PHASE> aria_barrier[2];
   uint64_t aria_barrier_index;
   // uint64_t barrier_count;
   // bool * barriers;
+
+  CARACAL_PHASE caracal_phase;
+  AriaBarrier<CARACAL_PHASE> caracal_barrier[2];
+  uint64_t caracal_barrier_index;
+  uint64_t finish_phase_cnt;
 
   void init();
   bool is_setup_done();
@@ -139,6 +178,7 @@ public:
   void decr_epoch_txn_cnt();
   double seconds_from_start(uint64_t time);
   void next_aria_phase();
+  void next_caracal_phase();
 };
 
 #endif

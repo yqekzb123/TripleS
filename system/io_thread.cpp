@@ -199,6 +199,20 @@ RC InputThread::server_recv_loop() {
 				continue;
 			}
 #endif
+// !这得重写
+#if CC_ALG == CARACAL
+			// 远程发来的CL_QRY是已经定完序的事务，直接发到work_queue，local发来的CL_QRY才需要先发到txn_queue定序
+			if (msg->rtype == CL_QRY && !ISCLIENTN(msg->get_return_id())) {
+				work_queue.work_enqueue(get_thd_id(), msg, false, CARACAL_INIT);
+				msgs->erase(msgs->begin());
+				continue;
+			}
+			if (msg->rtype == CARACAL_DONE) {
+				work_queue.sequencer_enqueue(get_thd_id(), msg);
+				msgs->erase(msgs->begin());
+				continue;
+			}
+#endif	
 			work_queue.enqueue(get_thd_id(),msg,false);
 			msgs->erase(msgs->begin());
 		}

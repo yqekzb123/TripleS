@@ -51,15 +51,15 @@ RC TPCCWorkload::init() {
 	for (UInt32 wid = 1; wid <= g_num_wh; wid ++)
 		delivering[wid] = (bool *) mem_allocator.alloc(CL_SIZE);
 
-  printf("Initializing schema... ");
-  fflush(stdout);
+	printf("Initializing schema... ");
+	fflush(stdout);
 	init_schema( path.c_str() );
-  printf("Done\n");
-  printf("Initializing table... ");
-  fflush(stdout);
+	printf("Done\n");
+	printf("Initializing table... ");
+	fflush(stdout);
 	init_table();
-  printf("Done\n");
-  fflush(stdout);
+	printf("Done\n");
+	fflush(stdout);
 	return RCOK;
 }
 
@@ -112,61 +112,61 @@ RC TPCCWorkload::init_table() {
 /**********************************/
 
 	pthread_t * p_thds = new pthread_t[g_init_parallelism - 1];
-  thr_args * tt = new thr_args[g_init_parallelism];
-	for (UInt32 i = 0; i < g_init_parallelism ; i++) {
-	tt[i].wl = this;
-	tt[i].id = i;
-  }
-  // Stock table
-	for (UInt32 i = 0; i < g_init_parallelism - 1; i++) {
-	pthread_create(&p_thds[i], NULL, threadInitStock, &tt[i]);
+	thr_args * tt = new thr_args[g_init_parallelism];
+		for (UInt32 i = 0; i < g_init_parallelism ; i++) {
+		tt[i].wl = this;
+		tt[i].id = i;
 	}
-  threadInitStock(&tt[g_init_parallelism-1]);
+  	// Stock table
+	for (UInt32 i = 0; i < g_init_parallelism - 1; i++) {
+		pthread_create(&p_thds[i], NULL, threadInitStock, &tt[i]);
+	}
+  	threadInitStock(&tt[g_init_parallelism-1]);
 	for (UInt32 i = 0; i < g_init_parallelism - 1; i++) {
 		int rc = pthread_join(p_thds[i], NULL);
 		if (rc) {
 			printf("ERROR; return code from pthread_join() is %d\n", rc);
 			exit(-1);
 		}
-  }
-  printf("STOCK Done\n");
-  fflush(stdout);
-  // Item Table
+  	}
+	printf("STOCK Done\n");
+	fflush(stdout);
+  	// Item Table
 	for (UInt32 i = 0; i < g_init_parallelism - 1; i++) {
-	pthread_create(&p_thds[i], NULL, threadInitItem, &tt[i]);
+		pthread_create(&p_thds[i], NULL, threadInitItem, &tt[i]);
 	}
-  threadInitItem(&tt[g_init_parallelism-1]);
+  	threadInitItem(&tt[g_init_parallelism-1]);
 	for (UInt32 i = 0; i < g_init_parallelism - 1; i++) {
 		int rc = pthread_join(p_thds[i], NULL);
 		if (rc) {
 			printf("ERROR; return code from pthread_join() is %d\n", rc);
 			exit(-1);
 		}
-  }
-  printf("ITEM Done\n");
-  fflush(stdout);
-  // Customer Table
-	for (UInt32 i = 0; i < g_init_parallelism - 1; i++) {
-	pthread_create(&p_thds[i], NULL, threadInitCust, &tt[i]);
 	}
-  threadInitCust(&tt[g_init_parallelism-1]);
+	printf("ITEM Done\n");
+	fflush(stdout);
+	// Customer Table
+	for (UInt32 i = 0; i < g_init_parallelism - 1; i++) {
+		pthread_create(&p_thds[i], NULL, threadInitCust, &tt[i]);
+	}
+  	threadInitCust(&tt[g_init_parallelism-1]);
 	for (UInt32 i = 0; i < g_init_parallelism - 1; i++) {
 		int rc = pthread_join(p_thds[i], NULL);
 		if (rc) {
 			printf("ERROR; return code from pthread_join() is %d\n", rc);
 			exit(-1);
 		}
-  }
-  printf("ITEM Done\n");
-  fflush(stdout);
+	}
+	printf("ITEM Done\n");
+	fflush(stdout);
 
   // Order Table
-//   /*
+	//   /*
 	init_permutation(); /* initialize permutation of customer numbers */
 	for (UInt32 i = 0; i < g_init_parallelism - 1; i++) {
-	pthread_create(&p_thds[i], NULL, threadInitOrder, &tt[i]);
+		pthread_create(&p_thds[i], NULL, threadInitOrder, &tt[i]);
 	}
-  threadInitOrder(&tt[g_init_parallelism-1]);
+  	threadInitOrder(&tt[g_init_parallelism-1]);
 	for (UInt32 i = 0; i < g_init_parallelism - 1; i++) {
 		int rc = pthread_join(p_thds[i], NULL);
 		if (rc) {
@@ -174,18 +174,18 @@ RC TPCCWorkload::init_table() {
 			exit(-1);
 		}
   }
-  printf("ORDER Done\n");
-  fflush(stdout);
-//   */
+	printf("ORDER Done\n");
+	fflush(stdout);
+	//   */
 	threadInitWh(this);
-  printf("WAREHOUSE Done\n");
-  fflush(stdout);
+	printf("WAREHOUSE Done\n");
+	fflush(stdout);
 	threadInitDist(this);
-  printf("DISTRICT Done\n");
-  fflush(stdout);
-  threadInitHist(this);
-  printf("HISTORY Done\n");
-  fflush(stdout);
+	printf("DISTRICT Done\n");
+	fflush(stdout);
+	threadInitHist(this);
+	printf("HISTORY Done\n");
+	fflush(stdout);
 
   /*
   UInt32 cust_thr_cnt = g_dist_per_wh/2;
@@ -634,13 +634,13 @@ void * TPCCWorkload::threadInitHist(void * This) {
 }
 
 void * TPCCWorkload::threadInitOrder(void * This) {
-  TPCCWorkload * wl = ((thr_args*) This)->wl;
-  int id = ((thr_args*) This)->id;
+	TPCCWorkload * wl = ((thr_args*) This)->wl;
+	int id = ((thr_args*) This)->id;
 	// for (uint64_t wid = 1; wid <= g_num_wh; wid ++) {
-  for (uint64_t wid = id + 1; wid <= g_num_wh; wid+=g_init_parallelism) {
-	if (GET_NODE_ID(wh_to_part(wid)) != g_node_id) continue;
-	for (uint64_t did = 1; did <= g_dist_per_wh; did++) wl->init_tab_order(id, did, wid);
-  }
+	for (uint64_t wid = id + 1; wid <= g_num_wh; wid+=g_init_parallelism) {
+		if (GET_NODE_ID(wh_to_part(wid)) != g_node_id) continue;
+		for (uint64_t did = 1; did <= g_dist_per_wh; did++) wl->init_tab_order(id, did, wid);
+	}
 	printf("ORDER Done\n");
 	return NULL;
 }

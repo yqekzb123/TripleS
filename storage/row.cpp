@@ -30,6 +30,8 @@
 #include "row_aria.h"
 #include "row_sdocc.h"
 #include "row_sdpcc.h"
+#include "row_caracal.h"
+// #include "caracal.h"
 #include "mem_alloc.h"
 #include "manager.h"
 #include <new>
@@ -76,6 +78,9 @@ void row_t::init_manager(row_t * row) {
 #elif CC_ALG == SDPCC
 	manager = (Row_sdpcc *) mem_allocator.align_alloc(sizeof(Row_sdpcc));
 	// manager = (Row_lock *) mem_allocator.align_alloc(sizeof(Row_lock));
+#elif CC_ALG == CARACAL
+	// Use placement new so C++ constructors (e.g. for std::vector) are executed.
+	manager = new (mem_allocator.align_alloc(sizeof(Row_caracal))) Row_caracal();
 #endif
 	manager->init(this);
 }
@@ -186,8 +191,23 @@ RC row_t::get_lock(access_t type, TxnManager * txn) {
 	lock_t lt = (type == RD || type == SCAN)? LOCK_SH : LOCK_EX;
 	rc = this->manager->lock_get(lt, txn);
 #endif
+#if CC_ALG == CARACAL 
+	rc = this->manager->add_reservation(txn->get_batch_id(),txn->return_id,txn->get_txn_id(),txn->get_thd_id());
+	if (rc != RCOK) {
+		this->manager->add_reservation_to_waitlist(txn->get_batch_id(),txn->return_id,txn->get_txn_id(),txn->get_thd_id());
+	}
+#endif
 	return rc;
 }
+
+#if CC_ALG == CARACAL
+RC row_t::batch_append(uint64_t thd_id) {
+	return this->manager->batch_append(thd_id);
+}
+RC row_t::clean_reservation(uint64_t thd_id) {
+	return this->manager->clean(thd_id);
+}
+#endif
 
 RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
   RC rc = RCOK;
@@ -208,18 +228,18 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 #endif
 */
 #if CC_ALG == CNULL
-  uint64_t init_time = get_sys_clock();
+	uint64_t init_time = get_sys_clock();
 	txn->cur_row = (row_t *) mem_allocator.alloc(sizeof(row_t));
 	txn->cur_row->init(get_table(), get_part_id());
-  INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
+	INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
 
 	rc = this->manager->access(type,txn);
 
-  uint64_t copy_time = get_sys_clock();
+	uint64_t copy_time = get_sys_clock();
 	txn->cur_row->copy(this);
 	access->data = txn->cur_row;
 	assert(rc == RCOK);
-  INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
+	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
 	goto end;
 #endif
 
@@ -304,6 +324,13 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 		access->sdocc_write_reservation = txn->last_sdocc_write_reservation;
 	}
   	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);
+#elif CC_ALG == CARACAL
+	rc = this->manager->access(txn,type,txn->cur_row, txn->get_thd_id());
+	if (rc == RCOK) {
+		access->data = this;
+	} else {
+		// this->manager->add_reservation_to_waitlist(txn->get_batch_id(),txn->return_id,txn->get_txn_id(),txn->get_thd_id());
+	}
 #else
 	assert(false);
 #endif
@@ -388,6 +415,9 @@ uint64_t row_t::return_row(RC rc, access_t type, TxnManager *txn, row_t *row) {
 	manager->clean(txn, type);
 	row->free_row();
 	mem_allocator.free(row, sizeof(row_t));
+	return 0;
+#elif CC_ALG == CARACAL
+	// manager->clean(txn, type);
 	return 0;
 #else
 	assert(false);

@@ -24,6 +24,7 @@
 #include "water_mark.h"
 #include <boost/lockfree/queue.hpp>
 #include "circle_list.h"
+#include "ordered_list.h"
 
 void QWorkQueue::init() {
 
@@ -73,6 +74,10 @@ void QWorkQueue::init() {
 		aria_check_lockfree = new TxnMsgLockList("AriaCheckList");
 		commit_ready = true;
 		aria_commit_lockfree = new TxnMsgLockList("AriaCommitList");
+	#endif
+	#if CC_ALG == CARACAL
+		caracal_init_queue = new boost::lockfree::queue<work_queue_entry* >(0);
+		caracal_execute_queues = new CaracalQueue[g_thread_cnt];
 	#endif
 
 
@@ -784,3 +789,150 @@ TxnManager * QWorkQueue::get_from_sdpcc_list_lockfree(uint64_t thd_id, uint64_t 
 	}
 }
 #endif
+
+
+
+#if CC_ALG == CARACAL 
+Message* QWorkQueue::txn_dequeue(uint64_t thd_id) {
+	uint64_t starttime = get_sys_clock();
+	assert(CC_ALG == CARACAL);
+	assert(ISSERVER || ISREPLICA);
+	Message * msg = NULL;
+	work_queue_entry * entry = NULL;
+	bool valid = false;
+
+	valid = new_txn_queue->pop(entry);
+	if(valid) {
+		msg = entry->msg;
+		assert(msg);
+		uint64_t queue_time = get_sys_clock() - entry->starttime;
+		INC_STATS(thd_id,work_queue_wait_time,queue_time);
+		INC_STATS(thd_id,work_queue_cnt,1);
+		statqueue(thd_id, entry);
+		if(msg->rtype == CL_QRY) {
+			sem_wait(&_semaphore);
+			txn_queue_size --;
+			txn_dequeue_size ++;
+			sem_post(&_semaphore);
+			INC_STATS(thd_id,work_queue_new_wait_time,queue_time);
+			INC_STATS(thd_id,work_queue_new_cnt,1);
+		} else {
+			assert(false);
+		}
+		msg->wq_time = queue_time;
+		DEBUG("Work Dequeue (%ld,%ld)\n",entry->batch_id,entry->txn_id);
+		DEBUG_M("QWorkQueue::dequeue work_queue_entry free\n");
+		mem_allocator.free(entry,sizeof(work_queue_entry));
+		INC_STATS(thd_id,work_queue_dequeue_time,get_sys_clock() - starttime);
+	}
+	return msg;
+}
+
+void QWorkQueue::work_enqueue(uint64_t thd_id, Message* msg, bool not_ready, CARACAL_PHASE phase) {
+	uint64_t starttime = get_sys_clock();
+	assert(CC_ALG == CARACAL);
+	assert(msg);
+	DEBUG_M("QWorkQueue::enqueue work_queue_entry alloc\n");
+	work_queue_entry * entry = (work_queue_entry*)mem_allocator.align_alloc(sizeof(work_queue_entry));
+	entry->msg = msg;
+	entry->rtype = msg->rtype;
+	entry->txn_id = msg->txn_id;
+	entry->batch_id = msg->batch_id;
+	// ! 分布式下需要考虑return_node_id
+	entry->original_return_node_id = msg->return_node_id;
+	entry->starttime = get_sys_clock();
+	assert(ISSERVER || ISREPLICA);
+	DEBUG("Work Enqueue (%ld,%ld) %s\n",entry->batch_id,entry->txn_id,entry->get_message_name().c_str());
+
+	assert(msg->rtype == CL_QRY);
+
+	if(not_ready) {
+		INC_STATS(thd_id,work_queue_conflict_cnt,1);
+	}
+	switch (phase) {
+	case CARACAL_INIT:
+		// printf("thd_id: %ld add txn: %ld to read queue\n", thd_id, msg->txn_id);
+		while (!caracal_init_queue->push(entry) && !simulation->is_done()) {}
+		break;
+	case CARACAL_EXECUTION:
+		// printf("thd_id: %ld add txn: %ld to reserve queue\n", thd_id, msg->txn_id);
+		caracal_execute_queues[thd_id % g_thread_cnt].insert(entry);
+		break;
+	case CARACAL_COMMIT:
+		break;
+	default:
+		assert(false);
+		break;
+	}
+	sem_wait(&_semaphore);
+	work_queue_size ++;
+	work_enqueue_size ++;
+	sem_post(&_semaphore);
+
+	INC_STATS(thd_id,work_queue_enqueue_time,get_sys_clock() - starttime);
+	INC_STATS(thd_id,work_queue_enq_cnt,1);
+	INC_STATS(thd_id,trans_work_queue_item_total,txn_queue_size+work_queue_size);
+}
+
+Message* QWorkQueue::work_dequeue(uint64_t thd_id) {
+	uint64_t starttime = get_sys_clock();
+	assert(CC_ALG == CARACAL);
+	assert(ISSERVER || ISREPLICA);
+	Message * msg = NULL;
+	work_queue_entry * entry = NULL;
+	bool valid = false;
+
+	valid = work_queue->pop(entry);
+	if (!valid) {
+		switch (simulation->caracal_phase)
+		{
+		case CARACAL_INIT:
+			valid = caracal_init_queue->pop(entry);
+			if (valid) {
+				// printf("thd_id: %ld pop txn: %ld from read queue\n", thd_id, entry->msg->txn_id);
+			}
+			break;
+		case CARACAL_EXECUTION:
+			valid = caracal_execute_queues[thd_id % g_thread_cnt].get_next(0, entry);
+			// valid = caracal_execute_queue->pop(entry);
+			if (valid) {
+				// printf("thd_id: %ld pop txn: %ld from reserve queue\n", thd_id, entry->msg->txn_id);
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+	if(valid) {
+		msg = entry->msg;
+		assert(msg);
+		uint64_t queue_time = get_sys_clock() - entry->starttime;
+		INC_STATS(thd_id,work_queue_wait_time,queue_time);
+		INC_STATS(thd_id,work_queue_cnt,1);
+		statqueue(thd_id, entry);
+		if(msg->rtype == CL_QRY) {
+			sem_wait(&_semaphore);
+			work_queue_size ++;
+			work_enqueue_size ++;
+			sem_post(&_semaphore);
+			INC_STATS(thd_id,work_queue_new_wait_time,queue_time);
+			INC_STATS(thd_id,work_queue_new_cnt,1);
+		} else {
+			// printf("recieve msg type: %d\n", msg->rtype);
+			sem_wait(&_semaphore);
+			work_queue_size ++;
+			work_enqueue_size ++;
+			sem_post(&_semaphore);
+			INC_STATS(thd_id,work_queue_old_wait_time,queue_time);
+			INC_STATS(thd_id,work_queue_old_cnt,1);
+		}
+		msg->wq_time = queue_time;
+		DEBUG("Work Dequeue (%ld,%ld)\n",entry->batch_id,entry->txn_id);
+		DEBUG_M("QWorkQueue::dequeue work_queue_entry free\n");
+		mem_allocator.free(entry,sizeof(work_queue_entry));
+		INC_STATS(thd_id,work_queue_dequeue_time,get_sys_clock() - starttime);
+	}
+	return msg;
+}
+#endif // CC_ALG == ARIA

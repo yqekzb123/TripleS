@@ -78,7 +78,7 @@ public:
 	}
 
 	bool get_next(const uint64_t watermark, T& out) noexcept {
-		// T out;
+		// debug_print();
 		if (head && comp2(head->value, watermark)) {
 			Node* n = head;
 			head = head->next;
@@ -115,7 +115,9 @@ private:
 	// helper: insert node into proper position (node must be allocated)
 	void insert_node(Node* node) {
 		if (!head) {
-			head = node; node->next = nullptr; sz = 1; return;
+			head = node; node->next = nullptr; sz = 1; 
+			// debug_print();
+			return;
 		}
 
 		// if node should be inserted before head
@@ -123,6 +125,7 @@ private:
 			node->next = head;
 			head = node;
 			++sz;
+			// debug_print();
 			return;
 		}
 
@@ -135,6 +138,18 @@ private:
 		node->next = prev->next;
 		prev->next = node;
 		++sz;
+		// debug_print();
+	}
+
+	void debug_print() const noexcept {
+		std::ostringstream oss;
+		Node* cur = head;
+		while (cur) {
+			oss << *cur->value << " -> ";
+			cur = cur->next;
+		}
+		oss << "nullptr\n";
+		std::cout << oss.str();
 	}
 };
 

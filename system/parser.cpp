@@ -195,6 +195,10 @@ void parser(int argc, char * argv[]) {
   g_total_thread_cnt += 1; // sequencer thread
   g_abort_thread_cnt = 0;
   g_total_thread_cnt -= 1; // abort thread
+#elif CC_ALG == CARACAL
+  g_total_thread_cnt += 1; // sequencer thread
+  g_abort_thread_cnt = 0;
+  g_total_thread_cnt -= 1; // abort thread
 #elif CC_ALG == SDPCC
   g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt +  g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
   g_abort_thread_cnt = 0;

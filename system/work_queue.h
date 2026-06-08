@@ -25,6 +25,7 @@
 #include "semaphore.h"
 #include "small_lock_list.h"
 #include "circle_list.h"
+#include "ordered_list.h"
 //#include "message.h"
 
 class BaseQuery;
@@ -37,12 +38,35 @@ struct work_queue_entry {
     uint64_t txn_id;
     RemReqType rtype;
     uint64_t starttime;
+
+    uint64_t original_return_node_id;
     string get_message_name() {
         return rtype_to_string(rtype);
+    }
+    // 帮我重载 << 运算符，方便打印，只需要打印bid和tid就行了
+    friend ostream& operator<<(ostream& os, const work_queue_entry& entry) {
+        os << "work_queue_entry{" << entry.batch_id << "," << entry.txn_id << "}";
+        return os;
     }
 };
 
 typedef boost::circular_buffer<work_queue_entry*> WCircularBuffer;
+#if CC_ALG == CARACAL
+struct CompareWorkQueueEntry {
+    bool operator() (work_queue_entry* a, work_queue_entry* b) const {
+        uint64_t key_a = get_batch_key(a->batch_id, a->original_return_node_id, a->txn_id);
+        uint64_t key_b = get_batch_key(b->batch_id, b->original_return_node_id, b->txn_id);
+        return key_a < key_b;
+    }
+};
+struct CompareWorkQueue {
+    bool operator() (work_queue_entry* a, uint64_t watermark) const {
+        return true;
+    }
+};
+// 用来放还不能重试的事务
+typedef OrderedList<work_queue_entry*,CompareWorkQueueEntry,CompareWorkQueue> CaracalQueue;
+#endif
 class QWorkQueue {
 public:
     void init();
@@ -71,6 +95,12 @@ public:
 #if CC_ALG == ARIA
     Message * txn_dequeue(uint64_t thd_id);
     void work_enqueue(uint64_t thd_id, Message * msg, bool not_ready, ARIA_PHASE phase);
+    Message * work_dequeue(uint64_t thd_id);
+#endif
+
+#if CC_ALG == CARACAL
+    Message * txn_dequeue(uint64_t thd_id);
+    void work_enqueue(uint64_t thd_id, Message * msg, bool not_ready, CARACAL_PHASE phase);
     Message * work_dequeue(uint64_t thd_id);
 #endif
 
@@ -142,6 +172,12 @@ private:
     boost::lockfree::queue<work_queue_entry* > * aria_reserve_queue;
     boost::lockfree::queue<work_queue_entry* > * aria_check_queue;
     boost::lockfree::queue<work_queue_entry* > * aria_commit_queue;
+#endif
+
+#if CC_ALG == CARACAL
+    boost::lockfree::queue<work_queue_entry* > * caracal_init_queue;
+    CaracalQueue* caracal_execute_queues;
+    // boost::lockfree::queue<work_queue_entry* > * caracal_execute_queue;
 #endif
     uint64_t sched_ptr;
     BaseQuery * last_sched_dq;

@@ -78,6 +78,8 @@ class Sequencer;
 class SDOCCSequencer;
 class SDPCCSequencer;
 class AriaSequencer;
+class CaracalSequencer;
+class Caracal;
 class Logger;
 class WaterMarkList;
 // class QTcpQueue;
@@ -116,6 +118,8 @@ extern Sequencer seq_man;
 extern SDOCCSequencer sdocc_seq_man;
 extern SDPCCSequencer sdpcc_seq_man;
 extern AriaSequencer aria_seq;
+extern CaracalSequencer caracal_seq;
+extern Caracal caracal_man;
 extern Logger logger;
 // extern QTcpQueue tcp_queue;
 
@@ -270,6 +274,9 @@ extern uint32_t g_dy_batch_id;
 // ARIA
 extern UInt32 g_aria_batch_size;
 
+// CARACAL
+extern UInt32 g_caracal_batch_size;
+
 // Replication
 extern UInt32 g_repl_type;
 extern UInt32 g_repl_cnt;
@@ -298,6 +305,9 @@ enum RemReqType {
   CALVIN_ACK,
   CALVIN_ABORT,
   ARIA_ACK,
+  CARACAL_PHASE_ACK,
+  CARACAL_TXN_ACK,
+  CARACAL_DONE,
   PIP_ACK,
   WATERMARK,
   NO_MSG
@@ -318,6 +328,9 @@ inline string rtype_to_string(RemReqType rtype) {
       case RQRY_RSP: return "RQRY_RSP";
       case RFIN: return "RFIN";
       case ARIA_ACK: return "ARIA_ACK";
+      case CARACAL_PHASE_ACK: return "CARACAL_PHASE_ACK";
+      case CARACAL_TXN_ACK: return "CARACAL_TXN_ACK";
+      case CARACAL_DONE: return "CARACAL_DONE";
       case RACK_PREP: return "RACK_PREP";
       case RACK_FIN: return "RACK_FIN";
       case RTXN: return "RTXN";

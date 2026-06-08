@@ -48,6 +48,16 @@ void SimManager::init() {
 	aria_barrier[1].phase = ARIA_CHECK;
 	aria_barrier_index = 0;
 
+	#if CC_ALG == CARACAL
+	caracal_phase = CARACAL_COLLECT;
+	caracal_barrier[0].init(g_node_cnt,b1);
+	caracal_barrier[0].phase = CARACAL_INIT;
+	caracal_barrier[1].init(g_node_cnt,b2);
+	caracal_barrier[1].phase = CARACAL_EXECUTION;
+	caracal_barrier_index = 0;
+	finish_phase_cnt = 0;
+	#endif
+
 #if TIME_ENABLE
 	run_starttime = get_sys_clock();
 	last_da_query_time = get_sys_clock();
@@ -154,4 +164,9 @@ void SimManager::next_aria_phase() {
 		// aria_barrier[0].init_batch(current_batch_id + 1);
 	} 
 	aria_phase = (ARIA_PHASE)((aria_phase + 1) % 5);
+}
+
+void SimManager::next_caracal_phase() {
+	caracal_phase = (CARACAL_PHASE)((caracal_phase + 1) % 4);
+	DEBUG_SCH("System moving to Caracal phase %d\n", caracal_phase);
 }

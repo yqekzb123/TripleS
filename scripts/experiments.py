@@ -101,13 +101,14 @@ def ycsb_scaling():
 
 def ycsb_skew_pip():
     wl = 'YCSB'
-    nnodes = [4]
+    nnodes = [2]
     # algos=['CALVIN','ARIA','SDPCC']
     # algos=['ARIA']
     # algos=['SDOCC']
     # algos=['SDPCC']
     # algos=['SDPCC','CALVIN']
-    algos=['CALVIN']
+    # algos=['CALVIN']
+    algos=['CARACAL']
     # algos=['SILO']
     base_table_size=1048576*8
     txn_write_perc = [1]

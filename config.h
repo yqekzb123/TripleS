@@ -13,7 +13,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 4
+#define NODE_CNT 2
 #define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -106,7 +106,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG CALVIN
+#define CC_ALG CARACAL
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -206,7 +206,7 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 33554432
+#define SYNTH_TABLE_SIZE 16777216
 #define ZIPF_THETA 0.9
 #define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2
@@ -345,9 +345,9 @@ enum PPSTxnType {
 
 #define DEBUG_LOCKFREE_LIST false
 #define DEBUG_REORDER         false
-#define DEBUG_SEQUENCER     false
-#define DEBUG_SCHEDULER     false
-#define DEBUG_WORKER        false
+#define DEBUG_SEQUENCER     true
+#define DEBUG_SCHEDULER     true
+#define DEBUG_WORKER        true
 #define DEBUG_TIMEREPORT     true
 #define DEBUG_LOCK          false
 // #define DEBUG_TIMESTAMP       false
@@ -390,6 +390,7 @@ enum PPSTxnType {
 // #define HSTORE_SPEC           7
 #define OCC             8
 #define CALVIN      10
+#define CARACAL 11
 #define SILO 27
 #define CNULL 28  //不跑事务
 #define ARIA 31

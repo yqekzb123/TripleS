@@ -162,9 +162,13 @@ public:
   RC run_aria_txn();
 #endif
 #if CC_ALG == SDOCC
-  // !还没实现
   RC run_sdocc_txn();
   RC send_remote_subtxn();
+#endif
+#if CC_ALG == CARACAL
+  RC caracal_init_phase();
+  RC caracal_exec_phase();
+  RC run_caracal_txn();
 #endif
   RC run_tpcc_phase2();
   RC run_tpcc_phase5();

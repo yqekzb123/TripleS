@@ -45,6 +45,8 @@
 #include "sdpcc_sequencer.h"
 #include "logger.h"
 #include "aria_sequencer.h"
+#include "caracal_sequencer.h"
+#include "caracal.h"
 #include "water_mark.h"
 
 #include <boost/lockfree/queue.hpp>
@@ -79,6 +81,10 @@ SDOCCSequencer sdocc_seq_man;
 #endif
 #if CC_ALG == ARIA
 AriaSequencer aria_seq;
+#endif
+#if CC_ALG == CARACAL
+CaracalSequencer caracal_seq;
+Caracal caracal_man;
 #endif
 Logger logger;
 // QTcpQueue tcp_queue;
@@ -164,6 +170,8 @@ UInt32 g_send_thread_cnt = SEND_THREAD_CNT;
     UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
 #elif CC_ALG == ARIA
     UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
+#elif CC_ALG == CARACAL
+    UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
 #else
 UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt;
 #endif
@@ -216,6 +224,8 @@ uint32_t g_dy_batch_id = 0;
 
 // ARIA
 UInt32 g_aria_batch_size = ARIA_BATCH_SIZE;
+
+UInt32 g_caracal_batch_size = ARIA_BATCH_SIZE;
 
 double g_mpr = MPR;
 double g_mpr_neworder = MPR_NEWORDER;

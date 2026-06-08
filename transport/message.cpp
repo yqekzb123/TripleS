@@ -153,6 +153,9 @@ Message * Message::create_message(RemReqType rtype) {
     case RACK_PREP:
     case RACK_FIN:
     case PIP_ACK:
+    case CARACAL_PHASE_ACK:
+    case CARACAL_TXN_ACK:
+    case CARACAL_DONE:
       msg = new AckMessage;
       break;
     case CL_QRY:
@@ -211,7 +214,7 @@ uint64_t Message::mget_size() {
   uint64_t size = 0;
   size += sizeof(RemReqType);
   size += sizeof(uint64_t);
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC// || CC_ALG == SILO
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC || CC_ALG == CARACAL// || CC_ALG == SILO
   size += sizeof(uint64_t);
 #endif
 #if CC_ALG == SDOCC
@@ -229,7 +232,7 @@ uint64_t Message::mget_size() {
 void Message::mcopy_from_txn(TxnManager * txn) {
   //rtype = query->rtype;
   txn_id = txn->get_txn_id();
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC// || CC_ALG == SILO
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC || CC_ALG == CARACAL// || CC_ALG == SILO
   batch_id = txn->get_batch_id();
 #endif
 #if CC_ALG == SDOCC
@@ -251,7 +254,7 @@ void Message::mcopy_from_buf(char * buf) {
   uint64_t ptr = 0;
   COPY_VAL(rtype,buf,ptr);
   COPY_VAL(txn_id,buf,ptr);
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC// || CC_ALG == SILO
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC|| CC_ALG == CARACAL// || CC_ALG == SILO
   COPY_VAL(batch_id,buf,ptr);
 #endif
 #if CC_ALG == SDOCC
@@ -283,7 +286,7 @@ void Message::mcopy_to_buf(char * buf) {
   uint64_t ptr = 0;
   COPY_BUF(buf,rtype,ptr);
   COPY_BUF(buf,txn_id,ptr);
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC// || CC_ALG == SILO
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC || CC_ALG == CARACAL// || CC_ALG == SILO
   COPY_BUF(buf,batch_id,ptr);
 #endif
 #if CC_ALG == SDOCC
@@ -1206,6 +1209,10 @@ uint64_t AckMessage::get_size() {
   size += sizeof(uint64_t);
   size += sizeof(uint64_t);
 #endif
+#if CC_ALG == CARACAL
+  size += sizeof(uint64_t);
+  size += sizeof(uint64_t);
+#endif
 #if WORKLOAD == PPS && CC_ALG == CALVIN
   size += sizeof(size_t);
   size += sizeof(uint64_t) * part_keys.size();
@@ -1264,6 +1271,10 @@ void AckMessage::copy_from_buf(char * buf) {
   COPY_VAL(aria_phase, buf, ptr);
   COPY_VAL(batch_id, buf, ptr);
 #endif
+#if CC_ALG == CARACAL
+  COPY_VAL(caracal_phase, buf, ptr);
+  COPY_VAL(batch_id, buf, ptr);
+#endif
 #if CC_ALG == SDOCC
   COPY_VAL(retry_cnt,buf,ptr);
 #endif
@@ -1293,6 +1304,10 @@ void AckMessage::copy_to_buf(char * buf) {
   COPY_BUF(buf,war,ptr);
 
   COPY_BUF(buf,aria_phase, ptr);
+  COPY_BUF(buf,batch_id, ptr);
+#endif
+#if CC_ALG == CARACAL
+  COPY_BUF(buf,caracal_phase, ptr);
   COPY_BUF(buf,batch_id, ptr);
 #endif
 #if CC_ALG == SDOCC

@@ -51,6 +51,9 @@ public:
   uint64_t sdocc_phase;
   bool rwset_known=false;
   #endif
+  // #if CC_ALG == CARACAL
+  // uint64_t caracal_phase;
+  // #endif
   uint64_t return_node_id;
   uint64_t client_id;
 
@@ -197,6 +200,10 @@ public:
   bool war;
 
   uint64_t aria_phase;
+  uint64_t batch_id;
+#endif
+#if CC_ALG == CARACAL
+  uint64_t caracal_phase;
   uint64_t batch_id;
 #endif
 #if CC_ALG == SDOCC

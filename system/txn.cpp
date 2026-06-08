@@ -41,6 +41,7 @@
 #include "array.h"
 #include "manager.h"
 #include "water_mark.h"
+#include "caracal.h"
 
 void TxnStats::init() {
 	starttime=0;
@@ -385,7 +386,11 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	// store(0, std::memory_order_relaxed);
 	has_re_enqueued.store(false, std::memory_order_relaxed);
 #endif
-
+#if CC_ALG == CARACAL
+	caracal_phase = CARACAL_INIT;
+	caracal_txn_phase = CARACAL_TXN_ANALYSIS;
+	caracal_append_rows.init(MAX_ROW_PER_TXN + 10);
+#endif
 	registed_ = false;
 	txn_ready = true;
 	twopl_wait_start = 0;
@@ -428,6 +433,11 @@ void TxnManager::reset() {
 	war = false;
 	aria_phase = ARIA_READ;
 #endif
+#if CC_ALG == CARACAL
+	caracal_phase = CARACAL_INIT;
+	caracal_txn_phase = CARACAL_TXN_ANALYSIS;
+	caracal_append_rows.clear();
+#endif
 #if CC_ALG == SDOCC
 	last_sdocc_read_reservation = 0;
 	last_sdocc_write_reservation = 0;
@@ -461,6 +471,9 @@ void TxnManager::release() {
 	num_locks = 0;
 	memset(write_set, 0, sizeof(write_set));
   // mem_allocator.free(write_set, sizeof(int) * 100);
+#endif
+#if CC_ALG == CARACAL
+	caracal_append_rows.release();
 #endif
 	txn_ready = true;
 }
@@ -766,7 +779,7 @@ void TxnManager::commit_stats() {
 		INC_STATS(get_thd_id(),cflt_cnt_txn,1);
 	}*/
 	txn_stats.commit_stats(get_thd_id(),get_txn_id(),get_batch_id(),timespan_long, timespan_short);
-	#if CC_ALG == CALVIN || CC_ALG == SDPCC
+	#if CC_ALG == CALVIN || CC_ALG == SDPCC || CC_ALG == CARACAL
 	return;
 	#endif
 
@@ -929,6 +942,13 @@ void TxnManager::cleanup(RC rc) {
 		row->return_row(rc,RD,this,row);
 	}
 #endif
+#if CC_ALG == CARACAL
+	// cleanup appended rows
+	for (uint64_t i = 0; i < caracal_append_rows.size(); i++) {
+		row_t * row = caracal_append_rows[i];
+		row->return_row(rc,RD,this,row);
+	}
+#endif
 	if (rc == Abort) {
 		txn->release_inserts(get_thd_id());
 		txn->insert_rows.clear();
@@ -939,15 +959,29 @@ void TxnManager::cleanup(RC rc) {
 }
 
 RC TxnManager::get_lock(row_t * row, access_t type) {
+#if CC_ALG == CALVIN || CC_ALG == SDPCC
 	if (calvin_locked_rows.contains(row)) {
 		return RCOK;
 	}
 	calvin_locked_rows.add(row);
 	RC rc = row->get_lock(type, this);
+	
 	if(rc == WAIT) {
 		INC_STATS(get_thd_id(), txn_wait_cnt, 1);
 	}
 	return rc;
+#elif CC_ALG == CARACAL
+	if (caracal_append_rows.contains(row)) {
+		return RCOK;
+	}
+	caracal_append_rows.add(row);
+	RC rc = row->get_lock(type, this);
+	caracal_man.insert_access_row(get_thd_id(),row);
+	if (rc != RCOK) {
+		caracal_man.insert_temp_row(get_thd_id(),row);
+	}
+	return rc;
+#endif
 }
 
 RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
@@ -1196,7 +1230,7 @@ RC TxnManager::validate() {
 }
 
 RC TxnManager::send_remote_reads() {
-	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
+	assert(CC_ALG == CALVIN || CC_ALG == SDPCC || CC_ALG == CARACAL);
 #if !YCSB_ABORT_MODE && !OPEN_YCSB_DEPENDENCY && WORKLOAD == YCSB
 	return RCOK;
 #endif
@@ -1248,4 +1282,20 @@ void TxnManager::release_locks(RC rc) {
 
 	uint64_t timespan = (get_sys_clock() - starttime);
 	INC_STATS(get_thd_id(), txn_cleanup_time,  timespan);
+}
+
+bool TxnManager::caracal_exec_phase_done() {
+	bool ready =  (caracal_txn_phase == CARACAL_TXN_DONE) && (get_rc() != WAIT);
+	if(ready) {
+	DEBUG("(%ld,%ld) caracal exec phase done!\n",txn->batch_id,txn->txn_id);
+	}
+	return ready;
+}
+
+bool TxnManager::caracal_collect_phase_done() {
+	bool ready =  (caracal_txn_phase == CARACAL_TXN_COLLECT) && (get_rsp_cnt() == caracal_expected_rsp_cnt);
+	if(ready) {
+		DEBUG("(%ld,%ld) caracal collect phase done!\n",txn->batch_id,txn->txn_id);
+	}
+	return ready;
 }

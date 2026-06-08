@@ -51,6 +51,7 @@ class Row_silo;
 class Row_aria;
 class Row_sdocc;
 class Row_sdpcc;
+class Row_caracal;
 
 class row_t {
 public:
@@ -104,6 +105,11 @@ public:
 	uint64_t return_row(RC rc, access_t type, TxnManager *txn, row_t *row);
 	void return_row(RC rc, access_t type, TxnManager * txn, row_t * row, uint64_t _min_commit_ts);
 
+	#if CC_ALG == CARACAL
+	RC batch_append(uint64_t thd_id);
+	RC clean_reservation(uint64_t thd_id);
+	#endif
+
 	#if CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE || CC_ALG == CALVIN
 		Row_lock * manager;
 	#elif CC_ALG == OCC
@@ -119,6 +125,8 @@ public:
 	#elif CC_ALG == SDPCC
 		Row_sdpcc * manager;
 		// Row_lock * manager;
+	#elif CC_ALG == CARACAL
+		Row_caracal* manager;
 	#endif
 	char * data;
 	int tuple_size;

@@ -45,6 +45,9 @@
 #include "ycsb_query.h"
 #include "client_query.h"
 #include "water_mark.h"
+#include "caracal.h"
+#include "caracal_sequencer.h"
+#include "caracal_thread.h"
 
 void network_test();
 void network_test_recv();
@@ -69,6 +72,9 @@ AriaSequencerThread * aria_seq_thds;
 #endif
 #if CC_ALG == SDOCC// || CC_ALG == SILO
 SDOCCSequencerThread * sdocc_seq_thds;
+#endif
+#if CC_ALG == CARACAL
+CaracalSequencerThread * caracal_seq_thds;
 #endif
 
 // defined in parser.cpp
@@ -196,6 +202,13 @@ int main(int argc, char *argv[]) {
 	aria_seq.init(m_wl);
 	printf("Done\n");
 #endif
+#if CC_ALG == CARACAL
+	printf("Initializing caracal... ");
+	fflush(stdout);
+	caracal_seq.init(m_wl);
+	caracal_man.init(g_thread_cnt);
+	printf("Done\n");
+#endif
 #if CC_ALG == CALVIN
 	printf("Initializing sequencer... ");
 	fflush(stdout);
@@ -256,6 +269,11 @@ int main(int argc, char *argv[]) {
 	// all_thd_cnt -= 1; 	//abort thread
 #endif
 
+#if CC_ALG == CARACAL
+	all_thd_cnt += 1;	//sequencer thread
+	// all_thd_cnt -= 1; 	//abort thread
+#endif
+
 
 	printf("%ld, %ld, %ld, %d \n", thd_cnt, rthd_cnt, sthd_cnt, g_abort_thread_cnt);
 	printf("all_thd_cnt: %ld, g_this_total_thread_cnt: %d \n", all_thd_cnt, g_this_total_thread_cnt);
@@ -292,6 +310,10 @@ int main(int argc, char *argv[]) {
 
 #if CC_ALG == SDOCC// || CC_ALG == SILO
 	sdocc_seq_thds = new SDOCCSequencerThread[1];
+#endif
+
+#if CC_ALG == CARACAL
+	caracal_seq_thds = new CaracalSequencerThread[1];
 #endif
 	// query_queue should be the last one to be initialized!!!
 	// because it collects txn latency
@@ -364,7 +386,7 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 
-#if CC_ALG != CALVIN && CC_ALG != ARIA && CC_ALG != SDOCC && CC_ALG != SDPCC
+#if CC_ALG != CALVIN && CC_ALG != ARIA && CC_ALG != SDOCC && CC_ALG != SDPCC && CC_ALG != CARACAL
 	abort_thds[0].init(id,g_node_id,m_wl);
 	pthread_create(&p_thds[id++], NULL, run_thread, (void *)&abort_thds[0]);
 #endif
@@ -421,6 +443,17 @@ int main(int argc, char *argv[]) {
 #endif
 	aria_seq_thds[0].init(id,g_node_id,m_wl);
 	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&aria_seq_thds[0]);
+#endif
+
+#if CC_ALG == CARACAL
+#if SET_AFFINITY
+	CPU_ZERO(&cpus);
+	CPU_SET(cpu_cnt, &cpus);
+	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+	cpu_cnt++;
+#endif
+	caracal_seq_thds[0].init(id,g_node_id,m_wl);
+	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&caracal_seq_thds[0]);
 #endif
 
 #if CC_ALG == SDOCC// || CC_ALG == SILO

@@ -78,6 +78,9 @@ uint64_t merge_idx_key(uint64_t key1, uint64_t key2, uint64_t key3) {
 uint64_t get_batch_key(uint64_t batch_id, uint64_t return_id, uint64_t txn_id) {
   #if 0 && CC_ALG == SDPCC
   return txn_id + 1;
+  #elif CC_ALG == CARACAL  // 不考虑return_id
+  uint64_t key = (batch_id << 32) + txn_id + 1;
+  return key;
   #else
 	uint64_t key = (batch_id << 32) + (return_id << 24) + txn_id + 1;
 	return key;

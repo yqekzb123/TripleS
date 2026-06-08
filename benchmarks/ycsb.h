@@ -66,6 +66,9 @@ public:
 #if CC_ALG == ARIA
   RC run_aria_txn();
 #endif
+#if CC_ALG == CARACAL
+  RC run_caracal_txn();
+#endif
 #if CC_ALG == SDOCC
   RC run_sdocc_txn();
 #endif
@@ -76,6 +79,7 @@ private:
   RC run_ycsb_0(ycsb_request * req,row_t *& row_local);
   RC run_ycsb_1(access_t acctype, row_t * row_local);
   RC run_ycsb();
+  RC run_caracal_ycsb();
   bool is_done() ;
   bool is_local_request(uint64_t idx) ;
   RC send_remote_request() ;
