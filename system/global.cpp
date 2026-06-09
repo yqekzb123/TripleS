@@ -171,7 +171,7 @@ UInt32 g_send_thread_cnt = SEND_THREAD_CNT;
 #elif CC_ALG == ARIA
     UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
 #elif CC_ALG == CARACAL
-    UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread
+    UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2; // sequencer thread + control thread
 #else
 UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_abort_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt;
 #endif

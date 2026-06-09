@@ -39,6 +39,7 @@ void SimManager::init() {
 	// barrier_count = 0;
 	bool* b1 = (bool *) mem_allocator.alloc(sizeof(bool) * g_node_cnt);
 	bool* b2 = (bool *) mem_allocator.alloc(sizeof(bool) * g_node_cnt);
+	bool* b3 = (bool *) mem_allocator.alloc(sizeof(bool) * g_node_cnt);
 	// memset(barriers, 0, sizeof(bool) * g_node_cnt);
 	// aria_barrier.barrier_count[0] = 0;
 	// aria_barrier.barrier_count[1] = 0;
@@ -53,9 +54,13 @@ void SimManager::init() {
 	caracal_barrier[0].init(g_node_cnt,b1);
 	caracal_barrier[0].phase = CARACAL_INIT;
 	caracal_barrier[1].init(g_node_cnt,b2);
-	caracal_barrier[1].phase = CARACAL_EXECUTION;
+	caracal_barrier[1].phase = CARACAL_APPEND;
+	caracal_barrier[2].init(g_node_cnt,b3);
+	caracal_barrier[2].phase = CARACAL_EXECUTION;
 	caracal_barrier_index = 0;
 	finish_phase_cnt = 0;
+	send_txn_finish = false;
+	get_all_txn_finish = false;
 	#endif
 
 #if TIME_ENABLE
@@ -167,6 +172,19 @@ void SimManager::next_aria_phase() {
 }
 
 void SimManager::next_caracal_phase() {
-	caracal_phase = (CARACAL_PHASE)((caracal_phase + 1) % 4);
+	if (caracal_phase == CARACAL_INIT_SYNC) {
+		caracal_barrier[0].reset_barrier();
+		caracal_barrier[0].batch_id++; //应该到下一个batch了
+		// caracal_barrier[1].init_batch(current_batch_id);
+	} else if (caracal_phase == CARACAL_APPEND_SYNC) {
+		caracal_barrier[1].reset_barrier();
+		caracal_barrier[1].batch_id++; //应该到下一个batch了
+		// caracal_barrier[0].init_batch(current_batch_id + 1);
+	} else if (caracal_phase == CARACAL_EXECUTION_SYNC) {
+		caracal_barrier[2].reset_barrier();
+		caracal_barrier[2].batch_id++; //应该到下一个batch了
+		// caracal_barrier[0].init_batch(current_batch_id + 1);
+	}
+	caracal_phase = (CARACAL_PHASE)((caracal_phase + 1) % (CARACAL_EXECUTION_SYNC + 1));
 	DEBUG_SCH("System moving to Caracal phase %d\n", caracal_phase);
 }

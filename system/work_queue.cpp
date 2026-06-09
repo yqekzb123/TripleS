@@ -78,6 +78,8 @@ void QWorkQueue::init() {
 	#if CC_ALG == CARACAL
 		caracal_init_queue = new boost::lockfree::queue<work_queue_entry* >(0);
 		caracal_execute_queues = new CaracalQueue[g_thread_cnt];
+
+		caracal_ack_queue = new boost::lockfree::queue<work_queue_entry* >(0);
 	#endif
 
 
@@ -858,8 +860,6 @@ void QWorkQueue::work_enqueue(uint64_t thd_id, Message* msg, bool not_ready, CAR
 		// printf("thd_id: %ld add txn: %ld to reserve queue\n", thd_id, msg->txn_id);
 		caracal_execute_queues[thd_id % g_thread_cnt].insert(entry);
 		break;
-	case CARACAL_COMMIT:
-		break;
 	default:
 		assert(false);
 		break;
@@ -886,13 +886,23 @@ Message* QWorkQueue::work_dequeue(uint64_t thd_id) {
 	if (!valid) {
 		switch (simulation->caracal_phase)
 		{
+		case CARACAL_COLLECT:
 		case CARACAL_INIT:
+		case CARACAL_INIT_SYNC:
 			valid = caracal_init_queue->pop(entry);
 			if (valid) {
 				// printf("thd_id: %ld pop txn: %ld from read queue\n", thd_id, entry->msg->txn_id);
 			}
 			break;
+		case CARACAL_APPEND:
+		case CARACAL_APPEND_SYNC:
+			valid = caracal_init_queue->pop(entry);
+			if (valid) {
+				assert(false);
+			}
+			break;
 		case CARACAL_EXECUTION:
+		case CARACAL_EXECUTION_SYNC:
 			valid = caracal_execute_queues[thd_id % g_thread_cnt].get_next(0, entry);
 			// valid = caracal_execute_queue->pop(entry);
 			if (valid) {
@@ -935,4 +945,57 @@ Message* QWorkQueue::work_dequeue(uint64_t thd_id) {
 	}
 	return msg;
 }
-#endif // CC_ALG == ARIA
+
+Message* QWorkQueue::phase_ack_dequeue(uint64_t thd_id) {
+	uint64_t starttime = get_sys_clock();
+	assert(CC_ALG == CARACAL);
+	assert(ISSERVER || ISREPLICA);
+	Message * msg = NULL;
+	work_queue_entry * entry = NULL;
+	bool valid = false;
+
+	valid = caracal_ack_queue->pop(entry);
+
+	if(valid) {
+		msg = entry->msg;
+		assert(msg);
+		uint64_t queue_time = get_sys_clock() - entry->starttime;
+		INC_STATS(thd_id,work_queue_wait_time,queue_time);
+		INC_STATS(thd_id,work_queue_cnt,1);
+		statqueue(thd_id, entry);
+		
+		msg->wq_time = queue_time;
+		DEBUG("Phase Ack Dequeue (%ld,%ld)\n",entry->batch_id,entry->txn_id);
+		DEBUG_M("QWorkQueue::dequeue work_queue_entry free\n");
+		mem_allocator.free(entry,sizeof(work_queue_entry));
+		INC_STATS(thd_id,work_queue_dequeue_time,get_sys_clock() - starttime);
+	}
+	return msg;
+}
+
+void QWorkQueue::phase_ack_enqueue(uint64_t thd_id, Message* msg) {
+	uint64_t starttime = get_sys_clock();
+	assert(CC_ALG == CARACAL);
+	assert(msg);
+	DEBUG_M("QWorkQueue::enqueue work_queue_entry alloc\n");
+	work_queue_entry * entry = (work_queue_entry*)mem_allocator.align_alloc(sizeof(work_queue_entry));
+	entry->msg = msg;
+	entry->rtype = msg->rtype;
+	entry->txn_id = msg->txn_id;
+	entry->batch_id = msg->batch_id;
+	entry->starttime = get_sys_clock();
+	assert(ISSERVER || ISREPLICA);
+	DEBUG("Phase Ack Enqueue (%ld,%ld) %s\n",entry->batch_id,entry->txn_id,entry->get_message_name().c_str());
+
+	while (!caracal_ack_queue->push(entry) && !simulation->is_done()) {}
+	
+	sem_wait(&_semaphore);
+	work_queue_size ++;
+	work_enqueue_size ++;
+	sem_post(&_semaphore);
+
+	INC_STATS(thd_id,work_queue_enqueue_time,get_sys_clock() - starttime);
+	INC_STATS(thd_id,work_queue_enq_cnt,1);
+	INC_STATS(thd_id,trans_work_queue_item_total,txn_queue_size+work_queue_size);
+}
+#endif // CC_ALG == CARACAL

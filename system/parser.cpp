@@ -197,6 +197,7 @@ void parser(int argc, char * argv[]) {
   g_total_thread_cnt -= 1; // abort thread
 #elif CC_ALG == CARACAL
   g_total_thread_cnt += 1; // sequencer thread
+  g_total_thread_cnt += 1; // control thread
   g_abort_thread_cnt = 0;
   g_total_thread_cnt -= 1; // abort thread
 #elif CC_ALG == SDPCC

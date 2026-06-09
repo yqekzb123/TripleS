@@ -32,7 +32,6 @@ void CaracalSequencer::send_next_batch(uint64_t thd_id) {
     uint64_t prof_stat = get_sys_clock();
     assert(caracal_batch.size() != 0);
     DEBUG_SEQ("SEND NEXT BATCH %ld %ld %ld\n", thd_id, batch_id, caracal_batch.size());
-    total_ack_count = 0;
     Message * msg;
     for(uint64_t j = 0; j < g_node_cnt; j++) {
 		while(fill_queue[j].pop(msg)) {
@@ -44,7 +43,7 @@ void CaracalSequencer::send_next_batch(uint64_t thd_id) {
 			}
             // 只要有一个消息被成功发送了，就算这个ACK的数量加1
             // 同一个事务如果有多个参与节点，那么这个事务的ACK数量会被多次计算，但这并不影响逻辑正确性，因为我们只关心ACK数量达到一个阈值（即caracal_batch中事务的总参与节点数量）时才进行下一步处理
-            total_ack_count++;
+            // total_ack_count++;
 		}
 	}
 
@@ -62,6 +61,7 @@ void CaracalSequencer::send_next_batch(uint64_t thd_id) {
 void CaracalSequencer::fill_batch(uint64_t _thd_id) {
     Message * msg;
     uint64_t idle_starttime = 0;
+    total_ack_count = 0;
     while (caracal_batch.size() < g_caracal_batch_size) {
         msg = work_queue.txn_dequeue(_thd_id);
 
@@ -99,6 +99,7 @@ void CaracalSequencer::process_txn(Message* msg, uint64_t thd_id) {
 
     en->server_ack_cnt = participants.size();
     assert(en->server_ack_cnt > 0);
+    total_ack_count += en->server_ack_cnt;
 
     assert(ISCLIENTN(msg->get_return_id()));
     en->client_id = msg->get_return_id();
@@ -209,15 +210,16 @@ void CaracalSequencer::process_ack(Message * msg, uint64_t thd_id) {
             txns_left--;
             if (txns_left == 0) {
                 DEBUG_SEQ("thd_id: %ld, all ack received for this batch, move to next phase %d\n", thd_id, simulation->caracal_phase);
+                simulation->get_all_txn_finish = true;
                 // This is the last ack for this batch. wait work thread finish all transactions and go to next phase.
-                while (simulation->caracal_phase != CARACAL_COMMIT && !simulation->is_done()) {}
-                if (simulation->is_done()) {
-                    DEBUG_SEQ("thd_id: %ld, simulation is done, return\n", thd_id);
-                    return;
-                }
-                simulation->next_caracal_phase();
-                DEBUG_SEQ("thd_id: %ld, phase: %d\n", thd_id, simulation->caracal_phase);
-                assert(simulation->caracal_phase == CARACAL_COLLECT);
+                // while (simulation->caracal_phase != CARACAL_COMMIT && !simulation->is_done()) {}
+                // if (simulation->is_done()) {
+                //     DEBUG_SEQ("thd_id: %ld, simulation is done, return\n", thd_id);
+                //     return;
+                // }
+                // simulation->next_caracal_phase();
+                // DEBUG_SEQ("thd_id: %ld, phase: %d\n", thd_id, simulation->caracal_phase);
+                // assert(simulation->caracal_phase == CARACAL_COLLECT);
             }
 
             INC_STATS(thd_id, seq_ack_time, get_sys_clock() - starttime);

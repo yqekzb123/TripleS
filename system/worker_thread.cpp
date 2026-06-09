@@ -383,6 +383,7 @@ RC WorkerThread::run() {
   return FINISH;
 }
 #elif CC_ALG == CARACAL
+#if 0
 RC WorkerThread::process_caracal_phase_ack(Message * msg) {
   AckMessage * ack = (AckMessage *)msg;
   // 考虑几种情况吧，消息落后于当前阶段了，这个明显不对
@@ -508,7 +509,7 @@ RC WorkerThread::phase_end() {
   }
   return RCOK;
 }
-
+#endif
 RC WorkerThread::run() {
   tsetup();
   printf("Running WorkerThread %ld\n",_thd_id);
@@ -523,10 +524,16 @@ RC WorkerThread::run() {
     enum class message_original {no_msg, work_queue, LockfreeQueue};
     progress_stats();
     
-    if (simulation->batch_process_count >= g_caracal_batch_size &&
-        simulation->batch_process_count >= caracal_seq.get_total_ack_count() &&
+    if (simulation->caracal_phase == CARACAL_APPEND &&
         !caracal_man.is_phase_done(get_thd_id())) {
-      phase_end();
+      caracal_man.set_phase_done(get_thd_id());
+      DEBUG_SCH("Worker %ld try to perform batch append\n", get_thd_id());
+      for (auto row : caracal_man.get_thread_content(get_thd_id())->tmp_row_list) {
+        row->batch_append(get_thd_id());
+        DEBUG_WRK("Worker %ld batch append reservation for row %ld\n", get_thd_id(), row->get_primary_key());
+      }
+      caracal_man.get_thread_content(get_thd_id())->tmp_row_list.clear();
+      ATOM_ADD_FETCH(simulation->finish_phase_cnt, 1);
     }
     
     Message* msg = NULL;
@@ -556,25 +563,14 @@ RC WorkerThread::run() {
       idle_starttime = 0;
     }
 
-    // 用来处理远程阶段同步
-    if (msg->rtype == CARACAL_PHASE_ACK) {
-      process_caracal_phase_ack(msg);
-      continue;
-    }
-
-    // 用来处理远程事务数量
-    if (msg->rtype == CARACAL_TXN_ACK) {
-      process_caracal_txn_ack(msg);
-      continue;
-    }
-
     if (msg->rtype == CL_QRY) {
       txn_man = get_transaction_manager(msg);
-      if (txn_man->caracal_phase != simulation->caracal_phase) {
-        // printf("thd: %ld, txn: %ld runs twice\n", get_thd_id(), txn_man->get_txn_id());
-        work_queue.work_enqueue(get_thd_id(), msg, false, txn_man->caracal_phase);
-        continue;
-      }
+
+      // if (txn_man->caracal_phase != simulation->caracal_phase) {
+      //   // printf("thd: %ld, txn: %ld runs twice\n", get_thd_id(), txn_man->get_txn_id());
+      //   work_queue.work_enqueue(get_thd_id(), msg, false, txn_man->caracal_phase);
+      //   continue;
+      // }
 
       txn_man->txn_stats.clear_short();
       txn_man->txn_stats.msg_queue_time += msg->mq_time;
@@ -611,14 +607,14 @@ RC WorkerThread::run() {
     // 这里其实是说跑完了，放进下一个阶段
     if (rc == RCOK && (msg->rtype == CL_QRY || msg->rtype == RFWD)) {
       // !这个阶段我得再想想，用不用合并到其他阶段里
-      if (txn_man != nullptr && txn_man->caracal_phase != CARACAL_COMMIT) {
+      if (txn_man != nullptr && simulation->caracal_phase <= CARACAL_INIT_SYNC) {
         // assert(txn_man->get_txn_id() != UINT64_MAX);
         work_queue.work_enqueue(get_thd_id(), msg, false, txn_man->caracal_phase);
         DEBUG_WRK("Thd %ld txn %ld,%ld in phase %d enqueue to list for next phase %d\n",
           get_thd_id(), simulation->current_batch_id, txn_man->get_txn_id(), simulation->caracal_phase, txn_man->caracal_phase);
       }
       // !这里得事务做完才能batch_process_count++;
-      if ((IS_LOCAL(msg->get_txn_id()))) {
+      if ((IS_LOCAL(msg->get_txn_id()) && simulation->caracal_phase <= CARACAL_INIT_SYNC)) {
         ATOM_ADD_FETCH(simulation->batch_process_count, 1);
         ATOM_ADD_FETCH(simulation->batch_local_process_count, 1);
         DEBUG_WRK("Worker %ld finished processing local txn %ld,%ld phase %d, now batch_process_count %ld/%ld, batch_local_process_count %ld, batch_remote_process_count %ld, batch_remote_send_count %ld\n", get_thd_id(), simulation->current_batch_id, msg->get_txn_id(), simulation->caracal_phase, simulation->batch_process_count, caracal_seq.get_total_ack_count(), simulation->batch_local_process_count, simulation->batch_remote_process_count, simulation->batch_remote_send_count);
@@ -1503,7 +1499,8 @@ RC WorkerThread::process_aria_ack(Message * msg) {
 RC WorkerThread::process_caracal_rtxn(Message * msg) {
   DEBUG("START %ld %f %lu\n", txn_man->get_txn_id(),
         simulation->seconds_from_start(get_sys_clock()), txn_man->txn_stats.starttime);
-  if (simulation->caracal_phase == CARACAL_INIT && txn_man->txn_stats.abort_cnt == 0) {
+  if (simulation->caracal_phase <= CARACAL_INIT_SYNC 
+     && txn_man->txn_stats.abort_cnt == 0) {
     // printf("txn: %ld copy msg to txn\n", txn_man->get_txn_id());
     msg->copy_to_txn(txn_man);
     assert(ISSERVERN(txn_man->return_id));
@@ -1512,12 +1509,12 @@ RC WorkerThread::process_caracal_rtxn(Message * msg) {
   // Execute
   RC rc = txn_man->run_caracal_txn();
   // ! 如果执行阶段，caracal wait状态了，应该重新被塞回消息队列里
-  if (simulation->caracal_phase == CARACAL_INIT) {
+  if (simulation->caracal_phase <= CARACAL_INIT_SYNC) {
     // init阶段，不存在重试，所以必然成功
     if (!IS_LOCAL(msg->get_txn_id())) {
       AckMessage* ack = (AckMessage*) Message::create_message(txn_man,CARACAL_TXN_ACK);
-      ack->batch_id = simulation->current_batch_id;
-      ack->caracal_phase = simulation->caracal_phase;
+      ack->batch_id = txn_man->get_batch_id();
+      ack->caracal_phase = CARACAL_INIT;
       ATOM_ADD_FETCH(simulation->batch_remote_send_count,1);
       DEBUG_WRK("Worker %ld init txn %ld,%ld send CARACAL_TXN_ACK to node %ld, now batch_remote_send_count %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), msg->return_node_id, simulation->batch_remote_send_count);
 
@@ -1525,7 +1522,8 @@ RC WorkerThread::process_caracal_rtxn(Message * msg) {
     }
     return RCOK;
   }
-  else if (simulation->caracal_phase == CARACAL_EXECUTION) {
+  else if (simulation->caracal_phase == CARACAL_EXECUTION ||
+           simulation->caracal_phase == CARACAL_EXECUTION_SYNC) {
     // 如果是跑完了
     if (rc == RCOK) {
       caracal_wrapup();
@@ -1569,8 +1567,8 @@ void WorkerThread::caracal_wrapup() {
         simulation->seconds_from_start(get_sys_clock()), txn_man->txn_stats.starttime);
   
   Message* msg = Message::create_message(txn_man,CARACAL_DONE); 
-  ((AckMessage*)msg)->batch_id = simulation->current_batch_id;
-  ((AckMessage*)msg)->caracal_phase = simulation->caracal_phase;
+  ((AckMessage*)msg)->batch_id = txn_man->get_batch_id();
+  ((AckMessage*)msg)->caracal_phase = CARACAL_EXECUTION;
 
   if(txn_man->return_id == g_node_id) {
     work_queue.sequencer_enqueue(_thd_id,msg);
@@ -1579,13 +1577,12 @@ void WorkerThread::caracal_wrapup() {
     msg_queue.enqueue(get_thd_id(), msg, txn_man->return_id);
     DEBUG_WRK("Worker %ld commit txn %ld,%ld send CARACAL_DONE to node %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), txn_man->return_id);
 
-    Message* msg2 = Message::create_message(txn_man,CARACAL_TXN_ACK);
-    ((AckMessage*)msg2)->batch_id = simulation->current_batch_id;
-    ((AckMessage*)msg2)->caracal_phase = simulation->caracal_phase;
-    msg_queue.enqueue(get_thd_id(), msg2, txn_man->return_id);
-    ATOM_ADD_FETCH(simulation->batch_remote_send_count,1);
-    DEBUG_WRK("Worker %ld commit txn %ld,%ld send CARACAL_TXN_ACK to node %ld, now batch_remote_send_count %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), msg->return_node_id, simulation->batch_remote_send_count);
-    // DEBUG_WRK("Worker %ld commit txn %ld,%ld send CARACAL_TXN_ACK to node %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), txn_man->return_id);
+    // Message* msg2 = Message::create_message(txn_man,CARACAL_TXN_ACK);
+    // ((AckMessage*)msg2)->batch_id = txn_man->get_batch_id();
+    // ((AckMessage*)msg2)->caracal_phase = CARACAL_EXECUTION;
+    // msg_queue.enqueue(get_thd_id(), msg2, txn_man->return_id);
+    // ATOM_ADD_FETCH(simulation->batch_remote_send_count,1);
+    // DEBUG_WRK("Worker %ld commit txn %ld,%ld send CARACAL_TXN_ACK to node %ld, now batch_remote_send_count %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), msg->return_node_id, simulation->batch_remote_send_count);
   }
   release_txn_man();
 }

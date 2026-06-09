@@ -75,6 +75,7 @@ SDOCCSequencerThread * sdocc_seq_thds;
 #endif
 #if CC_ALG == CARACAL
 CaracalSequencerThread * caracal_seq_thds;
+CaracalControlThread * caracal_control_thds;
 #endif
 
 // defined in parser.cpp
@@ -271,6 +272,7 @@ int main(int argc, char *argv[]) {
 
 #if CC_ALG == CARACAL
 	all_thd_cnt += 1;	//sequencer thread
+	all_thd_cnt += 1;	//control thread
 	// all_thd_cnt -= 1; 	//abort thread
 #endif
 
@@ -314,6 +316,7 @@ int main(int argc, char *argv[]) {
 
 #if CC_ALG == CARACAL
 	caracal_seq_thds = new CaracalSequencerThread[1];
+	caracal_control_thds = new CaracalControlThread[1];
 #endif
 	// query_queue should be the last one to be initialized!!!
 	// because it collects txn latency
@@ -454,6 +457,15 @@ int main(int argc, char *argv[]) {
 #endif
 	caracal_seq_thds[0].init(id,g_node_id,m_wl);
 	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&caracal_seq_thds[0]);
+
+#if SET_AFFINITY
+	CPU_ZERO(&cpus);
+	CPU_SET(cpu_cnt, &cpus);
+	pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+	cpu_cnt++;
+#endif
+	caracal_control_thds[0].init(id,g_node_id,m_wl);
+	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&caracal_control_thds[0]);
 #endif
 
 #if CC_ALG == SDOCC// || CC_ALG == SILO

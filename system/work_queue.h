@@ -99,6 +99,8 @@ public:
 #endif
 
 #if CC_ALG == CARACAL
+    Message * phase_ack_dequeue(uint64_t thd_id);
+    void phase_ack_enqueue(uint64_t thd_id, Message * msg);
     Message * txn_dequeue(uint64_t thd_id);
     void work_enqueue(uint64_t thd_id, Message * msg, bool not_ready, CARACAL_PHASE phase);
     Message * work_dequeue(uint64_t thd_id);
@@ -177,6 +179,8 @@ private:
 #if CC_ALG == CARACAL
     boost::lockfree::queue<work_queue_entry* > * caracal_init_queue;
     CaracalQueue* caracal_execute_queues;
+
+    boost::lockfree::queue<work_queue_entry* > * caracal_ack_queue;
     // boost::lockfree::queue<work_queue_entry* > * caracal_execute_queue;
 #endif
     uint64_t sched_ptr;

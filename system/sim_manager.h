@@ -38,11 +38,15 @@ enum SDOCC_PHASE {
 };
 
 // 用于整体阶段的，给simulation用的
+// 注意，对于事务来说，只会有 INIT和EXECUTION两个阶段，剩下都是给系统用的，包括SYNC和APPEND
 enum CARACAL_PHASE {
   CARACAL_COLLECT = 0,
-  CARACAL_INIT,   // 第一个大阶段，初始化，append版本
+  CARACAL_INIT,        // 第一个大阶段，初始化; ! 注意，事务只会
+  CARACAL_INIT_SYNC,   // 这个阶段主要是等远程的锁都拿好了，拿到结果了
+  CARACAL_APPEND,      //
+  CARACAL_APPEND_SYNC,   // 这个阶段主要是等远程的读都完成了，拿到结果了
   CARACAL_EXECUTION,     // 第二个大阶段，这个阶段下应该得拆分成，读、同步、写
-  CARACAL_COMMIT  //所谓的结束阶段
+  CARACAL_EXECUTION_SYNC  //所谓的结束阶段
 };
 
 enum CARACAL_TXN_PHASE {
@@ -53,12 +57,6 @@ enum CARACAL_TXN_PHASE {
   CARACAL_TXN_WR,
   CARACAL_TXN_DONE
 };
-
-// union PHASE {
-//   ARIA_PHASE aria_phase;
-//   SDOCC_PHASE sdocc_phase;
-//   CARACAL_PHASE caracal_phase;
-// };
 
 // 服了，整一个ARIA_BARRIER类，专门用来处理ARIA的barrier，放在SimManager里，感觉SimManager里东西太多了
 // 这个barrier维护一个循环数组吧，因为phase和batch只会提前一轮，所以只需要维护当前轮和下一轮的barrier就行了，数组大小为2，每轮切换的时候重置对应的barrier
@@ -154,9 +152,11 @@ public:
   // bool * barriers;
 
   CARACAL_PHASE caracal_phase;
-  AriaBarrier<CARACAL_PHASE> caracal_barrier[2];
+  AriaBarrier<CARACAL_PHASE> caracal_barrier[3];
   uint64_t caracal_barrier_index;
   uint64_t finish_phase_cnt;
+  bool send_txn_finish;
+  bool get_all_txn_finish;
 
   void init();
   bool is_setup_done();

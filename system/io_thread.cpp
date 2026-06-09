@@ -212,6 +212,12 @@ RC InputThread::server_recv_loop() {
 				msgs->erase(msgs->begin());
 				continue;
 			}
+			if (msg->rtype == CARACAL_PHASE_ACK ||
+				msg->rtype == CARACAL_TXN_ACK) {
+				work_queue.phase_ack_enqueue(get_thd_id(), msg);
+				msgs->erase(msgs->begin());
+				continue;
+			}
 #endif	
 			work_queue.enqueue(get_thd_id(),msg,false);
 			msgs->erase(msgs->begin());
