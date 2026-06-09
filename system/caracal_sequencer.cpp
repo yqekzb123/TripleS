@@ -31,7 +31,8 @@ void CaracalSequencer::init(Workload *wl) {
 void CaracalSequencer::send_next_batch(uint64_t thd_id) {
     uint64_t prof_stat = get_sys_clock();
     assert(caracal_batch.size() != 0);
-    DEBUG_SEQ("SEND NEXT BATCH %ld %ld %ld\n", thd_id, batch_id, caracal_batch.size());
+    printf("SEND NEXT BATCH %ld %ld %ld\n", thd_id, batch_id, caracal_batch.size());
+    // DEBUG_SEQ("SEND NEXT BATCH %ld %ld %ld\n", thd_id, batch_id, caracal_batch.size());
     Message * msg;
     for(uint64_t j = 0; j < g_node_cnt; j++) {
 		while(fill_queue[j].pop(msg)) {
@@ -210,7 +211,7 @@ void CaracalSequencer::process_ack(Message * msg, uint64_t thd_id) {
             txns_left--;
             if (txns_left == 0) {
                 DEBUG_SEQ("thd_id: %ld, all ack received for this batch, move to next phase %d\n", thd_id, simulation->caracal_phase);
-                simulation->get_all_txn_finish = true;
+                simulation->get_all_txn_finish.store(true);
                 // This is the last ack for this batch. wait work thread finish all transactions and go to next phase.
                 // while (simulation->caracal_phase != CARACAL_COMMIT && !simulation->is_done()) {}
                 // if (simulation->is_done()) {

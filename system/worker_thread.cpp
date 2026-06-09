@@ -465,11 +465,11 @@ RC WorkerThread::phase_end() {
     default:
       assert(false);
   }
-  DEBUG_SCH("Worker %ld finishing caracal batch %ld phase %d, batch_process_count %ld/%ld finished threads %ld\n", get_thd_id(), simulation->current_batch_id, simulation->caracal_phase, simulation->batch_process_count, caracal_seq.get_total_ack_count(), simulation->finish_phase_cnt);
+  DEBUG_SCH("Worker %ld finishing caracal batch %ld phase %d, batch_process_count %ld/%ld finished threads %ld\n", get_thd_id(), simulation->current_batch_id, simulation->caracal_phase, simulation->batch_process_count, caracal_seq.get_total_ack_count(), simulation->finish_append_cnt);
   
-  if (ATOM_ADD_FETCH(simulation->finish_phase_cnt, 1) == g_thread_cnt) {
+  if (ATOM_ADD_FETCH(simulation->finish_append_cnt, 1) == g_thread_cnt) {
     // 最后一个线程完成了这个阶段，重置计数器，并且进入下一个阶段
-    bool success = ATOM_CAS(simulation->finish_phase_cnt, g_thread_cnt, 0);
+    bool success = ATOM_CAS(simulation->finish_append_cnt, g_thread_cnt, 0);
     DEBUG_SCH("System %ld finished caracal batch %ld phase %d, success: %d\n", get_thd_id(), simulation->current_batch_id, simulation->caracal_phase, success);
     assert(success);
     simulation->batch_process_count = 0;
@@ -505,7 +505,7 @@ RC WorkerThread::phase_end() {
 
     
   } else {
-    DEBUG_SCH("Worker %ld finished caracal batch %ld phase %d, now batch_process_count %ld, finished threads %ld\n", get_thd_id(), simulation->current_batch_id, simulation->caracal_phase, simulation->batch_process_count, simulation->finish_phase_cnt);
+    DEBUG_SCH("Worker %ld finished caracal batch %ld phase %d, now batch_process_count %ld, finished threads %ld\n", get_thd_id(), simulation->current_batch_id, simulation->caracal_phase, simulation->batch_process_count, simulation->finish_append_cnt);
   }
   return RCOK;
 }
@@ -521,25 +521,30 @@ RC WorkerThread::run() {
 	while(!simulation->is_done()) {
     txn_man = NULL;
     heartbeat();
-    enum class message_original {no_msg, work_queue, LockfreeQueue};
     progress_stats();
     
     if (simulation->caracal_phase == CARACAL_APPEND &&
         !caracal_man.is_phase_done(get_thd_id())) {
       caracal_man.set_phase_done(get_thd_id());
-      DEBUG_SCH("Worker %ld try to perform batch append\n", get_thd_id());
+      printf("Worker %ld try to perform batch append\n", get_thd_id());
+      // DEBUG_SCH("Worker %ld try to perform batch append\n", get_thd_id());
       for (auto row : caracal_man.get_thread_content(get_thd_id())->tmp_row_list) {
         row->batch_append(get_thd_id());
         DEBUG_WRK("Worker %ld batch append reservation for row %ld\n", get_thd_id(), row->get_primary_key());
       }
       caracal_man.get_thread_content(get_thd_id())->tmp_row_list.clear();
-      ATOM_ADD_FETCH(simulation->finish_phase_cnt, 1);
+      simulation->finish_append_cnt.fetch_add(1);
+      // ATOM_ADD_FETCH(simulation->finish_append_cnt, 1);
+    }
+
+    if (simulation->caracal_phase == CARACAL_EXECUTION ||
+        simulation->caracal_phase == CARACAL_EXECUTION_SYNC ||
+        simulation->caracal_phase == CARACAL_APPEND_SYNC) {
+      assert(caracal_man.get_thread_content(get_thd_id())->tmp_row_list.empty());
     }
     
     Message* msg = NULL;
     uint64_t key = 0;
-    message_original msg_orig = message_original::no_msg;
-    // tmd，应该先拿远程操作。。
     {
       uint64_t dequeue_starttime = get_sys_clock();
       msg = work_queue.work_dequeue(get_thd_id());
@@ -551,7 +556,6 @@ RC WorkerThread::run() {
         continue;
       }
       if (msg) {
-        msg_orig = message_original::work_queue;
         txn_man = get_transaction_manager(msg);
       }
     }
@@ -581,13 +585,6 @@ RC WorkerThread::run() {
       //txn_man->txn_stats.network_time += msg->ntwk_time;
       msg->wq_time = 0;
       txn_man->txn_stats.work_queue_cnt += 1;
-
-      // if (txn_man->participants_cnt != 0) {
-      //   DEBUG_WRK("Thd %ld txn %ld in phase %d re-enqueue to list because participants_cnt %ld\n",
-      //     get_thd_id(), txn_man->get_txn_id(), txn_man->caracal_phase,txn_man->participants_cnt);
-      //   work_queue.work_enqueue(get_thd_id(), msg, true, txn_man->caracal_phase);
-      //   continue;
-      // }
 
       ready_starttime = get_sys_clock();
       bool ready = txn_man->unset_ready();

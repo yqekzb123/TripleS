@@ -345,9 +345,9 @@ enum PPSTxnType {
 
 #define DEBUG_LOCKFREE_LIST false
 #define DEBUG_REORDER         false
-#define DEBUG_SEQUENCER     true
-#define DEBUG_SCHEDULER     true
-#define DEBUG_WORKER        true
+#define DEBUG_SEQUENCER     false
+#define DEBUG_SCHEDULER     false
+#define DEBUG_WORKER        false
 #define DEBUG_TIMEREPORT     true
 #define DEBUG_LOCK          false
 // #define DEBUG_TIMESTAMP       false

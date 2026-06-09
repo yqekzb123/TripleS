@@ -70,6 +70,7 @@ public:
 
 private:
     row_t * _row;
+    void assert_reservation_append();
 };
 #endif // 
 #endif // 

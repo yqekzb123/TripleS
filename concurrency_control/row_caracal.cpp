@@ -87,10 +87,16 @@ RC Row_caracal::batch_append(uint64_t thd_id) {
     return RCOK;
 }
 
+void Row_caracal::assert_reservation_append() {
+    for (int i = 0; i < g_thread_cnt; i++) {
+        assert(tmp_reservations[i].empty());
+    }
+}
+
 caracal_version* Row_caracal::get_reservation(uint64_t batch_id, uint64_t return_id, uint64_t txn_id, access_t type, uint64_t thd_id) {
     uint64_t key = get_batch_key(batch_id, return_id, txn_id);
 
-    // pthread_mutex_lock(latch);
+    assert_reservation_append();
 
     // 找第一个 reservations[i].key >= key 的位置
     auto it = std::lower_bound(

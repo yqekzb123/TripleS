@@ -22,12 +22,12 @@ RC CaracalSequencerThread::run() {
     {
         //TODO: 好像不需要ARIA_INIT
         if (simulation->caracal_phase == CARACAL_COLLECT && 
-            !simulation->send_txn_finish) {
+            !simulation->send_txn_finish.load()) {
             caracal_seq.fill_batch(_thd_id);
             caracal_seq.send_next_batch(_thd_id);
             simulation->current_batch_id = caracal_seq.get_batch_id()-1;
 
-            simulation->send_txn_finish = true;
+            simulation->send_txn_finish.store(true);
             // simulation->next_caracal_phase();
             // DEBUG_SEQ("thd_id: %ld, phase: %d\n", _thd_id, simulation->caracal_phase);
             // assert(simulation->caracal_phase == CARACAL_INIT);
@@ -128,9 +128,9 @@ RC CaracalControlThread::check_phase_end() {
     switch (simulation->caracal_phase)
     {
     case CARACAL_COLLECT:
-        if (simulation->send_txn_finish) {
+        if (simulation->send_txn_finish.load()) {
             simulation->next_caracal_phase();
-            simulation->send_txn_finish = false;
+            simulation->send_txn_finish.store(false);
         }
         break;
     case CARACAL_INIT:
@@ -155,10 +155,10 @@ RC CaracalControlThread::check_phase_end() {
         }
         break;
     case CARACAL_APPEND:
-        if (simulation->finish_phase_cnt == g_thread_cnt) {
+        if (simulation->finish_append_cnt.load() == g_thread_cnt) {
             if (g_mpr != 0) send_phase_sync_message(CARACAL_APPEND);
             simulation->next_caracal_phase();
-            assert(ATOM_CAS(simulation->finish_phase_cnt, g_thread_cnt, 0));
+            simulation->finish_append_cnt.store(0);
             caracal_man.set_phase_undone_for_all();
         }
         break;
@@ -171,9 +171,9 @@ RC CaracalControlThread::check_phase_end() {
         }
         break;
     case CARACAL_EXECUTION:
-        if (simulation->get_all_txn_finish) {
+        if (simulation->get_all_txn_finish.load()) {
             if (g_mpr != 0) send_phase_sync_message(CARACAL_EXECUTION);
-            simulation->get_all_txn_finish = false;
+            simulation->get_all_txn_finish.store(false);
             simulation->next_caracal_phase();
         }
         break;

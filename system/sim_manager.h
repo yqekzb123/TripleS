@@ -19,6 +19,7 @@
 
 #include "global.h"
 #include <string>
+#include <atomic>
 
 // Aria
 enum ARIA_PHASE {
@@ -154,9 +155,9 @@ public:
   CARACAL_PHASE caracal_phase;
   AriaBarrier<CARACAL_PHASE> caracal_barrier[3];
   uint64_t caracal_barrier_index;
-  uint64_t finish_phase_cnt;
-  bool send_txn_finish;
-  bool get_all_txn_finish;
+  std::atomic<uint64_t> finish_append_cnt;
+  std::atomic<bool> send_txn_finish;
+  std::atomic<bool> get_all_txn_finish;
 
   void init();
   bool is_setup_done();

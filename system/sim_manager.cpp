@@ -58,9 +58,9 @@ void SimManager::init() {
 	caracal_barrier[2].init(g_node_cnt,b3);
 	caracal_barrier[2].phase = CARACAL_EXECUTION;
 	caracal_barrier_index = 0;
-	finish_phase_cnt = 0;
-	send_txn_finish = false;
-	get_all_txn_finish = false;
+	finish_append_cnt.store(0);
+	send_txn_finish.store(false);
+	get_all_txn_finish.store(false);
 	#endif
 
 #if TIME_ENABLE
@@ -186,5 +186,5 @@ void SimManager::next_caracal_phase() {
 		// caracal_barrier[0].init_batch(current_batch_id + 1);
 	}
 	caracal_phase = (CARACAL_PHASE)((caracal_phase + 1) % (CARACAL_EXECUTION_SYNC + 1));
-	DEBUG_SCH("System moving to Caracal phase %d\n", caracal_phase);
+	printf("System moving to Caracal phase %d\n", caracal_phase);
 }
