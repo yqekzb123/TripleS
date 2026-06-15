@@ -207,6 +207,9 @@ RC InputThread::server_recv_loop() {
 				msgs->erase(msgs->begin());
 				continue;
 			}
+			if (msg->rtype == CARACAL_SUB_TXN) {
+				assert(false);
+			}
 			if (msg->rtype == CARACAL_DONE) {
 				work_queue.sequencer_enqueue(get_thd_id(), msg);
 				msgs->erase(msgs->begin());

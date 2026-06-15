@@ -35,6 +35,7 @@
 #include "row_sdpcc.h"
 #endif
 #include "sdocc.h"
+#include "caracal.h"
 
 void TPCCTxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	TxnManager::init(thd_id, h_wl);
@@ -2738,19 +2739,28 @@ RC TPCCTxnManager::caracal_exec_phase() {
 	while(!caracal_exec_phase_done() && rc == RCOK) {
 		DEBUG("(%ld,%ld) phase %d\n",txn->txn_id,txn->batch_id,this->caracal_txn_phase);
 		switch(this->caracal_txn_phase) {
-			case CARACAL_TXN_ANALYSIS:
+			case CARACAL_TXN_ANALYSIS:{
 				// Phase 1: Read/write set analysis
-				caracal_expected_rsp_cnt = tpcc_query->get_participants(_wl);
+				uint32_t cnt = tpcc_query->get_participants(_wl);
 				if(query->participant_nodes[g_node_id] == 1) {
-					caracal_expected_rsp_cnt--;
+					// cnt--;
 				}
-
-				DEBUG("(%ld,%ld) expects %d responses; %ld participants, %ld active\n", txn->txn_id,
-							txn->batch_id, caracal_expected_rsp_cnt, query->participant_nodes.size(),
-							query->active_nodes.size());
+				#if OPEN_SPLIT_ON_DEMAND
+					cnt += last_msg->involved_thread.size();
+				#endif
+				if (ATOM_CAS(*last_msg->caracal_expected_rsp_ptr, 0, cnt)) {
+					// 只有第一个到达的子事务会成功初始化这个值，其他子事务都会失败
+					DEBUG_WRK("[%ld] (%ld,%ld) initialize expected response cnt to %d\n", get_thd_id(), txn->batch_id, txn->txn_id, cnt);
+				} else {
+					assert(OPEN_SPLIT_ON_DEMAND);
+					// 其他子事务已经把这个值改掉了
+					DEBUG_WRK("[%ld] (%ld,%ld) already initialized expected response cnt to %ld by parent txn or sibling sub-txns\n", get_thd_id(), txn->batch_id, txn->txn_id, *last_msg->caracal_expected_rsp_ptr);
+				}
+				assert(*last_msg->caracal_expected_rsp_ptr > 0);
 
 				this->caracal_txn_phase = CARACAL_TXN_RD;
 				break;
+			}
 			case CARACAL_TXN_RD:
 				// Phase 2: Perform local reads
 				DEBUG("(%ld,%ld) local reads\n",txn->txn_id,txn->batch_id);
@@ -2758,6 +2768,7 @@ RC TPCCTxnManager::caracal_exec_phase() {
 				assert(rc == RCOK || rc == WAIT);
 				if (rc == RCOK) {					
 					this->caracal_txn_phase = CARACAL_TXN_SYNC;
+					ATOM_SUB_FETCH(*last_msg->caracal_expected_rsp_ptr, 1);
 				}
 				break;
 			case CARACAL_TXN_SYNC:
@@ -2770,9 +2781,9 @@ RC TPCCTxnManager::caracal_exec_phase() {
 					if(caracal_collect_phase_done()) {
 						rc = RCOK;
 					} else {
-						assert(caracal_expected_rsp_cnt > 0);
-						DEBUG("(%ld,%ld) wait in collect phase; %d / %d rfwds received\n", txn->txn_id,
-									txn->batch_id, rsp_cnt, caracal_expected_rsp_cnt);
+						assert(*last_msg->caracal_expected_rsp_ptr > 0);
+						DEBUG("(%ld,%ld) wait in collect phase; %d / %ld rfwds received\n", txn->txn_id,
+									txn->batch_id, rsp_cnt, *last_msg->caracal_expected_rsp_ptr);
 						rc = WAIT;
 					}
 				} else { // Done

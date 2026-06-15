@@ -251,6 +251,7 @@ void Transaction::init() {
 	end_timestamp = UINT64_MAX;
 	txn_id = UINT64_MAX;
 	batch_id = UINT64_MAX;
+	sub_txn_id = UINT64_MAX;
 	DEBUG_M("Transaction::init array insert_rows\n");
 	insert_rows.init(g_max_items_per_txn + 10);
 	delete_rows.init(g_max_items_per_txn + 10);
@@ -390,10 +391,13 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	caracal_phase = CARACAL_INIT;
 	caracal_txn_phase = CARACAL_TXN_ANALYSIS;
 	caracal_append_rows.init(MAX_ROW_PER_TXN + 10);
+	// caracal_expected_rsp_cnt.store(0, std::memory_order_relaxed);
 #endif
 	registed_ = false;
 	txn_ready = true;
 	twopl_wait_start = 0;
+
+	last_msg = nullptr;
 
 	txn_stats.init();
 }
@@ -403,6 +407,8 @@ void TxnManager::reset() {
 	lock_ready = false;
 	lock_ready_cnt = 0;
 	locking_done = true;
+
+	last_msg = nullptr;
 
 	rsp_cnt = 0;
 	aborted = false;
@@ -437,6 +443,7 @@ void TxnManager::reset() {
 	caracal_phase = CARACAL_INIT;
 	caracal_txn_phase = CARACAL_TXN_ANALYSIS;
 	caracal_append_rows.clear();
+	// caracal_expected_rsp_cnt.store(0, std::memory_order_relaxed);
 #endif
 #if CC_ALG == SDOCC
 	last_sdocc_read_reservation = 0;
@@ -803,6 +810,9 @@ void TxnManager::set_txn_id(txnid_t txn_id) { txn->txn_id = txn_id; }
 
 txnid_t TxnManager::get_txn_id() { return txn->txn_id; }
 
+void TxnManager::set_sub_txn_id(txnid_t sub_txn_id) { txn->sub_txn_id = sub_txn_id; }
+txnid_t TxnManager::get_sub_txn_id() { return txn->sub_txn_id; }
+
 Workload *TxnManager::get_wl() { return h_wl; }
 
 uint64_t TxnManager::get_thd_id() {
@@ -982,6 +992,7 @@ RC TxnManager::get_lock(row_t * row, access_t type) {
 	}
 	return rc;
 #endif
+	return RCOK;
 }
 
 RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
@@ -1237,10 +1248,10 @@ RC TxnManager::send_remote_reads() {
 	assert(query->active_nodes.size() == g_node_cnt);
 	for(uint64_t i = 0; i < query->active_nodes.size(); i++) {
 		if (i == g_node_id) continue;
-	if(query->active_nodes[i] == 1) {
-		DEBUG("(%ld,%ld) send_remote_read to %ld\n",get_batch_id(),get_txn_id(),i);
-		msg_queue.enqueue(get_thd_id(),Message::create_message(this,RFWD),i);
-	}
+		if(query->active_nodes[i] == 1) {
+			DEBUG("(%ld,%ld) send_remote_read to %ld\n",get_batch_id(),get_txn_id(),i);
+			msg_queue.enqueue(get_thd_id(),Message::create_message(this,RFWD),i);
+		}
 	}
 	return RCOK;
 
@@ -1284,6 +1295,12 @@ void TxnManager::release_locks(RC rc) {
 	INC_STATS(get_thd_id(), txn_cleanup_time,  timespan);
 }
 
+#if CC_ALG == CARACAL
+bool TxnManager::caracal_sub_collect_phase_done() {
+	assert(caracal_txn_phase == CARACAL_TXN_WR_SYNC);
+	bool ready = last_msg->caracal_commit_rsp_ptr != NULL && *last_msg->caracal_commit_rsp_ptr <= 0;
+	return ready;
+}
 bool TxnManager::caracal_exec_phase_done() {
 	bool ready =  (caracal_txn_phase == CARACAL_TXN_DONE) && (get_rc() != WAIT);
 	if(ready) {
@@ -1293,9 +1310,12 @@ bool TxnManager::caracal_exec_phase_done() {
 }
 
 bool TxnManager::caracal_collect_phase_done() {
-	bool ready =  (caracal_txn_phase == CARACAL_TXN_COLLECT) && (get_rsp_cnt() == caracal_expected_rsp_cnt);
+	bool ready =  (caracal_txn_phase == CARACAL_TXN_COLLECT) && 
+		last_msg->caracal_expected_rsp_ptr != NULL && *last_msg->caracal_expected_rsp_ptr <= 0;
+		// (caracal_man.caracal_txn_ack_man.get_rsp_cnt(txn->batch_id, txn->txn_id) <= 0);
 	if(ready) {
 		DEBUG("(%ld,%ld) caracal collect phase done!\n",txn->batch_id,txn->txn_id);
 	}
 	return ready;
 }
+#endif

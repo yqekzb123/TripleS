@@ -108,6 +108,7 @@ public:
 	#if CC_ALG == CARACAL
 	RC batch_append(uint64_t thd_id);
 	RC clean_reservation(uint64_t thd_id);
+	uint64_t get_version_cnt();
 	#endif
 
 	#if CC_ALG == NO_WAIT || CC_ALG == WAIT_DIE || CC_ALG == CALVIN

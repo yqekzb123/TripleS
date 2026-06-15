@@ -56,6 +56,7 @@ enum CARACAL_TXN_PHASE {
   CARACAL_TXN_SYNC,
   CARACAL_TXN_COLLECT,
   CARACAL_TXN_WR,
+  CARACAL_TXN_WR_SYNC,
   CARACAL_TXN_DONE
 };
 
@@ -152,7 +153,7 @@ public:
   // uint64_t barrier_count;
   // bool * barriers;
 
-  CARACAL_PHASE caracal_phase;
+  volatile CARACAL_PHASE caracal_phase;
   AriaBarrier<CARACAL_PHASE> caracal_barrier[3];
   uint64_t caracal_barrier_index;
   std::atomic<uint64_t> finish_append_cnt;

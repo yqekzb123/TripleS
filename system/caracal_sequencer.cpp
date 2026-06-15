@@ -52,7 +52,7 @@ void CaracalSequencer::send_next_batch(uint64_t thd_id) {
     if (caracal_batch.size() == g_caracal_batch_size) {
         INC_STATS(thd_id, seq_full_batch_cnt, 1);
     }
-    batch_id++;
+    // batch_id++;
     //use seq_prep_time to store the send time
     INC_STATS(thd_id, seq_prep_time, get_sys_clock() - prof_stat);
     INC_STATS(thd_id, seq_batch_time, get_sys_clock() - last_batch_time);
@@ -80,6 +80,8 @@ void CaracalSequencer::fill_batch(uint64_t _thd_id) {
         assert(caracal_batch.size() <= g_caracal_batch_size);
     }
     txns_left = caracal_batch.size();
+    batch_id++;
+     // DEBUG_SEQ("FILL BATCH %ld %ld\n", _thd_id, batch_id);
 }
 
 void CaracalSequencer::process_txn(Message* msg, uint64_t thd_id) {
@@ -135,22 +137,25 @@ void CaracalSequencer::process_ack(Message * msg, uint64_t thd_id) {
     uint64_t starttime = get_sys_clock();
     uint64_t txn_id = msg->txn_id;
     uint64_t batch_id = ((AckMessage*)msg)->batch_id;
+
+    // if (txns_left < 5) {
+    //     std::string remain_txn_info = get_remain_txn_info();
+    //     DEBUG_SEQ("process ack %ld,%ld, rc: %d txns_left %ld, remains %s\n", batch_id,txn_id, ((AckMessage *)msg)->rc, txns_left, remain_txn_info.c_str());
+    // } else {
     DEBUG_SEQ("process ack %ld,%ld, rc: %d txns_left %ld\n", batch_id,txn_id, ((AckMessage *)msg)->rc, txns_left);
+    // }
+
     assert(batch_id == simulation->current_batch_id);
     for (uint64_t i = 0; i < caracal_batch.size(); i++) {
         if (caracal_batch[i]->msg->txn_id == txn_id && caracal_batch[i]->msg->batch_id == batch_id) {
             uint32_t query_acks_left = ATOM_SUB_FETCH(caracal_batch[i]->server_ack_cnt, 1);
-
+            DEBUG_SEQ("Ack received for %ld,%ld from node %ld, rc: %d, query_acks_left: %d\n", batch_id,txn_id,msg->return_node_id, ((AckMessage *)msg)->rc, query_acks_left);
             if (query_acks_left == 0) {
                 DEBUG_SEQ("Ack received for %ld,%ld, rc: %d, all acks received, process the result\n", batch_id,txn_id, ((AckMessage *)msg)->rc);
                 INC_STATS(thd_id, seq_txn_cnt, 1);
 
             #if WORKLOAD == YCSB
                 YCSBClientQueryMessage * cl_msg = (YCSBClientQueryMessage *)caracal_batch[i]->msg;
-                // for(uint64_t i = 0; i < cl_msg->requests.size(); i++) {
-				// 	DEBUG_M("Sequencer::process_ack() ycsb_request free\n");
-				// 	mem_allocator.free(cl_msg->requests[i],sizeof(ycsb_request));
-                // }
             #elif WORKLOAD == TPCC
                 TPCCClientQueryMessage * cl_msg = (TPCCClientQueryMessage*)caracal_batch[i]->msg;
                 // if(cl_msg->txn_type == TPCC_NEW_ORDER) {

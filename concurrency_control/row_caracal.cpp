@@ -138,9 +138,11 @@ RC Row_caracal::access(TxnManager * txn, access_t type, row_t * local_row, uint6
     if (type == RD || type == SCAN) {
         // 读操作，检查写reservation，看看自己读的，有没有完成，如果没有，就等待
         caracal_version* reservation = get_reservation(txn->get_batch_id(), txn->return_id, txn->get_txn_id(), type,thd_id);
+        // return RCOK;
+        // while (!reservation->written.load() && !simulation->is_done()) {}
         if (!reservation->written.load()) {
-            // 没有找到reservation，或者reservation还没有完成，等待
-            //! 这里之后再看是死等，还是WAIT跳出去
+        //     // 没有找到reservation，或者reservation还没有完成，等待
+        //     //! 这里之后再看是死等，还是WAIT跳出去
             return WAIT;
         }
     } else if (type == WR) {

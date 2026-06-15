@@ -169,6 +169,7 @@ public:
   RC caracal_init_phase();
   RC caracal_exec_phase();
   RC run_caracal_txn();
+  RC run_sub_caracal_txn() {return RCOK;}
 #endif
   RC run_tpcc_phase2();
   RC run_tpcc_phase5();

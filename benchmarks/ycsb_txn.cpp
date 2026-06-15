@@ -32,6 +32,8 @@
 #include "msg_queue.h"
 #include "message.h"
 #include "sdocc.h"
+#include "caracal.h"
+#include <algorithm>
 
 void YCSBTxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	TxnManager::init(thd_id, h_wl);
@@ -459,11 +461,12 @@ RC YCSBTxnManager::run_ycsb() {
   return rc;
 }
 
+#if CC_ALG == CARACAL
 RC YCSBTxnManager::run_caracal_ycsb() {
   RC rc = RCOK;
   assert(CC_ALG == CARACAL);
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
-
+  uint64_t hot_thread_cnt = ceil(HOT_THREAD_PERCENT * g_thread_cnt);
   while(rc == RCOK && !is_done()) {
     ycsb_request * req = ycsb_query->requests[next_record_id];
     uint64_t part_id = _wl->key_to_part( req->key );
@@ -473,6 +476,15 @@ RC YCSBTxnManager::run_caracal_ycsb() {
       next_record_id++;
       continue;
     }
+    #if OPEN_SPLIT_ON_DEMAND
+    // 如果访问了热数据项，并且这个数据项不属于当前线程负责的部分，那么就跳过这个请求，等到对应的线程处理完这个热数据项之后再来处理这个请求
+    if (caracal_man.in_hot_row_map(get_thd_id(), req->key)) {
+      if (req->key % hot_thread_cnt != get_thd_id()) {
+        next_record_id++;
+        continue;
+      }
+    }
+    #endif
     rc = run_ycsb_0(req,row);
     if (rc != RCOK) return rc;
     rc = run_ycsb_1(req->acctype,row);
@@ -482,6 +494,47 @@ RC YCSBTxnManager::run_caracal_ycsb() {
   }
   return rc;
 }
+
+RC YCSBTxnManager::run_sub_caracal_ycsb() {
+  RC rc = RCOK;
+  #if OPEN_SPLIT_ON_DEMAND
+  assert(CC_ALG == CARACAL);
+  YCSBQuery* ycsb_query = (YCSBQuery*) query;
+  uint64_t hot_thread_cnt = ceil(HOT_THREAD_PERCENT * g_thread_cnt);
+  while(rc == RCOK && !is_done()) {
+    ycsb_request * req = ycsb_query->requests[next_record_id];
+    uint64_t part_id = _wl->key_to_part( req->key );
+    bool loc = GET_NODE_ID(part_id) == g_node_id;
+    if ((this->caracal_txn_phase == CARACAL_TXN_RD && req->acctype == WR) ||
+        (this->caracal_txn_phase == CARACAL_TXN_WR && req->acctype == RD) || !loc) {
+      next_record_id++;
+      continue;
+    }
+    // if (!caracal_man.in_hot_row_map(get_thd_id(), req->key)) {
+    //   // 对于子事务来说，不需要做非热数据。
+    //   // 对于热点线程的事务，而且是自己线程负责的事务，那么由run_caracal_ycsb函数处理了
+    //   assert(false);
+    //   next_record_id++;
+    //   DEBUG_WRK("[%ld] txn %ld,%ld,%ld sub txn skip hot key %ld because key not in hot_row_map\n",get_thd_id(), get_batch_id(), get_txn_id(), get_sub_txn_id(), req->key);
+    //   continue;
+    // } else {
+      // 如果该热数据项不由本线程处理
+    if (req->key % hot_thread_cnt != get_thd_id()) {
+      next_record_id++;
+      DEBUG_WRK("[%ld] txn %ld,%ld,%ld sub txn skip hot key %ld because it is handled by thread %ld\n",get_thd_id(), get_batch_id(), get_txn_id(), get_sub_txn_id(), req->key, req->key % hot_thread_cnt);
+      continue;
+    }
+    rc = run_ycsb_0(req,row);
+    if (rc != RCOK) return rc;
+    rc = run_ycsb_1(req->acctype,row);
+    if (rc != RCOK) return rc;
+    next_record_id++;
+    // }
+  }
+  #endif
+  return rc;
+}
+#endif
 
 // Aria函数部分
 #if CC_ALG == ARIA
@@ -681,6 +734,135 @@ RC YCSBTxnManager::run_sdocc_txn() {
 
 // Caracal函数部分
 #if CC_ALG == CARACAL
+RC YCSBTxnManager::run_sub_caracal_txn(){
+RC rc = RCOK;
+  uint64_t starttime = get_sys_clock();
+  YCSBQuery* ycsb_query = (YCSBQuery*) query;
+  DEBUG_WRK("thd [%ld] Run caracal txn[%ld,%ld] phase %d-%d\n",get_thd_id(),txn->batch_id,txn->txn_id, simulation->caracal_phase, this->caracal_txn_phase);
+  assert(caracal_phase == CARACAL_EXECUTION);
+  assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
+    
+  DEBUG_WRK("[%ld] (%ld,%ld) subtxn execution phase\n",get_thd_id(),txn->batch_id,txn->txn_id);
+  // 从last_msg->involved_thread里找，如果有当前线程，代表是子事务
+  bool is_sub_txn = true;
+
+  while(!caracal_exec_phase_done() && rc == RCOK) {
+    switch (caracal_txn_phase) {
+      case CARACAL_TXN_ANALYSIS: {
+        DEBUG_WRK("[%ld] (%ld,%ld) analyze read/write set\n",get_thd_id(),txn->batch_id,txn->txn_id);
+        // !第一段，先确定需要同步多少节点
+        uint32_t cnt = ycsb_query->get_participants(_wl);
+        #if YCSB_ABORT_MODE || OPEN_YCSB_DEPENDENCY
+          if(query->participant_nodes[g_node_id] == 1) {
+            // cnt--;
+          }
+        #else
+          cnt = 1; // 先假设需要等一个响应，代表本线程的执行结果
+        #endif
+        #if OPEN_SPLIT_ON_DEMAND
+          cnt += last_msg->involved_thread.size();
+        #endif
+        if (ATOM_CAS(*last_msg->caracal_expected_rsp_ptr, 0, cnt)) {
+          // 只有第一个到达的子事务会成功初始化这个值，其他子事务都会失败
+           DEBUG_WRK("[%ld] (%ld,%ld) initialize expected response cnt to %d\n", get_thd_id(), txn->batch_id, txn->txn_id, cnt);
+        } else {
+          assert(OPEN_SPLIT_ON_DEMAND);
+          // 其他子事务已经把这个值改掉了
+          DEBUG_WRK("[%ld] (%ld,%ld) already initialized expected response cnt to %ld by parent txn or sibling sub-txns\n", get_thd_id(), txn->batch_id, txn->txn_id, *last_msg->caracal_expected_rsp_ptr);
+        }
+        assert(*last_msg->caracal_expected_rsp_ptr > 0);
+        this->caracal_txn_phase = CARACAL_TXN_RD;
+        next_record_id = 0;
+        break;
+      }
+      case CARACAL_TXN_RD:
+        // 执行部分
+        DEBUG_WRK("[%ld] (%ld,%ld) subtxn local reads\n",get_thd_id(),txn->batch_id,txn->txn_id);
+          // 如果是子事务的话，就先等父事务把需要的远程请求都发过来
+        rc = run_sub_caracal_ycsb();
+        assert(rc == RCOK || rc == WAIT);
+        if (rc == RCOK) {
+          // 属于是要读取的数据还没写入，得等。
+          this->caracal_txn_phase = CARACAL_TXN_SYNC;
+          ATOM_SUB_FETCH(*last_msg->caracal_expected_rsp_ptr, 1);
+          // caracal_man.caracal_txn_ack_man.decrement_rsp_cnt(txn->batch_id, txn->txn_id);
+        }
+        break;
+      case CARACAL_TXN_SYNC:
+        DEBUG_WRK("[%ld] (%ld,%ld) serve subtxn remote reads\n",get_thd_id(),txn->batch_id,txn->txn_id);
+        // if(query->participant_nodes[g_node_id] == 1) {
+        // 发送远程消息是主事务的活动，子事务只需要等主事务把消息发完了以后把响应数清零了就行了
+          // rc = send_remote_reads(false);
+        // }
+        if(query->active_nodes[g_node_id] == 1) {
+          this->caracal_txn_phase = CARACAL_TXN_COLLECT;
+          if(caracal_collect_phase_done()) {
+            rc = RCOK;
+          } else {
+            DEBUG_WRK("[%ld] (%ld,%ld) wait in collect phase; %ld rfwds received\n", get_thd_id(),
+              txn->batch_id, txn->txn_id, *last_msg->caracal_expected_rsp_ptr);
+            rc = WAIT_REM;
+          }
+        } else { // Done
+          rc = RCOK;
+          this->caracal_txn_phase = CARACAL_TXN_COLLECT;
+        }
+        break;
+      case CARACAL_TXN_COLLECT:
+        // Phase 4: Collect remote reads
+        this->caracal_txn_phase = CARACAL_TXN_WR;
+        next_record_id = 0;
+        break;
+      case CARACAL_TXN_WR: {
+        DEBUG_WRK("[%ld] (%ld,%ld) execute subtxn writes\n",get_thd_id(),txn->batch_id,txn->txn_id);
+        // 如果是子事务的话，就先等父事务把需要的远程请求都发过来
+        rc = run_sub_caracal_ycsb();
+        this->caracal_txn_phase = CARACAL_TXN_WR_SYNC;
+        // 开始计算是否跑完
+        uint64_t commit_rsp = ATOM_SUB_FETCH(*last_msg->caracal_commit_rsp_ptr, 1);
+        DEBUG_WRK("[%ld] (%ld,%ld) finish local writes, sub %p, now it is %ld\n", get_thd_id(), txn->batch_id, txn->txn_id, last_msg->caracal_commit_rsp_ptr, commit_rsp);
+        if (commit_rsp == 0) {
+          rc = RCOK;
+          this->caracal_txn_phase = CARACAL_TXN_DONE;
+        } else {
+          rc = WAIT_SUB;
+        }
+        break;
+      }
+      // case CARACAL_TXN_WR_SYNC:  // 同步子事务
+      //   // 对于子事务来说，我感觉子事务做完了就做完了，这里没必要同步了。
+      //   // rc = RCOK;
+      //   // this->caracal_txn_phase = CARACAL_TXN_DONE;
+      //   if (caracal_sub_collect_phase_done()) {
+      //     rc = RCOK;
+      //     this->caracal_txn_phase = CARACAL_TXN_DONE;
+      //   } else {
+      //     DEBUG_WRK("[%ld] (%ld,%ld) wait in subtxn wr sync phase; %ld commit acks received\n", get_thd_id(),
+      //         txn->batch_id, txn->txn_id, *last_msg->caracal_commit_rsp_ptr);
+      //     rc = WAIT_SUB;
+      //   }
+      //   break;
+      default:
+        assert(false);
+    }
+  }
+  
+  // 先检查是不是真跑完了
+  if (caracal_exec_phase_done() && rc == RCOK) {
+    // 真跑完了以后，
+    assert(caracal_phase == CARACAL_EXECUTION);
+    // caracal_phase = (CARACAL_PHASE) (CARACAL_EXECUTION_SYNC);
+    assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
+  }
+
+  uint64_t curr_time = get_sys_clock();
+  txn_stats.process_time += curr_time - starttime;
+  txn_stats.process_time_short += curr_time - starttime;
+  txn_stats.wait_starttime = get_sys_clock();
+  INC_STATS(get_thd_id(),worker_activate_txn_time,curr_time - starttime);
+  return rc;
+}
+
 RC YCSBTxnManager::run_caracal_txn() {
   RC rc = RCOK;
   uint64_t starttime = get_sys_clock();
@@ -715,37 +897,53 @@ RC YCSBTxnManager::run_caracal_txn() {
     this->caracal_txn_phase = CARACAL_TXN_ANALYSIS;
     assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
     break;
-  case CARACAL_EXECUTION:
+  case CARACAL_EXECUTION: {
     assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
     DEBUG_WRK("[%ld] (%ld,%ld) execution phase\n",get_thd_id(),txn->batch_id,txn->txn_id);
+    // 从last_msg->involved_thread里找，如果有当前线程，代表是子事务
+
     while(!caracal_exec_phase_done() && rc == RCOK) {
       switch (caracal_txn_phase) {
-        case CARACAL_TXN_ANALYSIS:
+        case CARACAL_TXN_ANALYSIS: {
           DEBUG_WRK("[%ld] (%ld,%ld) analyze read/write set\n",get_thd_id(),txn->batch_id,txn->txn_id);
           // !第一段，先确定需要同步多少节点
-          caracal_expected_rsp_cnt = ycsb_query->get_participants(_wl);
-          assert(caracal_expected_rsp_cnt > 0);
+          uint32_t cnt = ycsb_query->get_participants(_wl);
+          // assert(cnt > 0);
           #if YCSB_ABORT_MODE || OPEN_YCSB_DEPENDENCY
             if(query->participant_nodes[g_node_id] == 1) {
-              caracal_expected_rsp_cnt--;
+              // cnt--;
             }
           #else
-            caracal_expected_rsp_cnt = 0;
+            cnt = 1; // 先假设需要等一个响应，代表本线程的执行结果
           #endif
-          DEBUG_WRK("[%ld] (%ld,%ld) expects %d responses;\n", get_thd_id(), txn->batch_id, txn->txn_id, 
-          caracal_expected_rsp_cnt);
+          #if OPEN_SPLIT_ON_DEMAND
+            cnt += last_msg->involved_thread.size();
+          #endif
+          if (ATOM_CAS(last_msg->caracal_expected_rsp_cnt, 0, cnt)) {
+            // 只有第一个到达的子事务会成功设置这个标志，其他子事务都会失败
+            DEBUG_WRK("[%ld] (%ld,%ld) set caracal_txn_ack_cnt_ready to %d\n", get_thd_id(), txn->batch_id, txn->txn_id, cnt);
+          } else {
+            assert(OPEN_SPLIT_ON_DEMAND);
+            // 其他子事务已经把这个值改掉了
+            DEBUG_WRK("[%ld] (%ld,%ld) already set caracal_expected_rsp_cnt to %ld by parent txn or sibling sub-txns\n", get_thd_id(), txn->batch_id, txn->txn_id, last_msg->caracal_expected_rsp_cnt);
+          }
+          assert(last_msg->caracal_expected_rsp_cnt >= 0);
 
           this->caracal_txn_phase = CARACAL_TXN_RD;
           next_record_id = 0;
           break;
+        }
         case CARACAL_TXN_RD:
-          // 远程执行部分
+          // 执行部分
           DEBUG_WRK("[%ld] (%ld,%ld) local reads\n",get_thd_id(),txn->batch_id,txn->txn_id);
           rc = run_caracal_ycsb();
+
           assert(rc == RCOK || rc == WAIT);
           if (rc == RCOK) {
             // 属于是要读取的数据还没写入，得等。
             this->caracal_txn_phase = CARACAL_TXN_SYNC;
+            ATOM_SUB_FETCH(last_msg->caracal_expected_rsp_cnt, 1);
+            // caracal_man.caracal_txn_ack_man.decrement_rsp_cnt(txn->batch_id, txn->txn_id);
           }
           break;
         case CARACAL_TXN_SYNC:
@@ -758,13 +956,13 @@ RC YCSBTxnManager::run_caracal_txn() {
             if(caracal_collect_phase_done()) {
               rc = RCOK;
             } else {
-              DEBUG_WRK("[%ld] (%ld,%ld) wait in collect phase; %d / %d rfwds received\n", get_thd_id(),
-                txn->batch_id, txn->txn_id, rsp_cnt, caracal_expected_rsp_cnt);
+              DEBUG_WRK("[%ld] (%ld,%ld) wait in collect phase; %ld rfwds received\n", get_thd_id(),
+                txn->batch_id, txn->txn_id, last_msg->caracal_expected_rsp_cnt);
               rc = WAIT_REM;
             }
           } else { // Done
             rc = RCOK;
-            this->caracal_txn_phase = CARACAL_TXN_DONE;
+            this->caracal_txn_phase = CARACAL_TXN_COLLECT;
           }
           break;
         case CARACAL_TXN_COLLECT:
@@ -772,11 +970,31 @@ RC YCSBTxnManager::run_caracal_txn() {
           this->caracal_txn_phase = CARACAL_TXN_WR;
           next_record_id = 0;
           break;
-        case CARACAL_TXN_WR:
+        case CARACAL_TXN_WR: {
           DEBUG_WRK("[%ld] (%ld,%ld) execute writes\n",get_thd_id(),txn->batch_id,txn->txn_id);
           rc = run_caracal_ycsb();
-          this->caracal_txn_phase = CARACAL_TXN_DONE;
+          this->caracal_txn_phase = CARACAL_TXN_WR_SYNC;
+
+          uint64_t commit_rsp = ATOM_SUB_FETCH(*last_msg->caracal_commit_rsp_ptr, 1);
+          DEBUG_WRK("[%ld] (%ld,%ld) finish local writes, sub %p, now it is %ld\n", get_thd_id(), txn->batch_id, txn->txn_id, last_msg->caracal_commit_rsp_ptr, commit_rsp);
+          if (commit_rsp == 0) {
+            rc = RCOK;
+            this->caracal_txn_phase = CARACAL_TXN_DONE;
+          } else {
+            rc = WAIT_SUB;
+          }
           break;
+        }
+        // case CARACAL_TXN_WR_SYNC:  // 同步子事务
+        //   if (caracal_sub_collect_phase_done()) {
+        //     rc = RCOK;
+        //     this->caracal_txn_phase = CARACAL_TXN_DONE;
+        //   } else {
+        //     DEBUG_WRK("[%ld] (%ld,%ld) wait in subtxn wr sync phase; %ld commit acks received\n", get_thd_id(),
+        //         txn->batch_id, txn->txn_id, *last_msg->caracal_commit_rsp_ptr);
+        //     rc = WAIT_SUB;
+        //   }
+        // break;
         default:
           assert(false);
       }
@@ -790,6 +1008,7 @@ RC YCSBTxnManager::run_caracal_txn() {
       assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
     }
     break;
+  }
   default:
     assert(false);
     break;

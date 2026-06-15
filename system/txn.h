@@ -23,6 +23,7 @@
 #include "array.h"
 #include "transport/message.h"
 #include "index_btree.h"
+#include <atomic>
 
 class Workload;
 class Thread;
@@ -82,8 +83,9 @@ public:
 #endif
 	Array<std::pair<row_t*, index_btree*>> delete_rows;
 	itemid_t* insert_items;
-	txnid_t         txn_id;
-	uint64_t batch_id;
+	txnid_t   txn_id;
+	uint64_t  batch_id;
+	txnid_t   sub_txn_id; // for Caracal
 	RC rc;
 };
 
@@ -174,6 +176,7 @@ public:
 #endif
 #if CC_ALG == CARACAL
 	virtual RC		run_caracal_txn() = 0;
+	virtual RC		run_sub_caracal_txn() = 0;
 #endif
 
 	virtual RC      acquire_locks() = 0;
@@ -183,6 +186,8 @@ public:
 	Workload *      get_wl();
 	void            set_txn_id(txnid_t txn_id);
 	txnid_t         get_txn_id();
+	void            set_sub_txn_id(txnid_t sub_txn_id);
+	txnid_t         get_sub_txn_id();
 	void            set_query(BaseQuery * qry);
 	BaseQuery *     get_query();
 	bool            is_done();
@@ -245,11 +250,11 @@ public:
 #if CC_ALG == CARACAL
 	CARACAL_PHASE caracal_phase;     // simulation的大阶段
 	CARACAL_TXN_PHASE caracal_txn_phase; // 事务内部的小阶段
-	uint32_t caracal_expected_rsp_cnt;
-	// vector<vector<ycsb_request *>> read_set;
-	// vector<vector<ycsb_request *>> write_set;
+	// std::atomic<uint32_t> caracal_expected_rsp_cnt;
+
 	bool caracal_exec_phase_done();
 	bool caracal_collect_phase_done();
+	bool caracal_sub_collect_phase_done();
 
 	Array<row_t*> caracal_append_rows;
 #endif

@@ -152,8 +152,15 @@
 #define EXTREME_MODE false
 #define DETERMINISTIC_ABORT_MODE false
 #define DETERMINISTIC_ABORT_RATIO 0.2
-// [ARIA]
-#define ARIA_BATCH_SIZE 1000
+// [ARIA], [CARACAL] and [SDOCC]
+#define ARIA_BATCH_SIZE 5000
+// [CARACAL]
+// 是否开启按需拆分，如果开启，当一个数据项的版本数量超过HOT_ITEM_THRESHOLD时，将被设置成热数据项，需要将对应操作拆分成子事务，交给第一个或者第二个线程来执行，以减少冲突和重试的开销
+#define OPEN_SPLIT_ON_DEMAND false
+// 高冲突数据项阈值，如果上面有多少个版本，将被设置成热数据项，需要将对应操作拆分成子事务，交给第一个或者第二个线程来执行
+#define HOT_ITEM_THRESHOLD 100
+// 设置交给前百分之多少的线程来处理热数据。如果是0.2，表示交给前20%的线程来处理热数据，剩下的80%的线程来处理冷数据。这个参数需要和HOT_ITEM_THRESHOLD配合调整，才能达到最好的效果。这个0.2*g_thread_cnt会向上取整
+#define HOT_THREAD_PERCENT 0.2
 // [TICTOC]
 #define MAX_NUM_WAITS 4
 #define PRE_ABORT true
@@ -207,7 +214,7 @@
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
 #define SYNTH_TABLE_SIZE 16777216
-#define ZIPF_THETA 0.9
+#define ZIPF_THETA 1.5
 #define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0

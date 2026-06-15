@@ -78,6 +78,7 @@ void QWorkQueue::init() {
 	#if CC_ALG == CARACAL
 		caracal_init_queue = new boost::lockfree::queue<work_queue_entry* >(0);
 		caracal_execute_queues = new CaracalQueue[g_thread_cnt];
+		caracal_execute_queues_mutex = new pthread_mutex_t;
 
 		caracal_ack_queue = new boost::lockfree::queue<work_queue_entry* >(0);
 	#endif
@@ -846,7 +847,7 @@ void QWorkQueue::work_enqueue(uint64_t thd_id, Message* msg, bool not_ready, CAR
 	assert(ISSERVER || ISREPLICA);
 	DEBUG("Work Enqueue (%ld,%ld) %s\n",entry->batch_id,entry->txn_id,entry->get_message_name().c_str());
 
-	assert(msg->rtype == CL_QRY);
+	assert(msg->rtype == CL_QRY || msg->rtype == CARACAL_SUB_TXN);
 
 	if(not_ready) {
 		INC_STATS(thd_id,work_queue_conflict_cnt,1);
@@ -858,7 +859,13 @@ void QWorkQueue::work_enqueue(uint64_t thd_id, Message* msg, bool not_ready, CAR
 		break;
 	case CARACAL_EXECUTION:
 		// printf("thd_id: %ld add txn: %ld to reserve queue\n", thd_id, msg->txn_id);
+		#if OPEN_SPLIT_ON_DEMAND
+		pthread_mutex_lock(caracal_execute_queues_mutex);
 		caracal_execute_queues[thd_id % g_thread_cnt].insert(entry);
+		pthread_mutex_unlock(caracal_execute_queues_mutex);
+		#else
+		caracal_execute_queues[thd_id % g_thread_cnt].insert(entry);
+		#endif
 		break;
 	default:
 		assert(false);
@@ -888,12 +895,25 @@ Message* QWorkQueue::work_dequeue(uint64_t thd_id) {
 		{
 		case CARACAL_COLLECT:
 		case CARACAL_INIT:
-		case CARACAL_INIT_SYNC:
+		case CARACAL_INIT_SYNC:{
+			#if OPEN_SPLIT_ON_DEMAND
+			uint64_t hot_thread_cnt = ceil(HOT_THREAD_PERCENT * g_thread_cnt);
+			if (thd_id < hot_thread_cnt) {
+				valid = false;
+			} else {
+				valid = caracal_init_queue->pop(entry);
+				if (valid) {
+					// printf("thd_id: %ld pop txn: %ld from read queue\n", thd_id, entry->msg->txn_id);
+				}
+			}
+			#else
 			valid = caracal_init_queue->pop(entry);
 			if (valid) {
 				// printf("thd_id: %ld pop txn: %ld from read queue\n", thd_id, entry->msg->txn_id);
 			}
+			#endif
 			break;
+		}
 		case CARACAL_APPEND:
 		case CARACAL_APPEND_SYNC:
 			valid = caracal_init_queue->pop(entry);

@@ -20,6 +20,7 @@
 #include "global.h"
 #include "thread.h"
 #include "ordered_list.h"
+#include "caracal.h"
 #include "txn.h"
 class Workload;
 class Message;
@@ -53,14 +54,13 @@ public:
     RC process_aria_ack(Message * msg);
 #endif
 #if CC_ALG == CARACAL
-    // 用于阶段同步，同步各个线程的 
-    RC process_caracal_phase_ack(Message * msg);
-    // 用于阶段同步，同步各个线程的事务的完成情况
-    RC process_caracal_txn_ack(Message * msg);
     RC process_caracal_rtxn(Message * msg);
-    RC phase_end();
+    RC process_caracal_rsubtxn(Message * msg);
+    RC batch_append_and_split_on_demand();
     RC process_caracal_rfwd(Message * msg);
+    RC split_txn(uint64_t thd_id, Message* msg, const RowSetMap &hot_row);
     void caracal_wrapup();
+    void caracal_wrapup_subtxn();
 #endif
     RC process_rtxn_cont(Message * msg);
     RC process_log_msg(Message * msg);

@@ -24,8 +24,8 @@ RC CaracalSequencerThread::run() {
         if (simulation->caracal_phase == CARACAL_COLLECT && 
             !simulation->send_txn_finish.load()) {
             caracal_seq.fill_batch(_thd_id);
-            caracal_seq.send_next_batch(_thd_id);
             simulation->current_batch_id = caracal_seq.get_batch_id()-1;
+            caracal_seq.send_next_batch(_thd_id);
 
             simulation->send_txn_finish.store(true);
             // simulation->next_caracal_phase();
@@ -71,14 +71,14 @@ RC CaracalControlThread::process_caracal_txn_ack(Message * msg) {
       ack->caracal_phase != simulation->caracal_phase) {
       // 说明不是当前阶段的，先assert阶段比当前大
       work_queue.phase_ack_enqueue(get_thd_id(), msg);
-      DEBUG_WRK("CaracalControlThread %ld received future CARACAL_TXN_ACK for node %ld txn %ld,%ld phase %ld, current batch %ld phase %d, re-enqueue it\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->txn_id, ack->caracal_phase, simulation->current_batch_id, simulation->caracal_phase);
+    //   DEBUG_SCH("CaracalControlThread %ld received future CARACAL_TXN_ACK for node %ld txn %ld,%ld phase %ld, current batch %ld phase %d, re-enqueue it\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->txn_id, ack->caracal_phase, simulation->current_batch_id, simulation->caracal_phase);
       return RCOK;
   }
   
   ATOM_ADD_FETCH(simulation->batch_process_count, 1);
   ATOM_ADD_FETCH(simulation->batch_remote_process_count, 1);
 
-  DEBUG_WRK("CaracalControlThread %ld received CARACAL_TXN_ACK from node %ld txn %ld,%ld phase %ld, now batch_process_count %ld/%ld, batch_local_process_count %ld, batch_remote_process_count %ld, batch_remote_send_count %ld\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->txn_id, ack->caracal_phase, simulation->batch_process_count, caracal_seq.get_total_ack_count(), simulation->batch_local_process_count, simulation->batch_remote_process_count, simulation->batch_remote_send_count);
+  DEBUG_SCH("CaracalControlThread %ld received CARACAL_TXN_ACK from node %ld txn %ld,%ld phase %ld, now batch_process_count %ld/%ld, batch_local_process_count %ld, batch_remote_process_count %ld, batch_remote_send_count %ld\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->txn_id, ack->caracal_phase, simulation->batch_process_count, caracal_seq.get_total_ack_count(), simulation->batch_local_process_count, simulation->batch_remote_process_count, simulation->batch_remote_send_count);
 
   msg->release();
   delete msg;
@@ -131,6 +131,8 @@ RC CaracalControlThread::check_phase_end() {
         if (simulation->send_txn_finish.load()) {
             simulation->next_caracal_phase();
             simulation->send_txn_finish.store(false);
+
+            caracal_man.set_phase_undone_for_all();
         }
         break;
     case CARACAL_INIT:
@@ -159,7 +161,6 @@ RC CaracalControlThread::check_phase_end() {
             if (g_mpr != 0) send_phase_sync_message(CARACAL_APPEND);
             simulation->next_caracal_phase();
             simulation->finish_append_cnt.store(0);
-            caracal_man.set_phase_undone_for_all();
         }
         break;
     case CARACAL_APPEND_SYNC:

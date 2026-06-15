@@ -58,10 +58,20 @@ void TxnTable::dump() {
 
 bool TxnTable::is_matching_txn_node(txn_node_t t_node, uint64_t txn_id, uint64_t batch_id){
   assert(t_node);
-#if CC_ALG == CALVIN || CC_ALG == SDOCC || CC_ALG == SDPCC// || CC_ALG == SILO
+#if CC_ALG == CALVIN || CC_ALG == SDOCC || CC_ALG == SDPCC || CC_ALG == CARACAL
     return (t_node->txn_man->get_txn_id() == txn_id && t_node->txn_man->get_batch_id() == batch_id);
 #else
     return (t_node->txn_man->get_txn_id() == txn_id);
+#endif
+}
+
+bool TxnTable::is_matching_txn_node(txn_node_t t_node, uint64_t txn_id, uint64_t batch_id,uint64_t sub_txn_id){
+  assert(t_node);
+#if CC_ALG == CARACAL
+    return (t_node->txn_man->get_txn_id() == txn_id && t_node->txn_man->get_batch_id() == batch_id && t_node->txn_man->get_sub_txn_id() == sub_txn_id);
+#else
+    assert(false);
+    return false;
 #endif
 }
 
@@ -165,6 +175,78 @@ TxnManager * TxnTable::get_transaction_manager(uint64_t thd_id, uint64_t txn_id,
   return txn_man;
 }
 
+TxnManager * TxnTable::get_transaction_manager(uint64_t thd_id, uint64_t txn_id,uint64_t batch_id,uint64_t sub_txn_id){
+  DEBUG("TxnTable::get_txn_manager %ld / %ld\n",txn_id,pool_size);
+  uint64_t starttime = get_sys_clock();
+  uint64_t pool_id = txn_id % pool_size;
+
+  uint64_t mtx_starttime = starttime;
+  // set modify bit for this pool: txn_id % pool_size
+  while (!ATOM_CAS(pool[pool_id]->modify, false, true)) {
+  };
+  INC_STATS(thd_id,mtx[7],get_sys_clock()-mtx_starttime);
+
+  txn_node_t t_node = pool[pool_id]->head;
+  TxnManager * txn_man = NULL;
+
+  uint64_t prof_starttime = get_sys_clock();
+  while (t_node != NULL) {
+    if(is_matching_txn_node(t_node,txn_id,batch_id,sub_txn_id)) {
+      txn_man = t_node->txn_man;
+      break;
+    }
+    t_node = t_node->next;
+  }
+  INC_STATS(thd_id,mtx[20],get_sys_clock()-prof_starttime);
+
+
+  if(!txn_man) {
+    prof_starttime = get_sys_clock();
+
+    txn_table_pool.get(thd_id,t_node);
+
+    INC_STATS(thd_id,mtx[21],get_sys_clock()-prof_starttime);
+    prof_starttime = get_sys_clock();
+
+    txn_man_pool.get(thd_id,txn_man);
+
+    INC_STATS(thd_id,mtx[22],get_sys_clock()-prof_starttime);
+    prof_starttime = get_sys_clock();
+
+    txn_man->set_txn_id(txn_id);
+    txn_man->set_batch_id(batch_id);
+    txn_man->set_sub_txn_id(sub_txn_id);
+    t_node->txn_man = txn_man;
+    txn_man->txn_stats.starttime = get_sys_clock();
+    txn_man->txn_stats.restart_starttime = txn_man->txn_stats.starttime;
+    LIST_PUT_TAIL(pool[pool_id]->head,pool[pool_id]->tail,t_node);
+
+    INC_STATS(thd_id,mtx[23],get_sys_clock()-prof_starttime);
+    prof_starttime = get_sys_clock();
+
+    ++pool[pool_id]->cnt;
+    if(pool[pool_id]->cnt > 1) {
+      INC_STATS(thd_id,txn_table_cflt_cnt,1);
+      INC_STATS(thd_id,txn_table_cflt_size,pool[pool_id]->cnt-1);
+    }
+    INC_STATS(thd_id,txn_table_new_cnt,1);
+    INC_STATS(thd_id,mtx[24],get_sys_clock()-prof_starttime);
+    DEBUG_WRK("Create new txn manager for txn %ld,%ld,%ld\n", batch_id, txn_id, sub_txn_id);
+  } else {
+    assert(txn_man->get_sub_txn_id() == sub_txn_id);
+    assert(txn_man->get_batch_id() == batch_id);
+    assert(txn_man->get_txn_id() == txn_id);
+    DEBUG_WRK("Find existing txn manager for txn %ld,%ld,%ld\n", batch_id, txn_id, sub_txn_id);
+  }
+
+  // unset modify bit for this pool: txn_id % pool_size
+  ATOM_CAS(pool[pool_id]->modify,true,false);
+
+  INC_STATS(thd_id,txn_table_get_time,get_sys_clock() - starttime);
+  INC_STATS(thd_id,txn_table_get_cnt,1);
+  return txn_man;
+}
+
 void TxnTable::restart_txn(uint64_t thd_id, uint64_t txn_id,uint64_t batch_id){
   uint64_t pool_id = txn_id % pool_size;
   // set modify bit for this pool: txn_id % pool_size
@@ -211,6 +293,51 @@ void TxnTable::release_transaction_manager(uint64_t thd_id, uint64_t txn_id, uin
   uint64_t prof_starttime = get_sys_clock();
   while (t_node != NULL) {
     if(is_matching_txn_node(t_node,txn_id,batch_id)) {
+      LIST_REMOVE_HT(t_node,pool[txn_id % pool_size]->head,pool[txn_id % pool_size]->tail);
+      --pool[pool_id]->cnt;
+      break;
+    }
+    t_node = t_node->next;
+  }
+  INC_STATS(thd_id,mtx[25],get_sys_clock()-prof_starttime);
+  prof_starttime = get_sys_clock();
+
+  // unset modify bit for this pool: txn_id % pool_size
+  ATOM_CAS(pool[pool_id]->modify,true,false);
+
+  prof_starttime = get_sys_clock();
+  assert(t_node);
+  assert(t_node->txn_man);
+
+  txn_man_pool.put(thd_id,t_node->txn_man);
+
+  INC_STATS(thd_id,mtx[26],get_sys_clock()-prof_starttime);
+  prof_starttime = get_sys_clock();
+
+  txn_table_pool.put(thd_id,t_node);
+  INC_STATS(thd_id,mtx[27],get_sys_clock()-prof_starttime);
+
+
+  INC_STATS(thd_id,txn_table_release_time,get_sys_clock() - starttime);
+  INC_STATS(thd_id,txn_table_release_cnt,1);
+
+}
+
+void TxnTable::release_transaction_manager(uint64_t thd_id, uint64_t txn_id, uint64_t batch_id, uint64_t sub_txn_id){
+  uint64_t starttime = get_sys_clock();
+
+  uint64_t pool_id = txn_id % pool_size;
+  uint64_t mtx_starttime = starttime;
+  // set modify bit for this pool: txn_id % pool_size
+  while (!ATOM_CAS(pool[pool_id]->modify, false, true)) {
+  };
+  INC_STATS(thd_id,mtx[8],get_sys_clock()-mtx_starttime);
+
+  txn_node_t t_node = pool[pool_id]->head;
+
+  uint64_t prof_starttime = get_sys_clock();
+  while (t_node != NULL) {
+    if(is_matching_txn_node(t_node,txn_id,batch_id, sub_txn_id)) {
       LIST_REMOVE_HT(t_node,pool[txn_id % pool_size]->head,pool[txn_id % pool_size]->tail);
       --pool[pool_id]->cnt;
       break;

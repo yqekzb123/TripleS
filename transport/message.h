@@ -44,6 +44,14 @@ public:
   static Message * create_message(RemReqType rtype);
   static std::vector<Message*> * create_messages(char * buf);
   static void release_message(Message * msg);
+
+  void mcopy_from_msg(Message * msg) {
+    rtype = msg->rtype;
+    txn_id = msg->txn_id;
+    batch_id = msg->batch_id;
+    return_node_id = msg->return_node_id;
+    client_id = msg->client_id;
+  }
   RemReqType rtype;
   uint64_t txn_id;
   uint64_t batch_id;
@@ -51,9 +59,17 @@ public:
   uint64_t sdocc_phase;
   bool rwset_known=false;
   #endif
-  // #if CC_ALG == CARACAL
-  // uint64_t caracal_phase;
-  // #endif
+  #if CC_ALG == CARACAL
+  uint64_t sub_txn_id = 0; // 用于Caracal拆分后的子事务
+  // 记录需要哪几个线程参与
+  std::vector<uint64_t> involved_thread;
+  // 读写集部分
+  volatile uint64_t caracal_expected_rsp_cnt = 0;
+  volatile uint64_t* caracal_expected_rsp_ptr = &caracal_expected_rsp_cnt;
+  // 最终提交部分，需要等待所有子事务的响应
+  volatile uint64_t caracal_commit_rsp_cnt = 1;
+  volatile uint64_t* caracal_commit_rsp_ptr = &caracal_commit_rsp_cnt;
+  #endif
   uint64_t return_node_id;
   uint64_t client_id;
 
@@ -77,6 +93,9 @@ public:
 
   uint64_t mget_size();
   uint64_t get_txn_id() {return txn_id;}
+  #if CC_ALG == CARACAL
+  uint64_t get_sub_txn_id() {return sub_txn_id;}
+  #endif
   uint64_t get_batch_id() {return batch_id;}
   uint64_t get_return_id() {return return_node_id;}
   void mcopy_from_buf(char * buf);
@@ -285,6 +304,18 @@ public:
   void init();
   void release();
 
+  void copy_from_msg(ClientQueryMessage * msg) {
+    Message::mcopy_from_msg(msg);
+    client_startts = msg->client_startts;
+    isDeterministicAbort = msg->isDeterministicAbort;
+    rwset_known = msg->rwset_known;
+    pid = msg->pid;
+    ts = msg->ts;
+    client_startts = msg->client_startts;
+    first_startts = msg->first_startts;
+    partitions.copy(msg->partitions);
+  }
+
   uint64_t pid;
   uint64_t ts;
   uint64_t client_startts;
@@ -316,6 +347,11 @@ public:
   uint64_t get_size();
   void init();
   void release();
+
+  void copy_from_msg(YCSBClientQueryMessage * msg) {
+    ClientQueryMessage::copy_from_msg(msg);
+    requests.copy(msg->requests);
+  }
 
   Array<ycsb_request*> requests;
 };

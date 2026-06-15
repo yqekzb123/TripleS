@@ -179,6 +179,7 @@ private:
 #if CC_ALG == CARACAL
     boost::lockfree::queue<work_queue_entry* > * caracal_init_queue;
     CaracalQueue* caracal_execute_queues;
+    pthread_mutex_t* caracal_execute_queues_mutex;
 
     boost::lockfree::queue<work_queue_entry* > * caracal_ack_queue;
     // boost::lockfree::queue<work_queue_entry* > * caracal_execute_queue;

@@ -207,6 +207,9 @@ RC row_t::batch_append(uint64_t thd_id) {
 RC row_t::clean_reservation(uint64_t thd_id) {
 	return this->manager->clean(thd_id);
 }
+uint64_t row_t::get_version_cnt() {
+	return this->manager->get_version_cnt();
+}
 #endif
 
 RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {

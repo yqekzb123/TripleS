@@ -4,10 +4,12 @@
 #include "global.h"
 #include "query.h"
 #include <boost/lockfree/queue.hpp>
+#include <vector>
+#include "message.h"
 
 class Workload;
 class BaseQuery;
-class Message;
+// class Message;
 
 #if CC_ALG == CARACAL
 
@@ -19,7 +21,7 @@ typedef struct caracal_txn_entry {
     uint64_t seq_first_startts;
     // uint64_t skew_startts;
     uint64_t total_batch_time;
-    uint32_t server_ack_cnt;
+    volatile uint32_t server_ack_cnt;
     uint32_t abort_cnt;
     Message * msg;
 } caracal_txn;
@@ -34,6 +36,25 @@ public:
     uint64_t get_batch_id() { return batch_id; }
 
     uint64_t get_total_ack_count() { return total_ack_count; }
+
+    void add_sub_txn(uint64_t batch_id, uint64_t txn_id) {
+        for (auto &txn : caracal_batch) {
+            if (txn->msg->batch_id == batch_id && txn->msg->txn_id == txn_id) {
+                ATOM_ADD_FETCH(txn->server_ack_cnt, 1);
+                ATOM_ADD_FETCH(total_ack_count, 1);
+                DEBUG_WRK("Add sub_txn for %ld,%ld, now server_ack_cnt %d, txns_left %ld\n", batch_id, txn_id, txn->server_ack_cnt, txns_left);
+                break;
+            }
+        }
+    }
+
+    std::string get_remain_txn_info() {
+        std::string info = "Remaining transactions in batch " + std::to_string(batch_id) + ": ";
+        for (auto &txn : caracal_batch) {
+            info += "(" + std::to_string(txn->msg->batch_id) + "," + std::to_string(txn->msg->txn_id) + "), ";
+        }
+        return info;
+    }
 
 private:
     volatile uint64_t next_txn_id;

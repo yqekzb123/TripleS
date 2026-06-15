@@ -281,7 +281,8 @@ extern UInt32 g_caracal_batch_size;
 extern UInt32 g_repl_type;
 extern UInt32 g_repl_cnt;
 
-enum RC { RCOK=0, Commit, Abort, WAIT, WAIT_REM, ERROR, FINISH, NONE, RETRY};
+enum RC { RCOK=0, Commit, Abort, WAIT, WAIT_REM, ERROR, FINISH, NONE, RETRY, WAIT_SUB};
+
 enum RemReqType {
   INIT_DONE = 0,
   CL_QRY,
@@ -308,6 +309,7 @@ enum RemReqType {
   CARACAL_PHASE_ACK,
   CARACAL_TXN_ACK,
   CARACAL_DONE,
+  CARACAL_SUB_TXN,
   PIP_ACK,
   WATERMARK,
   NO_MSG
@@ -342,6 +344,7 @@ inline string rtype_to_string(RemReqType rtype) {
       case WATERMARK: return "WATERMARK";
       case NO_MSG: return "NO_MSG";
       case LOG_MSG_RSP: return "LOG_MSG_RSP";
+      case CARACAL_SUB_TXN: return "CARACAL_SUB_TXN";
       default: return "Unknown";
     }
 }

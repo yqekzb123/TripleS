@@ -124,6 +124,7 @@ public:
 #endif
 #if CC_ALG == CARACAL
   RC run_caracal_txn() {return RCOK;}
+  RC run_sub_caracal_txn() {return RCOK;}
 #endif
   RC run_pps_phase2();
   RC run_pps_phase5();

@@ -68,6 +68,9 @@ public:
     // execution阶段
     caracal_version* get_reservation(uint64_t batch_id,uint64_t return_id,uint64_t txn_id, access_t type, uint64_t thd_id);
 
+    uint64_t get_version_cnt() {
+        return reservations.size();
+    }
 private:
     row_t * _row;
     void assert_reservation_append();

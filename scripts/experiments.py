@@ -103,6 +103,7 @@ def ycsb_skew_pip():
     wl = 'YCSB'
     nnodes = [2]
     # algos=['CALVIN','ARIA','SDPCC']
+    # algos=['ARIA','SDOCC','CARACAL']
     # algos=['ARIA']
     # algos=['SDOCC']
     # algos=['SDPCC']
@@ -118,7 +119,7 @@ def ycsb_skew_pip():
     # scnt = [1]
     scnt = [5]
     # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    skew = [0.9]
+    skew = [1.5]
     # skew = [0.1]
     # skew = [0.1,1.5]
     fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
@@ -503,7 +504,7 @@ configs = {
     "MPR_NEWORDER":"MPR",
 #TXN
     "PRORATE_RATIO":0,
-    "ARIA_BATCH_SIZE":1000,
+    "ARIA_BATCH_SIZE":5000,
     "LOGGING":"false",
 #OTHERS
     # "DEBUG_DISTR":"false",

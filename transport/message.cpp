@@ -162,6 +162,7 @@ Message * Message::create_message(RemReqType rtype) {
     case RTXN:
     case RTXN_CONT:
     case CALVIN_ABORT:
+    case CARACAL_SUB_TXN:
 #if WORKLOAD == YCSB
       msg = new YCSBClientQueryMessage;
 #elif WORKLOAD == TPCC
@@ -376,6 +377,7 @@ void Message::release_message(Message * msg) {
       break;
                    }
     case CL_QRY:
+    case CARACAL_SUB_TXN:
     case RTXN:
     case RTXN_CONT: {
 #if WORKLOAD == YCSB
