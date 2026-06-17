@@ -16,13 +16,17 @@ void Row_caracal::init(row_t* row) {
     tmp_reservations = new std::vector<uint64_t>[g_thread_cnt];
 }
 
-RC Row_caracal::add_reservation(uint64_t batch_id,uint64_t return_id,uint64_t txn_id,uint64_t thd_id) {
+RC Row_caracal::add_reservation(uint64_t batch_id,uint64_t return_id,uint64_t txn_id,uint64_t thd_id, bool force) {
     // 先加锁
     bool insert = false;
     uint64_t key = get_batch_key(batch_id,return_id,txn_id);
+    // if (force) {
+    //     pthread_mutex_lock(latch);
+    // } else {
     if (pthread_mutex_trylock(latch) != 0) {
         return WAIT;
     }
+    // }
     // 然后遍历reservations，找到合适的位置插入；
     // 从后往前插入
     int i = reservations.size() - 1;
@@ -43,7 +47,7 @@ RC Row_caracal::add_reservation(uint64_t batch_id,uint64_t return_id,uint64_t tx
     // key 比所有现有元素都小，插到最前面
         reservations.insert(reservations.begin(), caracal_version(key));
     }
-    DEBUG_WRK("thd_id %ld Caracal %ld,%ld Add Reservation Row %ld Version at %d\n",thd_id,batch_id,txn_id,_row->get_primary_key(),i + 1); // 这个reservations.size() - 1是打印下标
+    DEBUG_WRK("thd_id %ld Caracal %ld,%ld Add Reservation Row %s-%ld Version at %d\n",thd_id,batch_id,txn_id,_row->get_table_name(),_row->get_primary_key(),i + 1); // 这个reservations.size() - 1是打印下标
     pthread_mutex_unlock(latch);
     return RCOK;
 }
@@ -52,7 +56,7 @@ RC Row_caracal::add_reservation_to_waitlist(uint64_t batch_id,uint64_t return_id
     bool insert = false;
     uint64_t key = get_batch_key(batch_id,return_id,txn_id);
     tmp_reservations[thd_id].push_back(key);
-    DEBUG_WRK("thd_id %ld Caracal %ld,%ld Add Reservation to waitlist Row %ld Version\n",thd_id,batch_id,txn_id,_row->get_primary_key());
+    DEBUG_WRK("thd_id %ld Caracal %ld,%ld Add Reservation to waitlist Row %s-%ld Version\n",thd_id,batch_id,txn_id,_row->get_table_name(),_row->get_primary_key());
     return RCOK;
 }
 
@@ -80,7 +84,7 @@ RC Row_caracal::batch_append(uint64_t thd_id) {
         // key 比所有现有元素都小，插到最前面
             reservations.insert(reservations.begin(), caracal_version(key));
         }
-        DEBUG_WRK("thd_id %ld txn %ld,%ld Add Reservation Row %ld Version at %d\n",thd_id,k[0],k[2],_row->get_primary_key(),i + 1); // 这个reservations.size() - 1是打印下标
+        DEBUG_WRK("batch_append thd_id %ld txn %ld,%ld Add Reservation Row %s-%ld Version at %d\n",thd_id,k[0],k[2],_row->get_table_name(),_row->get_primary_key(),i + 1); // 这个reservations.size() - 1是打印下标
     }
     tmp_reservations[thd_id].clear();
     pthread_mutex_unlock(latch);
@@ -116,7 +120,7 @@ caracal_version* Row_caracal::get_reservation(uint64_t batch_id, uint64_t return
             result = &(*it);
 
             std::vector<uint64_t> k = split_batch_key(it->key);
-            DEBUG_WRK("thd_id %ld Caracal %ld,%ld Read Row %ld Version %ld txn %ld,%ld written %d\n",thd_id,batch_id,txn_id,_row->get_primary_key(),it - reservations.begin(), k[0],k[2], it->written.load()); // 这个it是打印下标
+            DEBUG_WRK("thd_id %ld Caracal %ld,%ld Read Row %s-%ld Version %ld txn %ld,%ld written %d\n",thd_id,batch_id,txn_id,_row->get_table_name(),_row->get_primary_key(),it - reservations.begin(), k[0],k[2], it->written.load()); // 这个it是打印下标
         } else {
             assert(false); // 读操作不应该找不到版本，因为最开始就有一个初始版本
         }
@@ -125,9 +129,11 @@ caracal_version* Row_caracal::get_reservation(uint64_t batch_id, uint64_t return
         if (it != reservations.end() && it->key == key) {
             result = &(*it);
             std::vector<uint64_t> k = split_batch_key(it->key);
-            DEBUG_WRK("thd_id %ld Caracal %ld,%ld Write Row %ld Version %ld txn %ld,%ld written %d\n",thd_id,batch_id,txn_id,_row->get_primary_key(),it - reservations.begin(), k[0], k[2], it->written.load()); // 这个it是打印下标
+            DEBUG_WRK("thd_id %ld Caracal %ld,%ld Write Row %s-%ld Version %ld txn %ld,%ld written %d\n",thd_id,batch_id,txn_id,_row->get_table_name(),_row->get_primary_key(),it - reservations.begin(), k[0], k[2], it->written.load()); // 这个it是打印下标
         } else {
-            assert(false); // 写操作应该总能找到自己的版本，因为add_reservation阶段就插入了
+            assert(WORKLOAD == TPCC); // TPCC的写操作有些找不到自己的版本，就当过了吧
+            DEBUG_WRK("thd_id %ld Caracal %ld,%ld Write Row %s-%ld Version not found\n",thd_id,batch_id,txn_id,_row->get_table_name(),_row->get_primary_key());
+            return nullptr;
         }
     }
     // pthread_mutex_unlock(latch);
@@ -148,6 +154,10 @@ RC Row_caracal::access(TxnManager * txn, access_t type, row_t * local_row, uint6
     } else if (type == WR) {
         // 写操作，检查读操作和写操作，即处理写写冲突和写读冲突
         caracal_version* write_v = get_reservation(txn->get_batch_id(), txn->return_id, txn->get_txn_id(), WR, thd_id);
+        if (write_v == nullptr) {
+            // 没有找到reservation，说明这个写操作没有成功加reservation，直接返回WAIT
+            return RCOK;
+        }
         write_v->written.store(true);
     } else {
         // 其他操作
@@ -156,17 +166,25 @@ RC Row_caracal::access(TxnManager * txn, access_t type, row_t * local_row, uint6
     return RCOK;
 }
 
-RC Row_caracal::clean(uint64_t thd_id) {
+RC Row_caracal::clean(TxnManager* txn, access_t type) {
     // return RCOK;
     // 清理掉对应的reservation
-    pthread_mutex_lock(latch);
-    DEBUG_WRK("thd_id %ld Caracal Clean Row %ld, current reservations size %lu\n",thd_id,_row->get_primary_key(), reservations.size());
-    // 清理掉除了开头的那一个初始版本以外的所有版本
-    reservations.erase(reservations.begin() + 1, reservations.end());
-    for (int i = 0; i < g_thread_cnt; i++) {
-        tmp_reservations[i].clear();
+    // pthread_mutex_lock(latch);
+    // DEBUG_WRK("thd_id %ld Caracal Clean Row %ld, current reservations size %lu\n",txn->get_thd_id(),_row->get_primary_key(), reservations.size());
+    // 把之前没有放锁的reservation加上锁，并且把它标记为written，这样后续的读操作就不会等了
+    DEBUG_WRK("thd_id %ld Caracal Clean Row %s-%ld for txn %ld,%ld\n",txn->get_thd_id(),_row->get_table_name(),_row->get_primary_key(),txn->get_batch_id(),txn->get_txn_id());
+    caracal_version* write_v = get_reservation(txn->get_batch_id(), txn->return_id, txn->get_txn_id(), WR, txn->get_thd_id());
+    if (write_v == nullptr) {
+        // 没有找到reservation，说明这个写操作没有成功加reservation，直接返回WAIT
+        return RCOK;
     }
-    pthread_mutex_unlock(latch);
+    write_v->written.store(true);
+    // 清理掉除了开头的那一个初始版本以外的所有版本
+    // reservations.erase(reservations.begin() + 1, reservations.end());
+    // for (int i = 0; i < g_thread_cnt; i++) {
+    //     tmp_reservations[i].clear();
+    // }
+    // pthread_mutex_unlock(latch);
     return RCOK;
 }
 

@@ -401,8 +401,8 @@ RC YCSBTxnManager::run_calvin_txn() {
           rc = send_remote_reads();
         }
         if(query->active_nodes[g_node_id] == 1) {
-          this->phase = CALVIN_COLLECT_RD;
           if(calvin_collect_phase_done()) {
+            this->phase = CALVIN_COLLECT_RD;
             rc = RCOK;
           } else {
             DEBUG("[%ld] (%ld,%ld) wait in collect phase; %d / %d rfwds received\n", get_thd_id(), 
@@ -953,22 +953,30 @@ RC YCSBTxnManager::run_caracal_txn() {
           }
           if(query->active_nodes[g_node_id] == 1) {
             this->caracal_txn_phase = CARACAL_TXN_COLLECT;
-            if(caracal_collect_phase_done()) {
-              rc = RCOK;
-            } else {
-              DEBUG_WRK("[%ld] (%ld,%ld) wait in collect phase; %ld rfwds received\n", get_thd_id(),
-                txn->batch_id, txn->txn_id, last_msg->caracal_expected_rsp_cnt);
-              rc = WAIT_REM;
-            }
+            // if(caracal_collect_phase_done()) {
+            //   rc = RCOK;
+            // } else {
+            //   DEBUG_WRK("[%ld] (%ld,%ld) wait in collect phase; %ld rfwds received\n", get_thd_id(),
+            //     txn->batch_id, txn->txn_id, last_msg->caracal_expected_rsp_cnt);
+            //   rc = WAIT_REM;
+            // }
           } else { // Done
             rc = RCOK;
-            this->caracal_txn_phase = CARACAL_TXN_COLLECT;
+            this->caracal_txn_phase = CARACAL_TXN_WR;
           }
           break;
         case CARACAL_TXN_COLLECT:
           // Phase 4: Collect remote reads
-          this->caracal_txn_phase = CARACAL_TXN_WR;
-          next_record_id = 0;
+          if(caracal_collect_phase_done()) {
+            this->caracal_txn_phase = CARACAL_TXN_WR;
+            rc = RCOK;
+            next_record_id = 0;
+          } else {
+            assert(*last_msg->caracal_expected_rsp_ptr > 0);
+            DEBUG_WRK("(%ld,%ld) wait in collect phase; %d / %ld rfwds received\n", txn->txn_id,
+                  txn->batch_id, rsp_cnt, *last_msg->caracal_expected_rsp_ptr);
+            rc = WAIT_REM;
+          }
           break;
         case CARACAL_TXN_WR: {
           DEBUG_WRK("[%ld] (%ld,%ld) execute writes\n",get_thd_id(),txn->batch_id,txn->txn_id);

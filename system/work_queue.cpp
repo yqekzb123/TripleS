@@ -847,29 +847,33 @@ void QWorkQueue::work_enqueue(uint64_t thd_id, Message* msg, bool not_ready, CAR
 	assert(ISSERVER || ISREPLICA);
 	DEBUG("Work Enqueue (%ld,%ld) %s\n",entry->batch_id,entry->txn_id,entry->get_message_name().c_str());
 
-	assert(msg->rtype == CL_QRY || msg->rtype == CARACAL_SUB_TXN);
-
+	assert(msg->rtype == CL_QRY || msg->rtype == CARACAL_SUB_TXN || msg->rtype == RFWD);
+	
 	if(not_ready) {
 		INC_STATS(thd_id,work_queue_conflict_cnt,1);
 	}
-	switch (phase) {
-	case CARACAL_INIT:
-		// printf("thd_id: %ld add txn: %ld to read queue\n", thd_id, msg->txn_id);
-		while (!caracal_init_queue->push(entry) && !simulation->is_done()) {}
-		break;
-	case CARACAL_EXECUTION:
-		// printf("thd_id: %ld add txn: %ld to reserve queue\n", thd_id, msg->txn_id);
-		#if OPEN_SPLIT_ON_DEMAND
-		pthread_mutex_lock(caracal_execute_queues_mutex);
-		caracal_execute_queues[thd_id % g_thread_cnt].insert(entry);
-		pthread_mutex_unlock(caracal_execute_queues_mutex);
-		#else
-		caracal_execute_queues[thd_id % g_thread_cnt].insert(entry);
-		#endif
-		break;
-	default:
-		assert(false);
-		break;
+	if (msg->rtype == RFWD) {
+		while( !work_queue->push(entry) && !simulation->is_done()) {}
+	} else {
+		switch (phase) {
+		case CARACAL_INIT:
+			// printf("thd_id: %ld add txn: %ld to read queue\n", thd_id, msg->txn_id);
+			while (!caracal_init_queue->push(entry) && !simulation->is_done()) {}
+			break;
+		case CARACAL_EXECUTION:
+			// printf("thd_id: %ld add txn: %ld to reserve queue\n", thd_id, msg->txn_id);
+			#if OPEN_SPLIT_ON_DEMAND
+			pthread_mutex_lock(caracal_execute_queues_mutex);
+			caracal_execute_queues[thd_id % g_thread_cnt].insert(entry);
+			pthread_mutex_unlock(caracal_execute_queues_mutex);
+			#else
+			caracal_execute_queues[thd_id % g_thread_cnt].insert(entry);
+			#endif
+			break;
+		default:
+			assert(false);
+			break;
+		}
 	}
 	sem_wait(&_semaphore);
 	work_queue_size ++;
@@ -889,7 +893,11 @@ Message* QWorkQueue::work_dequeue(uint64_t thd_id) {
 	work_queue_entry * entry = NULL;
 	bool valid = false;
 
-	valid = work_queue->pop(entry);
+	// 加一个百分比，让线程有一定概率直接从work_queue里pop，有一定概率根据caracal_phase从caracal_init_queue或者caracal_execute_queue里pop
+	if (rand() % 100 < 50) {
+		valid = work_queue->pop(entry);
+	}
+	
 	if (!valid) {
 		switch (simulation->caracal_phase)
 		{

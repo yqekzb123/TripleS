@@ -64,8 +64,8 @@ public:
   // 记录需要哪几个线程参与
   std::vector<uint64_t> involved_thread;
   // 读写集部分
-  volatile uint64_t caracal_expected_rsp_cnt = 0;
-  volatile uint64_t* caracal_expected_rsp_ptr = &caracal_expected_rsp_cnt;
+  volatile int64_t caracal_expected_rsp_cnt = 0;
+  volatile int64_t* caracal_expected_rsp_ptr = &caracal_expected_rsp_cnt;
   // 最终提交部分，需要等待所有子事务的响应
   volatile uint64_t caracal_commit_rsp_cnt = 1;
   volatile uint64_t* caracal_commit_rsp_ptr = &caracal_commit_rsp_cnt;

@@ -192,6 +192,7 @@ RC row_t::get_lock(access_t type, TxnManager * txn) {
 	rc = this->manager->lock_get(lt, txn);
 #endif
 #if CC_ALG == CARACAL 
+	assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
 	rc = this->manager->add_reservation(txn->get_batch_id(),txn->return_id,txn->get_txn_id(),txn->get_thd_id());
 	if (rc != RCOK) {
 		this->manager->add_reservation_to_waitlist(txn->get_batch_id(),txn->return_id,txn->get_txn_id(),txn->get_thd_id());
@@ -205,7 +206,8 @@ RC row_t::batch_append(uint64_t thd_id) {
 	return this->manager->batch_append(thd_id);
 }
 RC row_t::clean_reservation(uint64_t thd_id) {
-	return this->manager->clean(thd_id);
+	return RCOK;
+	// return this->manager->clean(thd_id);
 }
 uint64_t row_t::get_version_cnt() {
 	return this->manager->get_version_cnt();
@@ -420,7 +422,7 @@ uint64_t row_t::return_row(RC rc, access_t type, TxnManager *txn, row_t *row) {
 	mem_allocator.free(row, sizeof(row_t));
 	return 0;
 #elif CC_ALG == CARACAL
-	// manager->clean(txn, type);
+	manager->clean(txn, WR);
 	return 0;
 #else
 	assert(false);

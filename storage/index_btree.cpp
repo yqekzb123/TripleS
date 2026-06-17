@@ -115,19 +115,20 @@ RC index_btree::index_read(idx_key_t key, itemid_t *&item, int part_id, int thd_
 	params.part_id = part_id;
 	params.txn = txn;
 	bt_node * leaf;
-	while (find_leaf(params, key, INDEX_READ, leaf) != RCOK) {}
+	while (find_leaf(params, key, INDEX_READ, leaf) != RCOK && !simulation->is_done()) {}
+	if (simulation->is_done()) return Abort;
 	if (leaf == NULL) M_ASSERT_V(false, "the leaf does not exist!");
-		for (UInt32 i = 0; i < leaf->num_keys; i++) {
-			if (leaf->keys[i] == key) {
-				item = (itemid_t *)leaf->pointers[i];
-				release_latch(leaf->parent);
-				// release_latch(leaf);
-				// (*cur_leaf_per_thd[thd_id]) = leaf;
-				// *cur_idx_per_thd[thd_id] = i;
-				INC_STATS(thd_id, btree_read_time, get_sys_clock() - starttime);
-				return RCOK;
-			}
+	for (UInt32 i = 0; i < leaf->num_keys; i++) {
+		if (leaf->keys[i] == key) {
+			item = (itemid_t *)leaf->pointers[i];
+			release_latch(leaf->parent);
+			// release_latch(leaf);
+			// (*cur_leaf_per_thd[thd_id]) = leaf;
+			// *cur_idx_per_thd[thd_id] = i;
+			INC_STATS(thd_id, btree_read_time, get_sys_clock() - starttime);
+			return RCOK;
 		}
+	}
 	// release the latch after reading the node
 
 	printf("key = %ld\n", key);
@@ -318,39 +319,39 @@ RC index_btree::start_new_tree(glob_param params, idx_key_t key, itemid_t * item
 
 bool index_btree::latch_node(bt_node * node, latch_t latch_type) {
 	// TODO latch is disabled
-  if (!ENABLE_LATCH) return true;
-	bool success = false;
-//		printf("%s : %d\n", __FILE__, __LINE__);
-//	if ( g_cc_alg != HSTORE )
-  while (!ATOM_CAS(node->latch, false, true)) {
-  }
-//		pthread_mutex_lock(&node->locked);
-//		printf("%s : %d\n", __FILE__, __LINE__);
+	if (!ENABLE_LATCH) return true;
+		bool success = false;
+	// printf("%s : %d\n", __FILE__, __LINE__);
+	// if ( g_cc_alg != HSTORE )
+	while (!ATOM_CAS(node->latch, false, true)) {
+	}
+	// pthread_mutex_lock(&node->locked);
+	// printf("%s : %d\n", __FILE__, __LINE__);
 
 	latch_t node_latch = node->latch_type;
-  if (node_latch == LATCH_NONE || (node_latch == LATCH_SH && latch_type == LATCH_SH)) {
+	if (node_latch == LATCH_NONE || (node_latch == LATCH_SH && latch_type == LATCH_SH)) {
 		node->latch_type = latch_type;
 		if (node_latch == LATCH_NONE) M_ASSERT_V((node->share_cnt == 0), "share cnt none 0!");
 		if (node->latch_type == LATCH_SH) node->share_cnt++;
 		success = true;
-  } else  // latch_type incompatible
+	} else  // latch_type incompatible
 		success = false;
-//	if ( g_cc_alg != HSTORE )
+	// if ( g_cc_alg != HSTORE )
 	bool ok = ATOM_CAS(node->latch, true, false);
 	assert(ok);
-//		pthread_mutex_unlock(&node->locked);
-//		assert(ATOM_CAS(node->locked, true, false));
+	// pthread_mutex_unlock(&node->locked);
+	// assert(ATOM_CAS(node->locked, true, false));
 	return success;
 }
 
 latch_t index_btree::release_latch(bt_node * node) {
-  if (!ENABLE_LATCH) return LATCH_SH;
+  	if (!ENABLE_LATCH) return LATCH_SH;
 	latch_t type = node->latch_type;
-//	if ( g_cc_alg != HSTORE )
-  while (!ATOM_CAS(node->latch, false, true)) {
-  }
-//		pthread_mutex_lock(&node->locked);
-//		while (!ATOM_CAS(node->locked, false, true)) {}
+	//	if ( g_cc_alg != HSTORE )
+	while (!ATOM_CAS(node->latch, false, true)) {
+	}
+	//		pthread_mutex_lock(&node->locked);
+	//		while (!ATOM_CAS(node->locked, false, true)) {}
 	M_ASSERT_V((node->latch_type != LATCH_NONE), "release latch fault");
 	if (node->latch_type == LATCH_EX)
 		node->latch_type = LATCH_NONE;
@@ -456,7 +457,7 @@ RC index_btree::find_leaf(glob_param params, idx_key_t key, idx_acc_t access_typ
 		leaf = c;
 		return RCOK;
 	}
-// #if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == SDOCC || CC_ALG == SDPCC
+// #if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == SDOCC || CC_ALG == SDPCC  || CC_ALG == CARACAL
 // 	if (simulation->is_setup_done() && c->is_leaf) {
 // 		leaf = c;
 // 		RC rc;
@@ -482,7 +483,7 @@ RC index_btree::find_leaf(glob_param params, idx_key_t key, idx_acc_t access_typ
       		if (key < c->keys[i]) break;
 		}
 		child = (bt_node *)c->pointers[i];
-#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC
+#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC || CC_ALG == CARACAL
 		if (simulation->is_setup_done() && child->is_leaf) {
 			leaf = child;
 			RC rc = RCOK;
@@ -533,7 +534,7 @@ RC index_btree::find_leaf(glob_param params, idx_key_t key, idx_acc_t access_typ
 			} else {
 				release_latch(c); // release the LATCH_SH on c
 			}
-#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC
+#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC  || CC_ALG == CARACAL
 		}
 #endif
 		

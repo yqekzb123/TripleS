@@ -376,11 +376,11 @@ RC TPCCTxnManager::acquire_locks() {
 			index = _wl->i_district;
 			item = index_read(index, key, part_id_w);
 			row = (row_t *) item->location;
-			rc2 = get_lock(row, WR);
+			rc2 = get_lock(row, RD);
 			if (rc2 != RCOK) rc = rc2;
 #if TXN_TYPE == TPCC_ALL
 			_wl->i_orderline->leaf_row_access(UINT64_MAX, LF_LAST, wd_to_part(w_id, d_id), this, leaf, row);
-			rc2 = get_lock(row, WR);
+			rc2 = get_lock(row, RD);
 			if (rc2 != RCOK) rc = rc2;
 #endif
 			break;
@@ -633,9 +633,9 @@ RC TPCCTxnManager::run_txn_state() {
 	uint64_t ol_supply_w_id = 0;
 	uint64_t ol_quantity = 0;
 	if(tpcc_query->txn_type == TPCC_NEW_ORDER) {
-			ol_i_id = tpcc_query->items[next_item_id]->ol_i_id;
-			ol_supply_w_id = tpcc_query->items[next_item_id]->ol_supply_w_id;
-			ol_quantity = tpcc_query->items[next_item_id]->ol_quantity;
+		ol_i_id = tpcc_query->items[next_item_id]->ol_i_id;
+		ol_supply_w_id = tpcc_query->items[next_item_id]->ol_supply_w_id;
+		ol_quantity = tpcc_query->items[next_item_id]->ol_quantity;
 	}
 	uint64_t ol_number = next_item_id;
 	uint64_t ol_amount = tpcc_query->ol_amount;
@@ -659,6 +659,8 @@ RC TPCCTxnManager::run_txn_state() {
 			else {
 				#if CC_ALG == SDOCC && RWSET_KNOWN
 				rc = RCOK;
+				#elif CC_ALG == CARACAL
+				rc = RCOK;
 				#else
 				rc = send_remote_request();
 				#endif
@@ -679,6 +681,8 @@ RC TPCCTxnManager::run_txn_state() {
 			else {
 				#if CC_ALG == SDOCC && RWSET_KNOWN
 				rc = RCOK;
+				#elif CC_ALG == CARACAL
+				rc = RCOK;
 				#else
 				rc = send_remote_request();
 				#endif
@@ -692,6 +696,8 @@ RC TPCCTxnManager::run_txn_state() {
 				rc = new_order_0( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
 			else {
 				#if CC_ALG == SDOCC && RWSET_KNOWN
+				rc = RCOK;
+				#elif CC_ALG == CARACAL
 				rc = RCOK;
 				#else
 				rc = send_remote_request();
@@ -733,6 +739,8 @@ RC TPCCTxnManager::run_txn_state() {
 				rc = new_order_8(w_id, d_id, remote, ol_i_id, ol_supply_w_id, ol_quantity, ol_number, o_id, row);
 			} else {
 				#if CC_ALG == SDOCC && RWSET_KNOWN
+				rc = RCOK;
+				#elif CC_ALG == CARACAL
 				rc = RCOK;
 				#else
 				rc = send_remote_request();
@@ -1212,7 +1220,7 @@ inline RC TPCCTxnManager::new_order_5_1(uint64_t w_id, uint64_t d_id, uint64_t c
 	r_order->set_value(O_ALL_LOCAL, all_local);
 	RC rc = RCOK;
 #if TXN_TYPE == TPCC_ALL
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CC_ALG == CALVIN || CC_ALG == SDPCC //|| CC_ALG == CARACAL
 	rc = get_lock(r_order, WR);
 #endif
 	row_t * temp;
@@ -1253,7 +1261,7 @@ inline RC TPCCTxnManager::new_order_5_2(uint64_t w_id, uint64_t d_id, uint64_t c
 	r_no->set_value(NO_W_ID, w_id);
 	RC rc = RCOK;
 #if TXN_TYPE == TPCC_ALL
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CC_ALG == CALVIN || CC_ALG == SDPCC //|| CC_ALG == CARACAL
 	rc = get_lock(r_no, WR);
 #endif
 	row_t * temp;
@@ -1469,7 +1477,7 @@ inline RC TPCCTxnManager::run_order_status_1(uint64_t w_id, uint64_t d_id, uint6
 
 inline RC TPCCTxnManager::run_order_status_2(uint64_t w_id, uint64_t d_id, uint64_t o_id, itemid_t * items, row_t*& l_order_local) {
 	uint64_t starttime = get_sys_clock();
-#if CC_ALG != CALVIN && CC_ALG != SDPCC
+#if CC_ALG != CALVIN && CC_ALG != SDPCC && CC_ALG != CARACAL
 	l_order_local->get_value(O_ID, o_id);
 #endif
 	uint64_t key = orderlineKey(w_id, d_id, o_id);
@@ -1514,7 +1522,7 @@ inline RC TPCCTxnManager::run_delivery_1(uint64_t &no_o_id, row_t *&r_new_order_
 
 inline RC TPCCTxnManager::run_delivery_2(uint64_t &no_o_id, row_t *&r_new_order_local) {
 	uint64_t starttime = get_sys_clock();
-#if CC_ALG != CALVIN && CC_ALG != SDPCC
+#if CC_ALG != CALVIN && CC_ALG != SDPCC && CC_ALG != CARACAL
 	r_new_order_local->get_value(NO_O_ID, no_o_id);
 #endif
 #if TXN_TYPE == TPCC_ALL
@@ -1629,12 +1637,15 @@ inline RC TPCCTxnManager::run_stock_level_3(uint64_t w_id, uint64_t d_id, uint64
 	row_t * row = r_orderline_local;
 	RC rc = get_row(row, RD, r_orderline_local);
 	INC_STATS(get_thd_id(),trans_benchmark_compute_time,get_sys_clock() - starttime);
+	if (rc == RCOK) {
+		order_line_row = r_orderline_local;
+	}
 	return rc;
 }
 
 inline RC TPCCTxnManager::run_stock_level_4(uint64_t w_id, uint64_t &s_i_id, row_t *&r_local) {
 	uint64_t starttime = get_sys_clock();
-	r_local->get_value(OL_I_ID, s_i_id);
+	order_line_row->get_value(OL_I_ID, s_i_id);
 	itemid_t * item = NULL;
 	item = index_read(_wl->i_stock, stockKey(s_i_id, w_id), wh_to_part(w_id));
 	assert(item != NULL);
@@ -2104,7 +2115,7 @@ RC TPCCTxnManager::process_aria_remote(ARIA_PHASE aria_phase) {
 RC TPCCTxnManager::run_tpcc_phase2() {
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
 	RC rc = RCOK;
-	assert(CC_ALG == CALVIN || CC_ALG == SDPCC || CC_ALG == CARACAL);
+	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
 
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;
@@ -2203,7 +2214,7 @@ RC TPCCTxnManager::run_tpcc_phase2() {
 RC TPCCTxnManager::run_tpcc_phase5() {
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
 	RC rc = RCOK;
-	assert(CC_ALG == CALVIN || CC_ALG == SDPCC || CC_ALG == CARACAL);
+	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
 
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;
@@ -2293,7 +2304,7 @@ RC TPCCTxnManager::run_tpcc_phase5() {
 	return rc;
 }
 
-#if TXN_TYPE == TPCC_ALL
+#if TXN_TYPE == TPCC_ALL && CC_ALG != CARACAL
 RC TPCCTxnManager::do_insert() {
 	RC rc = RCOK;
 	for (uint64_t i = 0; i < txn->insert_rows.size(); i++) {
@@ -2505,7 +2516,7 @@ RC TPCCTxnManager::send_remote_subtxn() {
 #endif
 
 
-// Aria函数部分
+// Caracal函数部分
 #if CC_ALG == CARACAL
 RC TPCCTxnManager::caracal_init_phase() {
 	uint64_t starttime = get_sys_clock();
@@ -2593,17 +2604,17 @@ RC TPCCTxnManager::caracal_init_phase() {
 				row = ((row_t *)item->location);
 				rc2 = get_lock(row, WR);
 				if (rc2 != RCOK) rc = rc2;
-#if TXN_TYPE == TPCC_ALL
-			// Order
-				bt_node * leaf;
-				_wl->i_order->leaf_row_access(UINT64_MAX, LF_LAST, wd_to_part(w_id, d_id), this, leaf, row);
-				rc2 = get_lock(row, WR);
-				if (rc2 != RCOK) rc = rc2;
-			// New Order
-				_wl->i_neworder->leaf_row_access(UINT64_MAX, LF_LAST, wd_to_part(w_id, d_id), this, leaf, row);
-				rc2 = get_lock(row, WR);
-				if (rc2 != RCOK) rc = rc2;
-#endif
+// #if TXN_TYPE == TPCC_ALL
+// 			// Order
+// 				bt_node * leaf;
+// 				_wl->i_order->leaf_row_access(UINT64_MAX, LF_LAST, wd_to_part(w_id, d_id), this, leaf, row);
+// 				rc2 = get_lock(row, WR);
+// 				if (rc2 != RCOK) rc = rc2;
+// 			// New Order
+// 				_wl->i_neworder->leaf_row_access(UINT64_MAX, LF_LAST, wd_to_part(w_id, d_id), this, leaf, row);
+// 				rc2 = get_lock(row, WR);
+// 				if (rc2 != RCOK) rc = rc2;
+// #endif
 			}
 			// Items
 			for(uint64_t i = 0; i < tpcc_query->ol_cnt; i++) {
@@ -2619,57 +2630,15 @@ RC TPCCTxnManager::caracal_init_phase() {
 				row = ((row_t *)item->location);
 				rc2 = get_lock(row, WR);
 				if (rc2 != RCOK) rc = rc2;
-#if TXN_TYPE == TPCC_ALL
-				bt_node * leaf __attribute__((unused));
-				_wl->i_orderline->leaf_row_access(UINT64_MAX, LF_LAST, wd_to_part(w_id, d_id), this, leaf, row);
-				rc2 = get_lock(row, WR);
-				if (rc2 != RCOK) rc = rc2;
-#endif
+// #if TXN_TYPE == TPCC_ALL
+// 				bt_node * leaf __attribute__((unused));
+// 				_wl->i_orderline->leaf_row_access(UINT64_MAX, LF_LAST, wd_to_part(w_id, d_id), this, leaf, row);
+// 				rc2 = get_lock(row, WR);
+// 				if (rc2 != RCOK) rc = rc2;
+// #endif
 			}
 			break;
 		case TPCC_ORDER_STATUS:
-			if (tpcc_query->by_last_name) {
-				key = custNPKey(c_last, d_id, w_id);
-				index = _wl->i_customer_last;
-				item = index_read(index, key, part_id_c_w);
-				int cnt = 0;
-				itemid_t * it = item;
-				itemid_t * mid = item;
-				while (it != NULL) {
-					cnt ++;
-					it = it->next;
-					if (cnt % 2 == 0) mid = mid->next;
-				}
-				row = ((row_t *)mid->location);
-				row->get_value(C_ID, c_id);
-			} else {
-				key = custKey(c_id, d_id, w_id);
-				index = _wl->i_customer_id;
-				item = index_read(index, key, part_id_c_w);
-				row = (row_t *) item->location;
-			}
-			rc2  = get_lock(row, RD);
-			if (rc2 != RCOK) rc = rc2;
-
-			key = custKey(c_id, d_id, w_id);
-			index = _wl->i_order_cust;
-			item = index_read(index, key, wh_to_part(w_id));
-			row = (row_t *) item->location;
-
-			uint64_t o_id;
-			row->get_value(O_ID, o_id);
-			tpcc_query->o_id = o_id;
-			rc2 = get_lock(row, RD);
-			if (rc2!= RCOK) rc = rc2;
-
-			key = orderlineKey(w_id, d_id, o_id);
-			_wl->i_orderline->index_read(key, items, wd_to_part(w_id, d_id), get_thd_id(), this);
-			while (items != NULL) {
-				row = (row_t *)items->location;
-				rc2 = get_lock(row, RD);
-				if (rc2!= RCOK) rc = rc2;
-				items = items->next;
-			}
 			break;
 		case TPCC_DELIVERY:
 #if TXN_TYPE == TPCC_ALL
@@ -2677,6 +2646,7 @@ RC TPCCTxnManager::caracal_init_phase() {
 			_wl->i_neworder->leaf_row_access(0, LF_FIRST, wd_to_part(w_id, d_id), this, leaf, row);
 			rc2 = get_lock(row, WR);
 			if (rc2 != RCOK) rc = rc2;
+
 			row = NULL;
 			row_t * temp;
 			while (row == NULL) {
@@ -2692,6 +2662,7 @@ RC TPCCTxnManager::caracal_init_phase() {
 			rc2 = get_lock(row, WR);
 			if (rc2 != RCOK) rc = rc2;
 			row->get_value(NO_O_ID, tpcc_query->o_id);
+
 			key = orderPrimaryKey(w_id, d_id, tpcc_query->o_id);
 			_wl->i_order->index_read(key, item, wd_to_part(w_id, d_id), get_thd_id(), this);
 			row = (row_t *)item->location;
@@ -2707,17 +2678,6 @@ RC TPCCTxnManager::caracal_init_phase() {
 #endif
 			break;
 		case TPCC_STOCK_LEVEL:
-			key = distKey(d_id, w_id);
-			index = _wl->i_district;
-			item = index_read(index, key, part_id_w);
-			row = (row_t *) item->location;
-			rc2 = get_lock(row, WR);
-			if (rc2 != RCOK) rc = rc2;
-#if TXN_TYPE == TPCC_ALL
-			_wl->i_orderline->leaf_row_access(UINT64_MAX, LF_LAST, wd_to_part(w_id, d_id), this, leaf, row);
-			rc2 = get_lock(row, WR);
-			if (rc2 != RCOK) rc = rc2;
-#endif
 			break;
 		default:
 			assert(false);
@@ -2735,11 +2695,11 @@ RC TPCCTxnManager::caracal_exec_phase() {
 	RC rc = RCOK;
 	uint64_t starttime = get_sys_clock();
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
-	DEBUG("(%ld,%ld) Run caracal txn\n",txn->txn_id,txn->batch_id);
+	DEBUG_WRK("(%ld,%ld) Run caracal txn type %d\n",txn->batch_id,txn->txn_id,tpcc_query->txn_type);
 	while(!caracal_exec_phase_done() && rc == RCOK) {
-		DEBUG("(%ld,%ld) phase %d\n",txn->txn_id,txn->batch_id,this->caracal_txn_phase);
+		DEBUG_WRK("(%ld,%ld) phase %d\n",txn->batch_id,txn->txn_id,this->caracal_txn_phase);
 		switch(this->caracal_txn_phase) {
-			case CARACAL_TXN_ANALYSIS:{
+			case CARACAL_TXN_ANALYSIS:{ 
 				// Phase 1: Read/write set analysis
 				uint32_t cnt = tpcc_query->get_participants(_wl);
 				if(query->participant_nodes[g_node_id] == 1) {
@@ -2763,8 +2723,8 @@ RC TPCCTxnManager::caracal_exec_phase() {
 			}
 			case CARACAL_TXN_RD:
 				// Phase 2: Perform local reads
-				DEBUG("(%ld,%ld) local reads\n",txn->txn_id,txn->batch_id);
-				rc = run_tpcc_phase2();
+				DEBUG_WRK("(%ld,%ld) local reads\n",txn->batch_id,txn->txn_id);
+				rc = run_caracal_tpcc_phase2();
 				assert(rc == RCOK || rc == WAIT);
 				if (rc == RCOK) {					
 					this->caracal_txn_phase = CARACAL_TXN_SYNC;
@@ -2775,77 +2735,259 @@ RC TPCCTxnManager::caracal_exec_phase() {
 				// Phase 3: Serve remote reads
 				if(query->participant_nodes[g_node_id] == 1) {
 					rc = send_remote_reads();
+					ATOM_SUB_FETCH(*last_msg->caracal_expected_rsp_ptr, caracal_rsp_cnt);
+					DEBUG_WRK("(%ld,%ld) send remote reads, now expected rsp cnt is %ld\n", txn->batch_id, txn->txn_id, *last_msg->caracal_expected_rsp_ptr);
+					assert(rc == RCOK);
 				}
 				if(query->active_nodes[g_node_id] == 1) {
 					this->caracal_txn_phase = CARACAL_TXN_COLLECT;
-					if(caracal_collect_phase_done()) {
-						rc = RCOK;
-					} else {
-						assert(*last_msg->caracal_expected_rsp_ptr > 0);
-						DEBUG("(%ld,%ld) wait in collect phase; %d / %ld rfwds received\n", txn->txn_id,
-									txn->batch_id, rsp_cnt, *last_msg->caracal_expected_rsp_ptr);
-						rc = WAIT;
-					}
 				} else { // Done
 					rc = RCOK;
-					this->caracal_txn_phase = CARACAL_TXN_DONE;
+					this->caracal_txn_phase = CARACAL_TXN_WR;
 				}
 				break;
 			case CARACAL_TXN_COLLECT:
 				// Phase 4: Collect remote reads
-				this->caracal_txn_phase = CARACAL_TXN_WR;
+				if(caracal_collect_phase_done()) {
+					this->caracal_txn_phase = CARACAL_TXN_WR;
+					rc = RCOK;
+				} else {
+					assert(*last_msg->caracal_expected_rsp_ptr > 0);
+					DEBUG_WRK("(%ld,%ld) wait in collect phase; %d / %ld rfwds received\n", txn->batch_id, txn->txn_id, rsp_cnt, *last_msg->caracal_expected_rsp_ptr);
+					rc = WAIT_REM;
+				}
 				break;
-			case CARACAL_TXN_WR:
+			case CARACAL_TXN_WR:{
 				// Phase 5: Execute transaction / perform local writes
-				DEBUG("(%ld,%ld) execute writes\n",txn->txn_id,txn->batch_id);
-				rc = run_tpcc_phase5();
-				this->caracal_txn_phase = CARACAL_TXN_DONE;
+				DEBUG_WRK("(%ld,%ld) execute writes\n",txn->batch_id,txn->txn_id);
+				rc = run_caracal_tpcc_phase5();
+				this->caracal_txn_phase = CARACAL_TXN_WR_SYNC;
+				uint64_t commit_rsp = ATOM_SUB_FETCH(*last_msg->caracal_commit_rsp_ptr, 1);
+				DEBUG_WRK("[%ld] (%ld,%ld) finish local writes, sub %p, now it is %ld\n", get_thd_id(), txn->batch_id, txn->txn_id, last_msg->caracal_commit_rsp_ptr, commit_rsp);
+				if (commit_rsp == 0) {
+					rc = RCOK;
+					this->caracal_txn_phase = CARACAL_TXN_DONE;
+				} else {
+					rc = WAIT_SUB;
+				}
 				break;
+			}
 			default:
 				assert(false);
 		}
 	}
+	
 	uint64_t curr_time = get_sys_clock();
 	txn_stats.process_time += curr_time - starttime;
 	txn_stats.process_time_short += curr_time - starttime;
 	txn_stats.wait_starttime = get_sys_clock();
 	return rc;
 }
+
 RC TPCCTxnManager::run_caracal_txn() {
-  RC rc = RCOK;
-  uint64_t starttime = get_sys_clock();
-  YCSBQuery* ycsb_query = (YCSBQuery*) query;
-  // DEBUG_WRK("thd [%ld] Run caracal txn[%ld,%ld] phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id, get_aria_phase_str(phase).c_str());
-  switch (simulation->caracal_phase)
-  {
-  case CARACAL_INIT:
-    rc = caracal_init_phase();
-    assert(caracal_phase == CARACAL_INIT);
-    caracal_phase = (CARACAL_PHASE) (caracal_phase + 1);
-    assert(simulation->caracal_phase == CARACAL_INIT);
-    // printf("txn: %ld read phase rc: %d\n", txn->txn_id, rc);
-    this->caracal_txn_phase = CARACAL_TXN_RD;
-    break;
-  case CARACAL_EXECUTION:
-    rc = caracal_exec_phase();
-    
-    // 先检查是不是真跑完了
-    if (caracal_exec_phase_done() && rc == RCOK) {
-      // 真跑完了以后，
-      assert(caracal_phase == CARACAL_EXECUTION);
-      caracal_phase = (CARACAL_PHASE) (caracal_phase + 1);
-      assert(simulation->caracal_phase == CARACAL_EXECUTION);
-    }
-    break;
-  default:
-    assert(false);
-    break;
-  }
-  uint64_t curr_time = get_sys_clock();
-  txn_stats.process_time += curr_time - starttime;
-  txn_stats.process_time_short += curr_time - starttime;
-  txn_stats.wait_starttime = get_sys_clock();
-  INC_STATS(get_thd_id(),worker_activate_txn_time,curr_time - starttime);
-  return rc;
+	RC rc = RCOK;
+	uint64_t starttime = get_sys_clock();
+	TPCCQuery* tpcc_query = (TPCCQuery*) query;
+	DEBUG_WRK("thd [%ld] Run caracal txn[%ld,%ld] txn-type %d phase %d-%d\n",get_thd_id(),txn->batch_id,txn->txn_id, tpcc_query->txn_type, this->caracal_phase, this->caracal_txn_phase);
+	switch (this->caracal_phase)
+	{
+	case CARACAL_INIT:
+		assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
+		DEBUG_WRK("[%ld] (%ld,%ld) init phase: acquire locks\n",get_thd_id(),txn->batch_id,txn->txn_id);
+		rc = caracal_init_phase();
+		caracal_phase = (CARACAL_PHASE) (CARACAL_EXECUTION);
+		assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
+		DEBUG_WRK("[%ld] (%ld,%ld) finish caracal init phase, move to execution phase\n", get_thd_id(), txn->batch_id, txn->txn_id);
+		this->caracal_txn_phase = CARACAL_TXN_ANALYSIS;
+		break;
+	case CARACAL_EXECUTION:
+		assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
+		DEBUG_WRK("[%ld] (%ld,%ld) start caracal execution phase\n", get_thd_id(), txn->batch_id, txn->txn_id);
+		rc = caracal_exec_phase();
+		
+		// 先检查是不是真跑完了
+		if (caracal_exec_phase_done() && rc == RCOK) {
+		// 真跑完了以后，
+			assert(caracal_phase == CARACAL_EXECUTION);
+			assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
+		}
+		break;
+	default:
+		assert(false);
+		break;
+	}
+	uint64_t curr_time = get_sys_clock();
+	txn_stats.process_time += curr_time - starttime;
+	txn_stats.process_time_short += curr_time - starttime;
+	txn_stats.wait_starttime = get_sys_clock();
+	INC_STATS(get_thd_id(),worker_activate_txn_time,curr_time - starttime);
+  	return rc;
 }
+
+RC TPCCTxnManager::run_caracal_tpcc_phase2() {
+	TPCCQuery* tpcc_query = (TPCCQuery*) query;
+	RC rc = RCOK;
+	assert(CC_ALG == CARACAL);
+
+	uint64_t w_id = tpcc_query->w_id;
+	uint64_t d_id = tpcc_query->d_id;
+	uint64_t c_id = tpcc_query->c_id;
+	//uint64_t d_w_id = tpcc_query->d_w_id;
+	//uint64_t c_w_id = tpcc_query->c_w_id;
+	//uint64_t c_d_id = tpcc_query->c_d_id;
+	char * c_last = tpcc_query->c_last;
+	//double h_amount = tpcc_query->h_amount;
+	bool by_last_name = tpcc_query->by_last_name;
+	bool remote = tpcc_query->remote;
+	uint64_t ol_cnt = tpcc_query->ol_cnt;
+	uint64_t o_entry_d = tpcc_query->o_entry_d;
+	//uint64_t o_id = tpcc_query->o_id;
+
+	uint64_t part_id_w = wh_to_part(w_id);
+	//uint64_t part_id_c_w = wh_to_part(c_w_id);
+	bool w_loc = GET_NODE_ID(part_id_w) == g_node_id;
+	//bool c_w_loc = GET_NODE_ID(part_id_c_w) == g_node_id;
+
+	set<uint64_t> s_i_ids;
+	uint32_t leaf_traversal_cnt;
+
+	switch (tpcc_query->txn_type) {
+		case TPCC_PAYMENT :
+			break;
+		case TPCC_NEW_ORDER :
+			// 这里把前半段跑完，后半段放到phase5里跑，因为后半段涉及到的行比较多，可能有些行不在本地
+			if(w_loc && state < TPCC_NEWORDER4) {
+				while(rc == RCOK &&
+					state < TPCC_NEWORDER4) {
+					rc = run_txn_state();
+				}
+				if (rc == RCOK && state == TPCC_NEWORDER4) {
+					tpcc_query->o_id = *(int64_t *) row->get_value(D_NEXT_O_ID);
+					district_row = row;
+					// 跳到后面
+					state = TPCC_NEWORDER9_1;
+				}
+			}
+			if (rc == RCOK && state >= TPCC_NEWORDER9_1) {
+				while (rc == RCOK && !is_done()) {
+					uint64_t ol_i_id = tpcc_query->items[next_item_id]->ol_i_id;
+					uint64_t ol_supply_w_id = tpcc_query->items[next_item_id]->ol_supply_w_id;
+					// uint64_t ol_quantity = tpcc_query->items[next_item_id]->ol_quantity;
+					uint64_t part_id_ol_supply_w = wh_to_part(ol_supply_w_id);
+					bool ol_supply_w_loc = GET_NODE_ID(part_id_ol_supply_w) == g_node_id;
+					if(ol_supply_w_loc) {
+						rc = new_order_6(ol_i_id, row);
+						if (rc == RCOK) {
+							new_order_7(ol_i_id, row);
+						}
+					}
+					next_item_id++;
+				}
+			}
+			if (rc == RCOK && is_done()) {
+				state = TPCC_NEWORDER4;
+			}
+			break;
+		case TPCC_ORDER_STATUS:
+			assert(w_loc);
+			while(rc == RCOK && !is_done()) {
+				rc = run_txn_state();
+			}
+			break;
+		case TPCC_DELIVERY:
+			break;
+		case TPCC_STOCK_LEVEL:
+			while(rc == RCOK && !is_done()) {
+				rc = run_txn_state();
+			}
+			break;
+		default:
+			assert(false);
+	}
+	return rc;
+}
+
+RC TPCCTxnManager::run_caracal_tpcc_phase5() {
+	TPCCQuery* tpcc_query = (TPCCQuery*) query;
+	RC rc = RCOK;
+	assert(CC_ALG == CARACAL);
+
+	uint64_t w_id = tpcc_query->w_id;
+	uint64_t d_id = tpcc_query->d_id;
+	uint64_t c_id = tpcc_query->c_id;
+	uint64_t d_w_id = tpcc_query->d_w_id;
+	uint64_t c_w_id = tpcc_query->c_w_id;
+	uint64_t c_d_id = tpcc_query->c_d_id;
+	char * c_last = tpcc_query->c_last;
+	double h_amount = tpcc_query->h_amount;
+	bool by_last_name = tpcc_query->by_last_name;
+	bool remote = tpcc_query->remote;
+	uint64_t ol_cnt = tpcc_query->ol_cnt;
+	uint64_t o_entry_d = tpcc_query->o_entry_d;
+	uint64_t o_id = tpcc_query->o_id;
+
+	uint64_t part_id_w = wh_to_part(w_id);
+	uint64_t part_id_c_w = wh_to_part(c_w_id);
+	bool w_loc = GET_NODE_ID(part_id_w) == g_node_id;
+	bool c_w_loc = GET_NODE_ID(part_id_c_w) == g_node_id;
+
+	uint64_t sum_amount = 0;
+
+	switch (tpcc_query->txn_type) {
+		case TPCC_PAYMENT :
+			DEBUG_WRK("(%ld,%ld) start payment local execution, now state %d\n",txn->batch_id,txn->txn_id,state);
+			while(rc == RCOK && !is_done()) {
+				rc = run_txn_state();
+			}
+			DEBUG_WRK("(%ld,%ld) finish payment local execution, now state %d\n",txn->batch_id,txn->txn_id,state);
+			break;
+		case TPCC_NEW_ORDER :
+			// if(w_loc && state <= TPCC_NEWORDER9_1) {
+			if(state <= TPCC_NEWORDER9_1) {	
+				next_item_id = 0;
+				row = district_row;
+				DEBUG_WRK("(%ld,%ld) start new order local execution, now state %d\n",txn->batch_id,txn->txn_id,state);
+				while(rc == RCOK && state >= TPCC_NEWORDER4 && state <= TPCC_NEWORDER9_1) {
+					rc = run_txn_state();
+				}
+			}
+			if (rc == RCOK && state > TPCC_NEWORDER9_1) {
+				while (rc == RCOK && !is_done()) {
+					DEBUG_WRK("(%ld,%ld) start new order local execution for items, now state %d, next_item_id %ld\n",txn->batch_id,txn->txn_id,state,next_item_id);
+					uint64_t ol_number = next_item_id;
+					uint64_t ol_i_id = tpcc_query->items[next_item_id]->ol_i_id;
+					uint64_t ol_supply_w_id = tpcc_query->items[next_item_id]->ol_supply_w_id;
+					uint64_t ol_quantity = tpcc_query->items[next_item_id]->ol_quantity;
+					uint64_t ol_amount = tpcc_query->ol_amount;
+					uint64_t part_id_ol_supply_w = wh_to_part(ol_supply_w_id);
+					bool ol_supply_w_loc = GET_NODE_ID(part_id_ol_supply_w) == g_node_id;
+					if(ol_supply_w_loc) {
+						rc = new_order_8(w_id, d_id, remote, ol_i_id, ol_supply_w_id, ol_quantity, ol_number, o_id, row);
+						if (rc == RCOK) {
+							rc = new_order_9(w_id, d_id, remote, ol_i_id, ol_supply_w_id, ol_quantity, ol_number, ol_amount, o_id, row);
+						}
+					}
+					next_item_id++;
+				}
+			}
+			do_insert();
+			break;
+		case TPCC_ORDER_STATUS:
+			break;
+		case TPCC_DELIVERY:
+			while(rc == RCOK && !is_done()) {
+				rc = run_txn_state();
+			}
+			if (rc == RCOK && is_done()) {
+				release_locks(RCOK);
+			}
+			break;
+		case TPCC_STOCK_LEVEL:
+			break;
+		default:
+			assert(false);
+	}
+	return rc;
+}
+
 #endif

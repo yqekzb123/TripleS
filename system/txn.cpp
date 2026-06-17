@@ -391,6 +391,7 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	caracal_phase = CARACAL_INIT;
 	caracal_txn_phase = CARACAL_TXN_ANALYSIS;
 	caracal_append_rows.init(MAX_ROW_PER_TXN + 10);
+	caracal_rsp_cnt = 0;
 	// caracal_expected_rsp_cnt.store(0, std::memory_order_relaxed);
 #endif
 	registed_ = false;
@@ -443,6 +444,7 @@ void TxnManager::reset() {
 	caracal_phase = CARACAL_INIT;
 	caracal_txn_phase = CARACAL_TXN_ANALYSIS;
 	caracal_append_rows.clear();
+	caracal_rsp_cnt = 0;
 	// caracal_expected_rsp_cnt.store(0, std::memory_order_relaxed);
 #endif
 #if CC_ALG == SDOCC
@@ -956,7 +958,7 @@ void TxnManager::cleanup(RC rc) {
 	// cleanup appended rows
 	for (uint64_t i = 0; i < caracal_append_rows.size(); i++) {
 		row_t * row = caracal_append_rows[i];
-		row->return_row(rc,RD,this,row);
+		row->return_row(rc,WR,this,row);
 	}
 #endif
 	if (rc == Abort) {
@@ -981,6 +983,9 @@ RC TxnManager::get_lock(row_t * row, access_t type) {
 	}
 	return rc;
 #elif CC_ALG == CARACAL
+	if (type != WR) {
+		return RCOK;
+	}
 	if (caracal_append_rows.contains(row)) {
 		return RCOK;
 	}
@@ -1144,6 +1149,7 @@ RC TxnManager::insert_item(itemid_t * item, INDEX * index) {
 
 #if TXN_TYPE == TPCC_ALL
 RC TxnManager::insert_row(row_t * row, index_btree * index) {
+	if (CC_ALG == CARACAL) return RCOK;
 	RC rc = RCOK;
 // #if CC_ALG == CALVIN
 // 	itemid_t *m_item = (itemid_t *)mem_allocator.alloc(sizeof(itemid_t));
@@ -1249,7 +1255,7 @@ RC TxnManager::send_remote_reads() {
 	for(uint64_t i = 0; i < query->active_nodes.size(); i++) {
 		if (i == g_node_id) continue;
 		if(query->active_nodes[i] == 1) {
-			DEBUG("(%ld,%ld) send_remote_read to %ld\n",get_batch_id(),get_txn_id(),i);
+			DEBUG_WRK("(%ld,%ld) send_remote_read to %ld\n",get_batch_id(),get_txn_id(),i);
 			msg_queue.enqueue(get_thd_id(),Message::create_message(this,RFWD),i);
 		}
 	}
@@ -1304,7 +1310,7 @@ bool TxnManager::caracal_sub_collect_phase_done() {
 bool TxnManager::caracal_exec_phase_done() {
 	bool ready =  (caracal_txn_phase == CARACAL_TXN_DONE) && (get_rc() != WAIT);
 	if(ready) {
-	DEBUG("(%ld,%ld) caracal exec phase done!\n",txn->batch_id,txn->txn_id);
+		DEBUG("(%ld,%ld) caracal exec phase done!\n",txn->batch_id,txn->txn_id);
 	}
 	return ready;
 }

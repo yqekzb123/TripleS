@@ -35,6 +35,7 @@ BaseQuery * TPCCQueryGenerator::create_query(Workload * h_wl,uint64_t home_parti
 #else
 BaseQuery * TPCCQueryGenerator::create_query(Workload * h_wl,uint64_t home_partition_id) {
   double x = (double)(rand() % 100) / 100.0;
+  // return gen_delivery(home_partition_id);
   if (x <= 0.43) {
     return gen_payment(home_partition_id);
   } else if (x <= 0.47) {

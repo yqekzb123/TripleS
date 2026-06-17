@@ -170,6 +170,8 @@ public:
   RC caracal_exec_phase();
   RC run_caracal_txn();
   RC run_sub_caracal_txn() {return RCOK;}
+  RC run_caracal_tpcc_phase2();
+  RC run_caracal_tpcc_phase5();
 #endif
   RC run_tpcc_phase2();
   RC run_tpcc_phase5();
@@ -179,6 +181,7 @@ private:
 	TPCCWorkload * _wl;
 	volatile RC _rc;
   row_t * row;
+  
   itemid_t * items;
   bt_node * leaf;
   uint64_t sum_amount;
@@ -189,6 +192,9 @@ private:
   uint64_t next_item_id;
 
   row_t * district_row;
+
+  // for stock level 4 
+  row_t * order_line_row;
 
 void next_tpcc_state();
 RC run_txn_state();

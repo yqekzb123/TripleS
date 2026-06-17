@@ -58,10 +58,10 @@ public:
     void init(row_t * row);
 
     RC access(TxnManager * txn, access_t type, row_t * local_row, uint64_t thd_id);
-    RC clean(uint64_t thd_id);
+    RC clean(TxnManager* txn, access_t type) ;
 
     // init阶段
-    RC add_reservation( uint64_t batch_id,uint64_t return_id,uint64_t txn_id, uint64_t thd_id);
+    RC add_reservation( uint64_t batch_id,uint64_t return_id,uint64_t txn_id, uint64_t thd_id, bool force = false);
     RC add_reservation_to_waitlist(uint64_t batch_id,uint64_t return_id,uint64_t txn_id, uint64_t thd_id);
     RC batch_append(uint64_t thd_id);
 

@@ -252,6 +252,8 @@ public:
 	CARACAL_TXN_PHASE caracal_txn_phase; // 事务内部的小阶段
 	// std::atomic<uint32_t> caracal_expected_rsp_cnt;
 
+	volatile uint64_t caracal_rsp_cnt; // 已经收到的响应数量
+
 	bool caracal_exec_phase_done();
 	bool caracal_collect_phase_done();
 	bool caracal_sub_collect_phase_done();

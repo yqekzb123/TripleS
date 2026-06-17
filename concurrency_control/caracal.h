@@ -161,6 +161,7 @@ public:
 	}
 	void insert_temp_row(uint64_t thd_id, row_t* row) {
 		caracal_thread_list[thd_id % thread_cnt].tmp_row_list.insert(row);
+        DEBUG_WRK("Thread %ld insert temp row %s-%ld into tmp_row_list\n", thd_id, row->get_table_name(), row->get_primary_key());
 	}
     void insert_access_row(uint64_t thd_id, row_t* row) {
         caracal_thread_list[thd_id % thread_cnt].access_row_list.insert(row);
