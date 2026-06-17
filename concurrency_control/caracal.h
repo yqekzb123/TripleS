@@ -38,8 +38,8 @@ struct RowPtrHash {
     std::size_t operator()(row_t* row) const noexcept {
         if (row == nullptr) return 0;
         // hash函数改一下，要把table也考虑进来
-        return std::hash<uint64_t>{}(row->get_primary_key()) ^ std::hash<void*>{}(row->get_table());
-        // return std::hash<uint64_t>{}(row->get_primary_key());
+        // return std::hash<uint64_t>{}(row->get_primary_key()) ^ std::hash<void*>{}(row->get_table());
+        return std::hash<uint64_t>{}(row->get_primary_key());
     }
 };
 
@@ -48,7 +48,7 @@ struct RowPtrEqual {
         if (lhs == rhs) return true;
         if (lhs == nullptr || rhs == nullptr) return false;
         return lhs->get_primary_key() == rhs->get_primary_key() && 
-                lhs->get_table() == rhs->get_table();
+                lhs->get_table_name() == rhs->get_table_name();
     }
 };
 typedef std::unordered_set<row_t*,RowPtrHash,RowPtrEqual> RowSet;
@@ -161,7 +161,7 @@ public:
 	}
 	void insert_temp_row(uint64_t thd_id, row_t* row) {
 		caracal_thread_list[thd_id % thread_cnt].tmp_row_list.insert(row);
-        DEBUG_WRK("Thread %ld insert temp row %s-%ld into tmp_row_list\n", thd_id, row->get_table_name(), row->get_primary_key());
+        // printf("Thread %ld insert temp row %s-%ld into tmp_row_list\n", thd_id, row->get_table_name(), row->get_primary_key());
 	}
     void insert_access_row(uint64_t thd_id, row_t* row) {
         caracal_thread_list[thd_id % thread_cnt].access_row_list.insert(row);

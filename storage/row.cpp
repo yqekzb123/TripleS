@@ -197,16 +197,19 @@ RC row_t::get_lock(access_t type, TxnManager * txn) {
 	if (rc != RCOK) {
 		this->manager->add_reservation_to_waitlist(txn->get_batch_id(),txn->return_id,txn->get_txn_id(),txn->get_thd_id());
 	}
+	assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
 #endif
 	return rc;
 }
 
 #if CC_ALG == CARACAL
 RC row_t::batch_append(uint64_t thd_id) {
+	assert(simulation->caracal_phase == CARACAL_APPEND);
 	return this->manager->batch_append(thd_id);
 }
-RC row_t::clean_reservation(uint64_t thd_id) {
-	return RCOK;
+RC row_t::clean_reservation(TxnManager* txn, access_t type) {
+	// return RCOK;
+	return this->manager->clean(txn, type);
 	// return this->manager->clean(thd_id);
 }
 uint64_t row_t::get_version_cnt() {
@@ -422,7 +425,9 @@ uint64_t row_t::return_row(RC rc, access_t type, TxnManager *txn, row_t *row) {
 	mem_allocator.free(row, sizeof(row_t));
 	return 0;
 #elif CC_ALG == CARACAL
+	#if WORKLOAD == TPCC
 	manager->clean(txn, WR);
+	#endif
 	return 0;
 #else
 	assert(false);

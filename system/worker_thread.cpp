@@ -489,6 +489,7 @@ RC WorkerThread::batch_append_and_split_on_demand() {
     row->batch_append(get_thd_id());
     DEBUG_WRK("Worker %ld batch append reservation for row %ld\n", get_thd_id(), row->get_primary_key());
   }
+  caracal_man.get_thread_content(get_thd_id())->tmp_row_list.clear();
   // !2. split_on_demand部分
   if (OPEN_SPLIT_ON_DEMAND && 
       WORKLOAD == YCSB) {
@@ -527,9 +528,7 @@ RC WorkerThread::run() {
       caracal_man.set_phase_done(get_thd_id());
       batch_append_and_split_on_demand();
       
-      caracal_man.get_thread_content(get_thd_id())->tmp_row_list.clear();
       simulation->finish_append_cnt.fetch_add(1);
-      // ATOM_ADD_FETCH(simulation->finish_append_cnt, 1);
     }
 
     if (simulation->caracal_phase == CARACAL_EXECUTION ||

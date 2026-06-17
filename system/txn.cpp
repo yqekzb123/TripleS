@@ -889,7 +889,7 @@ void TxnManager::cleanup_row(RC rc, uint64_t rid) {
 	uint64_t version = 0;
 	// Handle calvin elsewhere
 
-#if CC_ALG != CALVIN && CC_ALG != SDPCC
+#if CC_ALG != CALVIN && CC_ALG != SDPCC && CC_ALG != CARACAL
 #if ISOLATION_LEVEL != READ_UNCOMMITTED
 	row_t * orig_r = txn->accesses[rid]->orig_row;
 	if (ROLL_BACK && type == XP &&
@@ -995,6 +995,7 @@ RC TxnManager::get_lock(row_t * row, access_t type) {
 	if (rc != RCOK) {
 		caracal_man.insert_temp_row(get_thd_id(),row);
 	}
+	assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
 	return rc;
 #endif
 	return RCOK;

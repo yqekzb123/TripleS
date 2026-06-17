@@ -2980,6 +2980,10 @@ RC TPCCTxnManager::run_caracal_tpcc_phase5() {
 			}
 			if (rc == RCOK && is_done()) {
 				release_locks(RCOK);
+				// for (uint64_t i = 0; i < caracal_append_rows.size(); i++) {
+				// 	row_t * row = caracal_append_rows[i];
+				// 	row->clean_reservation(this,WR);
+				// }
 			}
 			break;
 		case TPCC_STOCK_LEVEL:

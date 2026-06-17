@@ -107,7 +107,7 @@ public:
 
 	#if CC_ALG == CARACAL
 	RC batch_append(uint64_t thd_id);
-	RC clean_reservation(uint64_t thd_id);
+	RC clean_reservation(TxnManager* txn, access_t type);
 	uint64_t get_version_cnt();
 	#endif
 
