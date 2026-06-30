@@ -49,6 +49,10 @@ RC TxnManager::check() {
 
 void update_local_watermark(uint64_t thd_id, TxnManager * txn_manager) {
     // return;
+    if (!IS_LOCAL(txn_manager->get_txn_id())) {
+        // 说明不是本地事务，不需要更新水印
+        return;
+    }
     uint64_t bid = txn_manager->get_batch_id();
     uint64_t return_id = txn_manager->return_id;
     uint64_t txn_id = txn_manager->get_txn_id();

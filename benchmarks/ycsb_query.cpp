@@ -360,7 +360,9 @@ BaseQuery * YCSBQueryGenerator::gen_requests_zipf(uint64_t home_partition_id, Wo
 #endif
 
 	double rw = (double)(mrand->next() % 10000) / 10000;
+	double r_mpt = (double)(mrand->next() % 10000) / 10000;
 	query->rwset_known = rw < g_rwset_known_ratio;
+	query->rwset_variable = r_mpt < RWSET_VARIABLE_RATIO;
 
 	int rid = 0;
 	for (UInt32 i = 0; i < req_size; i ++) {

@@ -46,6 +46,7 @@ public:
     bool isDeterministicAbort;
     // for SDOCC
     bool rwset_known;
+    bool rwset_variable;
 };
 
 class QueryGenerator {

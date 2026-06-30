@@ -78,6 +78,8 @@ uint64_t merge_idx_key(uint64_t key1, uint64_t key2, uint64_t key3) {
 uint64_t get_batch_key(uint64_t batch_id, uint64_t return_id, uint64_t txn_id) {
   #if 0 && CC_ALG == SDPCC
   return txn_id + 1;
+  #elif CC_ALG == SDOCC
+  return txn_id + 1;
   #else
 	uint64_t key = (batch_id << 32) + (return_id << 24) + txn_id + 1;
 	return key;
@@ -86,6 +88,12 @@ uint64_t get_batch_key(uint64_t batch_id, uint64_t return_id, uint64_t txn_id) {
 
 std::vector<uint64_t> split_batch_key(uint64_t key) {
   #if 0 && CC_ALG == SDPCC
+  std::vector<uint64_t> parts(3);
+  parts[0] = 0;
+  parts[1] = 0;
+  parts[2] = key - 1;
+  return parts;
+  #elif CC_ALG == SDOCC
   std::vector<uint64_t> parts(3);
   parts[0] = 0;
   parts[1] = 0;

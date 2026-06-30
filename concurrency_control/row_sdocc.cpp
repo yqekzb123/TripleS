@@ -95,15 +95,17 @@ RC Row_sdocc::check(TxnManager * txn, access_t type, row_t * local_row, Access *
     uint64_t key = get_batch_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
     RC rc = RCOK;
     // 这里要干的事情是，先把自己的key作为reservation放到reservations里;
-    if (type == RD || type == SCAN) {
-        // 读操作，检查写操作，即处理读写冲突
-        add_reservation(read_reservations, read_latch, txn->get_batch_id(), txn->return_id, txn->get_txn_id());
-    } else if (type == WR) {
-        // 写操作，检查读操作和写操作，即处理写写冲突和写读冲突
-        add_reservation(write_reservations, write_latch, txn->get_batch_id(), txn->return_id, txn->get_txn_id());
-    } else {
-        // 其他操作
-        assert(false);
+    if (txn->list_node_pointer == nullptr) {
+        if (type == RD || type == SCAN) {
+            // 读操作，检查写操作，即处理读写冲突
+            add_reservation(read_reservations, read_latch, txn->get_batch_id(), txn->return_id, txn->get_txn_id());
+        } else if (type == WR) {
+            // 写操作，检查读操作和写操作，即处理写写冲突和写读冲突
+            add_reservation(write_reservations, write_latch, txn->get_batch_id(), txn->return_id, txn->get_txn_id());
+        } else {
+            // 其他操作
+            assert(false);
+        }
     }
     // 然后检查上次读取到的reservation和上次写入到reservation里reservation的值，是否与上次相同？如果是就检验成功，如果不是就说明在这期间有其他事务提交了，检验失败，返回WAIT。
 

@@ -316,7 +316,8 @@ RC WorkerThread::run() {
 
   uint64_t ready_starttime;
   uint64_t idle_starttime = 0;
-  
+  uint64_t last_batch_id = 0;
+
 	while(!simulation->is_done()) {
     txn_man = NULL;
     heartbeat();
@@ -364,7 +365,20 @@ RC WorkerThread::run() {
       continue;
     }
     txn_man->register_thread(this);
-
+    #if OPEN_RANDOM_WAIT
+    // if (msg->rtype == CL_QRY) {
+    //   if (msg->txn_id % ARIA_BATCH_SIZE == 0) {
+    //     uint64_t wait_time = RANDOM_WAIT_TIME; // 单位为微秒
+    //     usleep(wait_time);
+    //   }
+    // }
+    if (get_thd_id() % g_thread_cnt == 0 && msg->batch_id != last_batch_id) {
+      last_batch_id = msg->batch_id;
+      uint64_t wait_time = RANDOM_WAIT_TIME; // 单位为微秒
+      DEBUG_WRK("Thd %ld batch %ld wait for %ld us\n", get_thd_id(), msg->batch_id, wait_time);
+      usleep(wait_time);
+    }
+    #endif
     process(msg);
 
     ready_starttime = get_sys_clock();
@@ -385,6 +399,7 @@ RC WorkerThread::run() {
 
   uint64_t ready_starttime;
   uint64_t idle_starttime = 0;
+  uint64_t last_batch_id = 0;
 
   #if CC_ALG == SDOCC
   // uint64_t current_minSid = 0;
@@ -524,6 +539,22 @@ RC WorkerThread::run() {
       txn_man->register_thread(this);
     }
 #endif
+
+    #if OPEN_RANDOM_WAIT
+    // if (msg->rtype == CL_QRY) {
+    //   if (msg->txn_id % ARIA_BATCH_SIZE == 0) {
+    //     uint64_t wait_time = RANDOM_WAIT_TIME; // 单位为微秒
+    //     usleep(wait_time);
+    //   }
+    // }
+    if (get_thd_id() % g_thread_cnt == 0 && msg->batch_id != last_batch_id) {
+      last_batch_id = msg->batch_id;
+      uint64_t wait_time = RANDOM_WAIT_TIME; // 单位为微秒
+      DEBUG_WRK("Thd %ld batch %ld wait for %ld us\n", get_thd_id(), msg->batch_id, wait_time);
+      usleep(wait_time);
+    }
+    #endif
+
     RC rc = process(msg);
 
 #if CC_ALG == ARIA  
@@ -680,15 +711,16 @@ RC WorkerThread::process_rack_prep(Message * msg) {
   #endif
 
   #if CC_ALG == SDOCC
-  bool watermark_passed = false;
-  uint64_t key = 0;
-  if(rc == RCOK) {
-    // ! 检查水印
-    key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
-    watermark_passed = key <= check_water_mark->get_global_watermark();
-    // watermark_passed 
-  }
-  if(!watermark_passed || rc == RETRY || txn_man->get_rc() == RETRY) {
+  // bool watermark_passed = false;
+  // uint64_t key = 0;
+  // if(rc == RCOK) {
+  //   // ! 检查水印
+  //   key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+  //   watermark_passed = key <= check_water_mark->get_global_watermark();
+  //   // watermark_passed 
+  // }
+  // if(!watermark_passed || rc == RETRY || txn_man->get_rc() == RETRY) {
+  if(rc == RETRY || txn_man->get_rc() == RETRY) {
     // !事务重新入队
     // assert(false);
     rc = RETRY;
