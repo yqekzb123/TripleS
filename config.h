@@ -13,7 +13,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 2
+#define NODE_CNT 4
 #define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -106,7 +106,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG SDPCC
+#define CC_ALG SDOCC
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -167,7 +167,7 @@
 #define RWSET_KNOWN false
 #define RWSET_KNOWN_RATIO 1.0
 
-#define RWSET_VARIABLE_RATIO 1.0
+#define RWSET_VARIABLE_RATIO 0.0
 /***********************************************/
 // Dynamic write perc and skew
 /***********************************************/
@@ -212,7 +212,7 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 16777216
+#define SYNTH_TABLE_SIZE 33554432
 #define ZIPF_THETA 0.7
 #define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2

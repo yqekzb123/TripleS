@@ -81,7 +81,7 @@ private:
     struct CompareTxnWater {
         bool operator() (TxnManager* a, uint64_t watermark) const {
             uint64_t key_a = get_batch_key(a->get_batch_id(), a->return_id, a->get_txn_id());
-            return key_a < watermark;
+            return key_a <= watermark;
         }
     };
     // 用来放还不能重试的事务

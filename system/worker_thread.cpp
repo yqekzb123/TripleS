@@ -142,11 +142,6 @@ void WorkerThread::check_if_done(RC rc) {
     txn_man->txn_stats.finish_start_time = get_sys_clock();
     abort();
   }
-  // #if CC_ALG == SDOCC
-  // if (rc == RETRY) {
-  //   rc = WAIT;
-  // }
-  // #endif
 }
 
 void WorkerThread::release_txn_man() {
@@ -221,6 +216,24 @@ void WorkerThread::commit() {
     INC_STATS(get_thd_id(), sdocc_retry_cnt[retry_cnt], 1);
   } else if (retry_cnt >= 99) {
     INC_STATS(get_thd_id(), sdocc_retry_cnt[99], 1);
+  } else {
+    assert(false);
+  }
+  uint64_t retry_watermark = ((ClientQueryMessage*)txn_man->last_msg)->retry_for_watermark;
+  INC_STATS(get_thd_id(), sdocc_total_retry_for_watermark, retry_watermark);
+  if (retry_watermark >= 0 && retry_watermark < 99) {
+    INC_STATS(get_thd_id(), sdocc_retry_for_watermark[retry_watermark], 1);
+  } else if (retry_watermark >= 99) {
+    INC_STATS(get_thd_id(), sdocc_retry_for_watermark[99], 1);
+  } else {
+    assert(false);
+  }
+  uint64_t retry_conflict = ((ClientQueryMessage*)txn_man->last_msg)->retry_for_conflict;
+  INC_STATS(get_thd_id(), sdocc_total_retry_for_conflict, retry_conflict);
+  if (retry_conflict >= 0 && retry_conflict < 99) {
+    INC_STATS(get_thd_id(), sdocc_retry_for_conflict[retry_conflict], 1);
+  } else if (retry_conflict >= 99) {
+    INC_STATS(get_thd_id(), sdocc_retry_for_conflict[99], 1);
   } else {
     assert(false);
   }
@@ -613,13 +626,24 @@ RC WorkerThread::run() {
       bool expected_value = false; 
       assert(txn_man->last_msg);
       if (((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued.compare_exchange_strong(expected_value, 1)) {
-        DEBUG_SCH("Thd %ld txn %ld,%ld needs retry, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
+        // DEBUG_SCH("Thd %ld txn %ld,%ld needs retry, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
         ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt++;
         txn_man->retry_cnt = ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt;
         txn_man->enter_tmp_queue_time = get_server_clock();
-        tmp_txn_list.insert(txn_man);
-        tmp_txn_list_size++;
-        // tmp_txn_list.push_back(txn_man);
+        uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+        bool watermark_passed = key <= (check_water_mark->get_global_watermark() + 1);
+        if (watermark_passed) {
+          DEBUG_SCH("Thd %ld txn %ld,%ld needs retry because conflict, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
+          ((ClientQueryMessage*)txn_man->last_msg)->retry_for_conflict++;
+          txn_man->retry_for_conflict = ((ClientQueryMessage*)txn_man->last_msg)->retry_for_conflict;
+          work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
+        } else {
+          DEBUG_SCH("Thd %ld txn %ld,%ld needs retry because watermark, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
+          ((ClientQueryMessage*)txn_man->last_msg)->retry_for_watermark++;
+          txn_man->retry_for_watermark = ((ClientQueryMessage*)txn_man->last_msg)->retry_for_watermark;
+          tmp_txn_list.insert(txn_man);
+          tmp_txn_list_size++;
+        }
       }
     }
     #endif
@@ -720,11 +744,12 @@ RC WorkerThread::process_rack_prep(Message * msg) {
   //   // watermark_passed 
   // }
   // if(!watermark_passed || rc == RETRY || txn_man->get_rc() == RETRY) {
-  if(rc == RETRY || txn_man->get_rc() == RETRY) {
+  if(txn_man->get_rc() == RETRY) {
     // !事务重新入队
     // assert(false);
     rc = RETRY;
-  } else {
+  } 
+  if (rc == RCOK && txn_man->get_rc() == RCOK) {
     assert(rc == RCOK);
     // 可以提交了
     txn_man->start_sdocc_commit();
@@ -1309,7 +1334,7 @@ ts_t WorkerThread::get_next_ts() {
 void WorkerThread::handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid) {
   double start_time = get_sys_clock();
   int out_cnt = 0;
-  std::vector<TxnManager*> to_reenqueue = tmp_txn_list.pop_less_than(current_minSid);
+  std::vector<TxnManager*> to_reenqueue = tmp_txn_list.pop_less_than(current_minSid + 1);
   for (auto txn_man:to_reenqueue){
   // TxnManager* txn_man = nullptr;
   // for (;tmp_txn_list.get_next(current_minSid,txn_man);){

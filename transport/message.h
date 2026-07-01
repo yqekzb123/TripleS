@@ -296,6 +296,8 @@ public:
 
   std::atomic<bool> has_re_enqueued{0};
   uint64_t retry_cnt = 0;
+  uint64_t retry_for_watermark = 0;
+  uint64_t retry_for_conflict = 0;
   #endif
 };
 

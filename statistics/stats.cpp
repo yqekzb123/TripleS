@@ -61,7 +61,11 @@ void Stats_thd::init(uint64_t thd_id) {
 
   #if CC_ALG == SDOCC
   sdocc_retry_cnt = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * 100);
+  sdocc_retry_for_watermark = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * 100);
+  sdocc_retry_for_conflict = (uint64_t *) mem_allocator.align_alloc(sizeof(uint64_t) * 100);
   sdocc_total_retry_cnt = 0;
+  sdocc_total_retry_for_watermark = 0;
+  sdocc_total_retry_for_conflict = 0;
   #endif
   sdocc_total_txn_cnt = 0;
   rwset_known_cnt = 0;
@@ -270,6 +274,12 @@ void Stats_thd::clear() {
 #if CC_ALG == SDOCC
   for (uint64_t i = 0; i < 100; i++) {
     sdocc_retry_cnt[i] = 0;
+  }
+  for (uint64_t i = 0; i < 100; i++) {
+    sdocc_retry_for_watermark[i] = 0;
+  }
+  for (uint64_t i = 0; i < 100; i++) {
+    sdocc_retry_for_conflict[i] = 0;
   }
 #endif
   // Concurrency control, general
@@ -1303,6 +1313,22 @@ void Stats_thd::print(FILE * outf, bool prog) {
   double sdocc_avg_retry_time = (double)sdocc_total_retry_cnt/(double)sdocc_total_txn_cnt;
   fprintf(outf,"\nsdocc_avg_retry_time=%lf,",sdocc_avg_retry_time);
   #endif
+  #if CC_ALG == SDOCC
+  fprintf(outf,"\nsdocc_retry_for_watermark\n");
+  for(uint64_t i = 0; i < 100; i ++) {
+    fprintf(outf,",rcnt%lu=%lu",i,sdocc_retry_for_watermark[i]);
+  }
+  sdocc_avg_retry_time = (double)sdocc_total_retry_for_watermark/(double)sdocc_total_txn_cnt;
+  fprintf(outf,"\nsdocc_avg_retry_time=%lf,",sdocc_avg_retry_time);
+  #endif
+  #if CC_ALG == SDOCC
+  fprintf(outf,"\nsdocc_retry_for_conflict\n");
+  for(uint64_t i = 0; i < 100; i ++) {
+    fprintf(outf,",rcnt%lu=%lu",i,sdocc_retry_for_conflict[i]);
+  }
+  sdocc_avg_retry_time = (double)sdocc_total_retry_for_conflict/(double)sdocc_total_txn_cnt;
+  fprintf(outf,"\nsdocc_avg_retry_time=%lf,",sdocc_avg_retry_time);
+  #endif
   double sdocc_avg_round_time = (double)remote_round_cnt/(double)sdocc_total_txn_cnt;
   fprintf(outf,"avg_round_time=%lf,",sdocc_avg_round_time);
   double sdocc_avg_exe_round_time = (double)remote_execution_cnt/(double)sdocc_total_txn_cnt;
@@ -1506,6 +1532,14 @@ void Stats_thd::combine(Stats_thd * stats) {
     sdocc_retry_cnt[i] += stats->sdocc_retry_cnt[i];
   }
   sdocc_total_retry_cnt+=stats->sdocc_total_retry_cnt;
+  for (uint64_t i = 0; i < 100; i ++) {
+    sdocc_retry_for_watermark[i] += stats->sdocc_retry_for_watermark[i];
+  }
+  sdocc_total_retry_for_watermark+=stats->sdocc_total_retry_for_watermark;
+  for (uint64_t i = 0; i < 100; i ++) {
+    sdocc_retry_for_conflict[i] += stats->sdocc_retry_for_conflict[i];
+  }
+  sdocc_total_retry_for_conflict+=stats->sdocc_total_retry_for_conflict;
   #endif
   sdocc_total_txn_cnt +=stats->sdocc_total_txn_cnt;
   remote_round_cnt+=stats->remote_round_cnt;
