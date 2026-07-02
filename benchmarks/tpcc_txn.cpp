@@ -2644,7 +2644,7 @@ RC TPCCTxnManager::caracal_init_phase() {
 #if TXN_TYPE == TPCC_ALL
 			bt_node * leaf;
 			_wl->i_neworder->leaf_row_access(0, LF_FIRST, wd_to_part(w_id, d_id), this, leaf, row);
-			rc2 = get_lock(row, WR);
+			rc2 = get_lock(row, RD);
 			if (rc2 != RCOK) rc = rc2;
 
 			row = NULL;
@@ -2792,16 +2792,16 @@ RC TPCCTxnManager::run_caracal_txn() {
 	switch (this->caracal_phase)
 	{
 	case CARACAL_INIT:
-		assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
+		assert(simulation->caracal_phase.load() <= CARACAL_INIT_SYNC);
 		DEBUG_WRK("[%ld] (%ld,%ld) init phase: acquire locks\n",get_thd_id(),txn->batch_id,txn->txn_id);
 		rc = caracal_init_phase();
 		caracal_phase = (CARACAL_PHASE) (CARACAL_EXECUTION);
-		assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
+		assert(simulation->caracal_phase.load() <= CARACAL_INIT_SYNC);
 		DEBUG_WRK("[%ld] (%ld,%ld) finish caracal init phase, move to execution phase\n", get_thd_id(), txn->batch_id, txn->txn_id);
 		this->caracal_txn_phase = CARACAL_TXN_ANALYSIS;
 		break;
 	case CARACAL_EXECUTION:
-		assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
+		assert(simulation->caracal_phase.load() <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase.load() >= CARACAL_EXECUTION);
 		DEBUG_WRK("[%ld] (%ld,%ld) start caracal execution phase\n", get_thd_id(), txn->batch_id, txn->txn_id);
 		rc = caracal_exec_phase();
 		
@@ -2809,7 +2809,7 @@ RC TPCCTxnManager::run_caracal_txn() {
 		if (caracal_exec_phase_done() && rc == RCOK) {
 		// 真跑完了以后，
 			assert(caracal_phase == CARACAL_EXECUTION);
-			assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
+			assert(simulation->caracal_phase.load() <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase.load() >= CARACAL_EXECUTION);
 		}
 		break;
 	default:

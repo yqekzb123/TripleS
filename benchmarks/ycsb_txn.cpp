@@ -738,9 +738,9 @@ RC YCSBTxnManager::run_sub_caracal_txn(){
 RC rc = RCOK;
   uint64_t starttime = get_sys_clock();
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
-  DEBUG_WRK("thd [%ld] Run caracal txn[%ld,%ld] phase %d-%d\n",get_thd_id(),txn->batch_id,txn->txn_id, simulation->caracal_phase, this->caracal_txn_phase);
+  DEBUG_WRK("thd [%ld] Run caracal txn[%ld,%ld] phase %d-%d\n",get_thd_id(),txn->batch_id,txn->txn_id, simulation->caracal_phase.load(), this->caracal_txn_phase);
   assert(caracal_phase == CARACAL_EXECUTION);
-  assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
+  assert(simulation->caracal_phase.load() <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase.load() >= CARACAL_EXECUTION);
     
   DEBUG_WRK("[%ld] (%ld,%ld) subtxn execution phase\n",get_thd_id(),txn->batch_id,txn->txn_id);
   // 从last_msg->involved_thread里找，如果有当前线程，代表是子事务
@@ -852,7 +852,7 @@ RC rc = RCOK;
     // 真跑完了以后，
     assert(caracal_phase == CARACAL_EXECUTION);
     // caracal_phase = (CARACAL_PHASE) (CARACAL_EXECUTION_SYNC);
-    assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
+    assert(simulation->caracal_phase.load() <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase.load() >= CARACAL_EXECUTION);
   }
 
   uint64_t curr_time = get_sys_clock();
@@ -867,12 +867,12 @@ RC YCSBTxnManager::run_caracal_txn() {
   RC rc = RCOK;
   uint64_t starttime = get_sys_clock();
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
-  DEBUG_WRK("thd [%ld] Run caracal txn[%ld,%ld] phase %d-%d\n",get_thd_id(),txn->batch_id,txn->txn_id, simulation->caracal_phase, this->caracal_txn_phase);
+  DEBUG_WRK("thd [%ld] Run caracal txn[%ld,%ld] phase %d-%d\n",get_thd_id(),txn->batch_id,txn->txn_id, simulation->caracal_phase.load(), this->caracal_txn_phase);
   // assert(caracal_phase == simulation->caracal_phase);
   switch (this->caracal_phase)
   {
   case CARACAL_INIT:
-    assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
+    assert(simulation->caracal_phase.load() <= CARACAL_INIT_SYNC);
     DEBUG_WRK("[%ld] (%ld,%ld) init phase: acquire locks\n",get_thd_id(),txn->batch_id,txn->txn_id);
     for (uint32_t rid = 0; rid < ycsb_query->requests.size(); rid ++) {
       ycsb_request * req = ycsb_query->requests[rid];
@@ -895,10 +895,10 @@ RC YCSBTxnManager::run_caracal_txn() {
     DEBUG_WRK("[%ld] (%ld,%ld) finish init phase, move to execution phase\n",get_thd_id(),txn->batch_id,txn->txn_id);
     // 考虑如果是远程操作，就需要等远程的锁都拿好了才能进入执行阶段，所以远程操作还得发送一个ACK给事务主节点
     this->caracal_txn_phase = CARACAL_TXN_ANALYSIS;
-    assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
+    assert(simulation->caracal_phase.load() <= CARACAL_INIT_SYNC);
     break;
   case CARACAL_EXECUTION: {
-    assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
+    assert(simulation->caracal_phase.load() <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase.load() >= CARACAL_EXECUTION);
     DEBUG_WRK("[%ld] (%ld,%ld) execution phase\n",get_thd_id(),txn->batch_id,txn->txn_id);
     // 从last_msg->involved_thread里找，如果有当前线程，代表是子事务
 
@@ -1013,7 +1013,7 @@ RC YCSBTxnManager::run_caracal_txn() {
       // 真跑完了以后，
       assert(caracal_phase == CARACAL_EXECUTION);
       // caracal_phase = (CARACAL_PHASE) (CARACAL_EXECUTION_SYNC);
-      assert(simulation->caracal_phase <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase >= CARACAL_EXECUTION);
+      assert(simulation->caracal_phase.load() <= CARACAL_EXECUTION_SYNC && simulation->caracal_phase.load() >= CARACAL_EXECUTION);
     }
     break;
   }

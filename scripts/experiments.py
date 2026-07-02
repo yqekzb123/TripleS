@@ -102,15 +102,8 @@ def ycsb_scaling():
 def ycsb_skew_pip():
     wl = 'YCSB'
     nnodes = [2]
-    # algos=['CALVIN','ARIA','SDPCC']
-    # algos=['ARIA','SDOCC','CARACAL']
-    # algos=['ARIA']
-    # algos=['SDOCC']
-    # algos=['SDPCC']
-    # algos=['SDPCC','CALVIN']
-    # algos=['CALVIN']
+    # algos=['CALVIN','ARIA','CARACAL','SDPCC','SDOCC']
     algos=['CARACAL']
-    # algos=['SILO']
     base_table_size=1048576*8
     txn_write_perc = [1]
     tup_write_perc = [0.2]
@@ -118,9 +111,9 @@ def ycsb_skew_pip():
     total_cnt=[16]
     # scnt = [1]
     scnt = [5]
-    # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
+    skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
     # skew = [1.5]
-    skew = [0.1]
+    # skew = [0.1]
     # skew = [0.1,1.5]
     fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
     exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
@@ -148,13 +141,14 @@ def ycsb_skew_origin():
 
 def ycsb_writes():
     wl = 'YCSB'
-    nnodes = [4]
-    algos=['SDOCC']
+    # nnodes = [4]
+    nnodes = [2]
+    algos=['CARACAL']
     # algos=['CALVIN','ARIA','SDPCC','SDOCC']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
-    # tup_write_perc = [1.0]
-    tup_write_perc = [0.0,0.2,0.4,0.6,0.8,1.0]
+    tup_write_perc = [0.2]
+    # tup_write_perc = [0.0,0.2,0.4,0.6,0.8,1.0]
     load = [10000]
     total_cnt=[16]
     scnt = [5]
@@ -163,34 +157,47 @@ def ycsb_writes():
     exp = [[wl,algo,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,thr,s_cnt] for thr,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
     return fmt,exp
 
-def ycsb_long_txn():
+def ycsb_random_idle():
     wl = 'YCSB'
-    nnodes = [4]
-    algos=['CALVIN']
+    nnodes = [2]
+    algos=['CARACAL']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
     tup_write_perc = [0.2]
+    random_wait = 'true'
+    # 0.0001ms, 0.001ms, 0.01ms, 0.1ms, 1ms
+    wait_time=['0UL','100000UL']
+    # wait_time=['100UL','1000UL','10000UL','100000UL','1000000UL']
+    load = [10000]
+    total_cnt=[16]
+    skew = [0.0]
+    # skew = [0.9]
+    fmt = ["WORKLOAD","CC_ALG","RANDOM_WAIT_TIME","OPEN_RANDOM_WAIT","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT"]
+    exp = [[wl,algo,wait,random_wait,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,t_cnt] for t_cnt,txn_wr_perc,tup_wr_perc,wait,ld,n,sk,algo in itertools.product(total_cnt,txn_write_perc,tup_write_perc,wait_time,load,nnodes,skew,algos)]
+    return fmt,exp
+
+def ycsb_long_txn():
+    wl = 'YCSB'
+    nnodes = [2]
+    algos=['CARACAL']
+    base_table_size=1048576*8
+    txn_write_perc = [1.0]
+    tup_write_perc = [0.5]
     long_txn_wl = 'true'
     # long_txn_wl = 'false'
-    req_per_query = 50
+    req_per_query = 100
     # req_per_query = 10
     # long_query_perc = [0,0.2,0.4,0.6,0.8,1.0]
     # long_query_perc = [0,0.1,0.2,0.3,0.4]
     # long_query_perc = [0.4]
     long_query_perc = [0.0]
+    # long_query_perc = [0.0,0.2]
     load = [10000]
-    total_cnt=[24]
-    tcnt = [16]
-    scnt = [8]
-
-    # total_cnt=[16]
-    # tcnt = [16]   #已经没有用了
-    # scnt = [0]
-
-    skew = [0.3]
+    total_cnt=[16]
+    skew = [0.7]
     # skew = [0.9]
-    fmt = ["WORKLOAD","CC_ALG","LONG_QUERY_PERC","REQ_PER_QUERY","LONG_TXN_WORKLOAD","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,lq_perc,req_per_query,long_txn_wl,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,t_cnt-s_cnt,s_cnt] for t_cnt,thr,s_cnt,txn_wr_perc,tup_wr_perc,lq_perc,ld,n,sk,algo in itertools.product(total_cnt,tcnt,scnt,txn_write_perc,tup_write_perc,long_query_perc,load,nnodes,skew,algos)]
+    fmt = ["WORKLOAD","CC_ALG","LONG_QUERY_PERC","REQ_PER_QUERY","LONG_TXN_WORKLOAD","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT"]
+    exp = [[wl,algo,lq_perc,req_per_query,long_txn_wl,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,t_cnt] for t_cnt,txn_wr_perc,tup_wr_perc,lq_perc,ld,n,sk,algo in itertools.product(total_cnt,txn_write_perc,tup_write_perc,long_query_perc,load,nnodes,skew,algos)]
     return fmt,exp
 
 def tpcc_long_txn():
@@ -242,15 +249,16 @@ def ycsb_long_txn2():
 
 def ycsb_dist_ratio():
     wl = 'YCSB'
-    nnodes = [4]
+    nnodes = [2]
     # algos=['CALVIN','ARIA','SDPCC','SDOCC']
-    algos=['SDOCC']
+    algos=['CARACAL']
     # algos=['CALVIN', 'NO_WAIT']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
     tup_write_perc = [0.2]
     load = [10000]
-    mpr=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
+    mpr=[0.0]
+    # mpr=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
     total_cnt=[16]
     scnt = [5]
     fmt = ["WORKLOAD","CC_ALG","MPR","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
@@ -338,8 +346,8 @@ def tpcc_once():
 
 def tpcc_scaling():
     wl = 'TPCC'
-    nnodes = [1,2,4,6,8,12]
-    algos=['CNULL']
+    nnodes = [4]
+    algos=['CARACAL']
     npercpay=[0.489]
     num_wh=[32]
     load = [10000]
@@ -376,7 +384,7 @@ def tpcc_wh():
     # algos=['CALVIN','ARIA','SDPCC','SDOCC']
     # npercpay=[0.0]
     npercpay=[0.489]
-    num_wh=[8]
+    num_wh=[128]
     # num_wh=[64,32,16,8]
     # num_wh=[256,128,64,32,16,8]
     load = [10000]
@@ -394,9 +402,10 @@ def tpcc_wh():
 
 def tpcc_dist_ratio():
     wl = 'TPCC'
-    algos=['CNULL','CALVIN','SILO','ARIA']
+    algos=['CARACAL']
     # algos=['CNULL']
-    mpr=[0,0.2,0.4,0.6,0.8,1]
+    mpr=[0.0]
+    # mpr=[0,0.2,0.4,0.6,0.8,1]
     nnodes = [2]
     npercpay=[0.489]
     wh = 32
@@ -436,6 +445,7 @@ experiment_map = {
     'ycsb_skew_pip': ycsb_skew_pip,
     'ycsb_skew_origin':ycsb_skew_origin,
     'ycsb_dist_ratio': ycsb_dist_ratio,
+    'ycsb_random_idle': ycsb_random_idle,
     'ycsb_long_txn': ycsb_long_txn,
     'ycsb_long_txn2': ycsb_long_txn2,
     'tpcc_long_txn': tpcc_long_txn,
@@ -493,6 +503,7 @@ configs = {
     "TWOPL_LITE":"false",
     "LONG_TXN_WORKLOAD":'false',
     "LONG_QUERY_PERC":0.0,
+    "OPEN_RANDOM_WAIT":'false',
 #YCSB
     "INIT_PARALLELISM" : 8,
     "TUP_WRITE_PERC":0.2,
@@ -508,7 +519,7 @@ configs = {
     "MPR_NEWORDER":"MPR",
 #TXN
     "PRORATE_RATIO":0,
-    "ARIA_BATCH_SIZE":5000,
+    "ARIA_BATCH_SIZE":3000,
     "LOGGING":"false",
 #OTHERS
     # "DEBUG_DISTR":"false",

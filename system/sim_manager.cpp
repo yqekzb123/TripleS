@@ -185,6 +185,8 @@ void SimManager::next_caracal_phase() {
 		caracal_barrier[2].batch_id++; //应该到下一个batch了
 		// caracal_barrier[0].init_batch(current_batch_id + 1);
 	}
-	caracal_phase = (CARACAL_PHASE)((caracal_phase + 1) % (CARACAL_EXECUTION_SYNC + 1));
-	printf("System moving to Caracal phase %d\n", caracal_phase);
+	CARACAL_PHASE new_phase = (CARACAL_PHASE)((caracal_phase.load() + 1) % (CARACAL_EXECUTION_SYNC + 1));
+	caracal_phase.store(new_phase);
+	// caracal_phase = (CARACAL_PHASE)((caracal_phase + 1) % (CARACAL_EXECUTION_SYNC + 1));
+	printf("System moving to Caracal phase %d\n", caracal_phase.load());
 }

@@ -13,7 +13,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 2
+#define NODE_CNT 4
 #define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -153,7 +153,7 @@
 #define DETERMINISTIC_ABORT_MODE false
 #define DETERMINISTIC_ABORT_RATIO 0.2
 // [ARIA], [CARACAL] and [SDOCC]
-#define ARIA_BATCH_SIZE 5000
+#define ARIA_BATCH_SIZE 3000
 // [CARACAL]
 // 是否开启按需拆分，如果开启，当一个数据项的版本数量超过HOT_ITEM_THRESHOLD时，将被设置成热数据项，需要将对应操作拆分成子事务，交给第一个或者第二个线程来执行，以减少冲突和重试的开销
 #define OPEN_SPLIT_ON_DEMAND false
@@ -194,7 +194,7 @@
 // Benchmark
 /***********************************************/
 // max number of rows touched per transaction
-#define MAX_ROW_PER_TXN       64
+#define MAX_ROW_PER_TXN       128
 #define QUERY_INTVL         1UL
 #define MAX_TXN_PER_PART 500000
 #define FIRST_PART_LOCAL      true
@@ -204,6 +204,9 @@
 #define LONG_TXN_WORKLOAD false
 // #define LONG_TXN_SCHEDULE false
 #define SCHEDULER_CNT 5
+
+#define OPEN_RANDOM_WAIT false
+#define RANDOM_WAIT_TIME 100000UL
 
 // ==== [YCSB] ====
 // SKEW_METHOD:
@@ -253,7 +256,7 @@
 // are not modeled.
 #define TPCC_ACCESS_ALL       false
 #define WH_UPDATE         false
-#define NUM_WH 16
+#define NUM_WH 128
 // % of transactions that access multiple partitions
 #define MPR 0.15
 #define MPIR 0.01

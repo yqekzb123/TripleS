@@ -995,7 +995,7 @@ RC TxnManager::get_lock(row_t * row, access_t type) {
 	if (rc != RCOK) {
 		caracal_man.insert_temp_row(get_thd_id(),row);
 	}
-	assert(simulation->caracal_phase <= CARACAL_INIT_SYNC);
+	assert(simulation->caracal_phase.load() <= CARACAL_INIT_SYNC);
 	return rc;
 #endif
 	return RCOK;

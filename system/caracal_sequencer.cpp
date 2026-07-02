@@ -138,12 +138,12 @@ void CaracalSequencer::process_ack(Message * msg, uint64_t thd_id) {
     uint64_t txn_id = msg->txn_id;
     uint64_t batch_id = ((AckMessage*)msg)->batch_id;
 
-    if (txns_left < 5) {
-        std::string remain_txn_info = get_remain_txn_info();
-        DEBUG_SEQ("process ack %ld,%ld, rc: %d txns_left %ld, remains %s\n", batch_id,txn_id, ((AckMessage *)msg)->rc, txns_left, remain_txn_info.c_str());
-    } else {
+    // if (txns_left < 5) {
+    //     std::string remain_txn_info = get_remain_txn_info();
+    //     DEBUG_SEQ("process ack %ld,%ld, rc: %d txns_left %ld, remains %s\n", batch_id,txn_id, ((AckMessage *)msg)->rc, txns_left, remain_txn_info.c_str());
+    // } else {
         DEBUG_SEQ("process ack %ld,%ld, rc: %d txns_left %ld\n", batch_id,txn_id, ((AckMessage *)msg)->rc, txns_left);
-    }
+    // }
 
     assert(batch_id == simulation->current_batch_id);
     for (uint64_t i = 0; i < caracal_batch.size(); i++) {
@@ -215,7 +215,7 @@ void CaracalSequencer::process_ack(Message * msg, uint64_t thd_id) {
 
             txns_left--;
             if (txns_left == 0) {
-                DEBUG_SEQ("thd_id: %ld, all ack received for this batch, move to next phase %d\n", thd_id, simulation->caracal_phase);
+                DEBUG_SEQ("thd_id: %ld, all ack received for this batch, move to next phase %d\n", thd_id, simulation->caracal_phase.load());
                 simulation->get_all_txn_finish.store(true);
                 // This is the last ack for this batch. wait work thread finish all transactions and go to next phase.
                 // while (simulation->caracal_phase != CARACAL_COMMIT && !simulation->is_done()) {}

@@ -141,8 +141,23 @@ caracal_version* Row_caracal::get_reservation(uint64_t batch_id, uint64_t return
 }
 
 RC Row_caracal::access(TxnManager * txn, access_t type, row_t * local_row, uint64_t thd_id) {
+   
     if (type == RD || type == SCAN) {
         // 读操作，检查写reservation，看看自己读的，有没有完成，如果没有，就等待
+        #if 0
+        // 死等模式
+        bool found = false;
+        while (!found && !simulation->is_done()) {
+            caracal_version* reservation = get_reservation(txn->get_batch_id(), txn->return_id, txn->get_txn_id(), type,thd_id);
+            if (reservation == nullptr) {
+                // 没有找到reservation，说明这个读操作没有成功加reservation，直接返回WAIT
+                assert(false); 
+            }
+            if (reservation->written.load()) {
+                found = true;
+            } 
+        }
+        #else
         caracal_version* reservation = get_reservation(txn->get_batch_id(), txn->return_id, txn->get_txn_id(), type,thd_id);
         // return RCOK;
         // while (!reservation->written.load() && !simulation->is_done()) {}
@@ -151,6 +166,7 @@ RC Row_caracal::access(TxnManager * txn, access_t type, row_t * local_row, uint6
         //     //! 这里之后再看是死等，还是WAIT跳出去
             return WAIT;
         }
+        #endif
     } else if (type == WR) {
         // 写操作，检查读操作和写操作，即处理写写冲突和写读冲突
         caracal_version* write_v = get_reservation(txn->get_batch_id(), txn->return_id, txn->get_txn_id(), WR, thd_id);

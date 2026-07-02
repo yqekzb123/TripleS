@@ -153,7 +153,8 @@ public:
   // uint64_t barrier_count;
   // bool * barriers;
 
-  volatile CARACAL_PHASE caracal_phase;
+  std::atomic<CARACAL_PHASE> caracal_phase;
+  // volatile CARACAL_PHASE caracal_phase;
   AriaBarrier<CARACAL_PHASE> caracal_barrier[3];
   uint64_t caracal_barrier_index;
   std::atomic<uint64_t> finish_append_cnt;

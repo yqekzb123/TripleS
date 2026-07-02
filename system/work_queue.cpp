@@ -899,7 +899,7 @@ Message* QWorkQueue::work_dequeue(uint64_t thd_id) {
 	}
 	
 	if (!valid) {
-		switch (simulation->caracal_phase)
+		switch (simulation->caracal_phase.load())
 		{
 		case CARACAL_COLLECT:
 		case CARACAL_INIT:
