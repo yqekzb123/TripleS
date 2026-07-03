@@ -82,8 +82,10 @@ def ycsb_prorate():
 
 def ycsb_scaling():
     wl = 'YCSB'
-    nnodes = [1,2,3,4]
-    algos=['CALVIN','ARIA','SDPCC','SDOCC']
+    # nnodes = [8,10,12]
+    nnodes = [2,4,6,8,10,12]
+    algos=['SDPCC']
+    # algos=['CALVIN','ARIA','SDPCC']
     base_table_size=1048576*8
     txn_write_perc = [1]
     tup_write_perc = [0.2]
@@ -159,7 +161,6 @@ def ycsb_random_idle():
     fmt = ["WORKLOAD","CC_ALG","RANDOM_WAIT_TIME","OPEN_RANDOM_WAIT","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT"]
     exp = [[wl,algo,wait,random_wait,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,t_cnt] for t_cnt,txn_wr_perc,tup_wr_perc,wait,ld,n,sk,algo in itertools.product(total_cnt,txn_write_perc,tup_write_perc,wait_time,load,nnodes,skew,algos)]
     return fmt,exp
-
 
 def ycsb_long_txn():
     wl = 'YCSB'
@@ -370,9 +371,12 @@ def tpcc_once():
 
 def tpcc_scaling():
     wl = 'TPCC'
-    nnodes = [1,2,4,6,8,12]
-    algos=['CNULL']
-    npercpay=[0.489]
+    nnodes = [8]
+    # nnodes = [2,4,6,8,10,12]
+    algos=['ARIA']
+    # algos=['CALVIN','ARIA','SDPCC']
+    npercpay=[0.0]
+    # npercpay=[0.489]
     num_wh=[32]
     load = [10000]
     tcnt = [16]
