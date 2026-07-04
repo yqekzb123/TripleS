@@ -13,7 +13,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 8
+#define NODE_CNT 12
 #define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -252,7 +252,7 @@
 // are not modeled.
 #define TPCC_ACCESS_ALL       false
 #define WH_UPDATE         false
-#define NUM_WH 256
+#define NUM_WH 384
 // % of transactions that access multiple partitions
 #define MPR 0.15
 #define MPIR 0.01
@@ -290,7 +290,7 @@ enum DATxnType {
 #define MAX_DA_TABLE_SIZE 10000
 
 
-#define TXN_TYPE          TPCC_DIST
+#define TXN_TYPE          TPCC_ALL
 #define PERC_PAYMENT 0.0
 #define FIRSTNAME_MINLEN      8
 #define FIRSTNAME_LEN         16
@@ -352,7 +352,7 @@ enum PPSTxnType {
 #define DEBUG_LOCKFREE_LIST false
 #define DEBUG_REORDER         false
 #define DEBUG_SEQUENCER     false
-#define DEBUG_SCHEDULER     true
+#define DEBUG_SCHEDULER     false
 #define DEBUG_WORKER        false
 #define DEBUG_TIMEREPORT     true
 #define DEBUG_LOCK          false

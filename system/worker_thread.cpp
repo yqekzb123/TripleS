@@ -601,7 +601,14 @@ RC WorkerThread::run() {
             } else {
               assert(false);
             }
-            while (simulation->aria_barrier[index].barrier_count != g_node_cnt - 1 && !simulation->is_done()) {}
+            uint64_t wait_starttime = get_sys_clock();
+            bool enter = false;
+            while (simulation->aria_barrier[index].barrier_count != g_node_cnt - 1 && !simulation->is_done()) {
+              if (get_sys_clock() - wait_starttime > 1000000000 && !enter) {
+                DEBUG_SCH("Worker %ld waiting for ARIA_ACK barrier for batch %ld phase %d, current count: %ld\n", get_thd_id(), simulation->current_batch_id, simulation->aria_phase, simulation->aria_barrier[index].barrier_count);
+                enter = true;
+              }
+            }
             // while (simulation->barrier_count != g_node_cnt - 1 && !simulation->is_done()) {}
             // simulation->barrier_count = 0;
             // memset(simulation->barriers, 0, sizeof(uint64_t) * g_node_cnt);
@@ -1252,6 +1259,7 @@ RC WorkerThread::process_aria_rtxn(Message * msg) {
 RC WorkerThread::process_aria_ack(Message * msg) {
   AckMessage * ack = (AckMessage *)msg;
   // 考虑几种情况吧，消息落后于当前阶段了，这个明显不对
+  DEBUG_SCH("Worker %ld received ARIA_ACK for node %ld, ack batch %ld phase %ld, current batch %ld phase %d\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->aria_phase, simulation->current_batch_id, simulation->aria_phase);
 
   int index = 0;
   if (ack->aria_phase == ARIA_RESERVATION) {
@@ -1276,7 +1284,7 @@ RC WorkerThread::process_aria_ack(Message * msg) {
   assert(ack->batch_id == simulation->aria_barrier[index].batch_id);
   simulation->aria_barrier[index].set_barrier(ack->get_return_id());
   std::string str = simulation->aria_barrier[0].get_barrier_str("0") + simulation->aria_barrier[1].get_barrier_str("1");
-  // DEBUG_SCH("%s\n", str.c_str());
+  DEBUG_SCH("%s\n", str.c_str());
   msg->release();
   delete msg;
   return RCOK;

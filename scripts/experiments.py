@@ -371,12 +371,12 @@ def tpcc_once():
 
 def tpcc_scaling():
     wl = 'TPCC'
-    nnodes = [8]
-    # nnodes = [2,4,6,8,10,12]
-    algos=['ARIA']
-    # algos=['CALVIN','ARIA','SDPCC']
-    npercpay=[0.0]
-    # npercpay=[0.489]
+    # nnodes = [12]
+    nnodes = [2,4,6,8,10,12]
+    # algos=['ARIA']
+    algos=['CALVIN','ARIA','SDPCC']
+    # npercpay=[0.0]
+    npercpay=[0.489]
     num_wh=[32]
     load = [10000]
     tcnt = [16]

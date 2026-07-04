@@ -19,6 +19,7 @@
 
 #include "global.h"
 #include <string>
+// #include "helper.h"
 
 // Aria
 enum ARIA_PHASE {
@@ -46,7 +47,7 @@ public:
   ARIA_PHASE phase;
   uint64_t g_node_cnt;
 // 下面这一段是检查
-  uint64_t barrier_count;
+  volatile uint64_t barrier_count;
   bool * barriers;
   int current_barrier_index;
   void init(uint64_t g_node_cnt, bool * barriers) {
@@ -72,7 +73,9 @@ public:
       return false;
     } else {
       barriers[node_id] = true;
-      barrier_count++;
+      __sync_add_and_fetch(&(barrier_count), 1);
+      // ATOM_ADD_FETCH(barrier_count, 1);
+      // barrier_count++;
       return true;
     }
   }
@@ -108,7 +111,7 @@ public:
   uint64_t txn_cnt;
   uint64_t inflight_cnt;
   uint64_t last_da_query_time;
-  ARIA_PHASE aria_phase;
+  volatile ARIA_PHASE aria_phase;
   uint64_t current_batch_id;
   uint64_t batch_process_count;
 
