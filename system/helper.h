@@ -368,6 +368,13 @@ struct ListNode {
 };
 
 
+struct sdocc_version {
+    uint64_t id;
+    bool available;
+    bool is_blind;
+    uint64_t data;
+};
+
 // 写一个作为默认无效的值的宏
 #define INVALID_ID UINT64_MAX
 

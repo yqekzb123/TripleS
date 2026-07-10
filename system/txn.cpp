@@ -379,8 +379,8 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	write_set.resize(g_node_cnt);
 #endif
 #if CC_ALG == SDOCC
-	last_sdocc_read_reservation = 0;
-	last_sdocc_write_reservation = 0;
+	// last_sdocc_read_reservation = 0;
+	last_sdocc_write_reservation = {0, false, false, 0};
 	retry_cnt = 0;
 	retry_for_watermark = 0;
 	retry_for_conflict = 0;
@@ -431,8 +431,8 @@ void TxnManager::reset() {
 	aria_phase = ARIA_READ;
 #endif
 #if CC_ALG == SDOCC
-	last_sdocc_read_reservation = 0;
-	last_sdocc_write_reservation = 0;
+	// last_sdocc_read_reservation = 0;
+	last_sdocc_write_reservation = {0, false, false, 0};
 	sdocc_phase = SDOCC_INIT;
 	sdocc_send_remote = false;
 	sdocc_expected_rsp_cnt = 0;

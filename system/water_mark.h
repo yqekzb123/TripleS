@@ -50,7 +50,7 @@ public:
         return water_mark[nid];
     }
     uint64_t get_global_watermark() {
-        // return UINT64_MAX;
+        // return UINT64_MAX - 10;
         return glob_water_mark;
         // return water_mark[g_node_id];
     }

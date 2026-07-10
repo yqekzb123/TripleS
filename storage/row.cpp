@@ -298,9 +298,9 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 	access->data = txn->cur_row;
 	if (type == RD|| type == SCAN){
 		access->sdocc_write_reservation = txn->last_sdocc_write_reservation;
-		access->sdocc_write_reservation = 0;
+		// access->sdocc_write_reservation = 0;
 	} else if (type == WR) {
-		access->sdocc_read_reservation = txn->last_sdocc_read_reservation;
+		// access->sdocc_read_reservation = txn->last_sdocc_read_reservation;
 		access->sdocc_write_reservation = txn->last_sdocc_write_reservation;
 	}
   	INC_STATS(txn->get_thd_id(), trans_cur_row_copy_time, get_sys_clock() - copy_time);

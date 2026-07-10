@@ -51,8 +51,8 @@ public:
 	// ts_t 		epoch;
 #endif
 #if CC_ALG == SDOCC
-	uint64_t sdocc_read_reservation;
-	uint64_t sdocc_write_reservation;
+	// uint64_t sdocc_read_reservation;
+	sdocc_version sdocc_write_reservation;
 #endif
 	void cleanup();
 };
@@ -251,8 +251,8 @@ public:
 #endif
 
 #if CC_ALG == SDOCC
-	uint64_t last_sdocc_read_reservation;
-	uint64_t last_sdocc_write_reservation;
+	// uint64_t last_sdocc_read_reservation;
+	sdocc_version last_sdocc_write_reservation;
 	ListNode<watermark_node_entry*>* list_node_pointer;
 
 	uint64_t retry_cnt; // 当前是第几次重试了

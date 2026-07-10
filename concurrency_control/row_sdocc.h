@@ -12,18 +12,16 @@
 
 class Row_sdocc {
 public:
-    pthread_mutex_t * read_latch;
+    // pthread_mutex_t * read_latch;
     pthread_mutex_t * write_latch;
     // 这里还是存calvin_key吧
-    std::vector<uint64_t> read_reservations;
-    std::vector<uint64_t> write_reservations;
+    // std::vector<uint64_t> read_reservations;
+    std::vector<sdocc_version> write_reservations;
 
     void init(row_t * row);
 
     void reset() {
-        // read_reservation = UINT64_MAX;
-        // write_reservation = UINT64_MAX;
-        read_reservations.clear();
+        // read_reservations.clear();
         write_reservations.clear();
     }
 
@@ -32,12 +30,12 @@ public:
     RC clean(TxnManager * txn, access_t type);
 
     // 写一个将事务号，存储到reservations中的函数，要按照事务号的顺序排序
-    bool add_reservation(std::vector<uint64_t>& reservations, pthread_mutex_t * latch, uint64_t batch_id,uint64_t return_id,uint64_t txn_id);
+    bool add_reservation(std::vector<sdocc_version>& reservations, pthread_mutex_t * latch, uint64_t batch_id,uint64_t return_id,uint64_t txn_id);
 
-    bool clean_reservation(std::vector<uint64_t>& reservations, pthread_mutex_t * latch, uint64_t batch_id,uint64_t return_id,uint64_t txn_id);
+    bool clean_reservation(std::vector<sdocc_version>& reservations, pthread_mutex_t * latch, uint64_t batch_id,uint64_t return_id,uint64_t txn_id);
 
     // 根据calvin_key获取这个事务能读取到的最新的reservation，只获得最新的那一个
-    uint64_t get_reservations(std::vector<uint64_t>& reservations, pthread_mutex_t * latch, uint64_t batch_id,uint64_t return_id,uint64_t txn_id);
+    sdocc_version get_reservations(std::vector<sdocc_version>& reservations, pthread_mutex_t * latch, uint64_t batch_id,uint64_t return_id,uint64_t txn_id);
 
 private:
     row_t * _row;
