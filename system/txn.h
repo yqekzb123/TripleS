@@ -253,7 +253,9 @@ public:
 #if CC_ALG == SDOCC
 	// uint64_t last_sdocc_read_reservation;
 	sdocc_version last_sdocc_write_reservation;
-	ListNode<watermark_node_entry*>* list_node_pointer;
+	// ListNode<watermark_node_entry*>* list_node_pointer;
+	bool marked_for_retry;
+	bool entered_tmp_queue;
 
 	uint64_t retry_cnt; // 当前是第几次重试了
 	uint64_t retry_for_watermark;

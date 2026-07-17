@@ -143,7 +143,8 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 	#if CC_ALG == SDOCC
-	check_water_mark = new WaterMarkList("sdocc_check_water_mark");
+	check_water_mark = new WaterMarkList();
+	// check_water_mark = new WaterMarkList("sdocc_check_water_mark");
 	#endif
 
 	printf("Initializing work queue... ");

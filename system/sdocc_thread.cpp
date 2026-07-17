@@ -44,14 +44,7 @@ RC SDOCCSequencerThread::run() {
 	uint64_t prof_starttime = 0;
 
 	while(!simulation->is_done()) {
-		// if (sdocc_seq_man.is_batch_ready()) {
-		// 	sdocc_seq_man.send_next_batch(_thd_id);
-		// 	INC_STATS(_thd_id, seq_batch_time, get_sys_clock() - prof_starttime);
-		// 	prof_starttime = get_sys_clock();
-		// 	sdocc_seq_man.advance_seq_epoch();
-		// }
 		msg = work_queue.txn_dequeue(_thd_id);
-		// msg = work_queue.sdocc_sequencer_dequeue(_thd_id);
 		if (!msg) {
 			if (idle_starttime == 0) {
 				idle_starttime = get_sys_clock();

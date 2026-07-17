@@ -16,29 +16,31 @@
 #include <stdint.h>
 #include <pthread.h>
 #include "helper.h"
-#include "small_lock_list.h"
+// #include "small_lock_list.h"
 #include "message.h"
 // #include "global.h"
 // #include 
 
 // 写一个带key或者水印时间的，包括事务TxnManager的结构体
-struct watermark_node_entry
-{
-public:
-    /* data */
-    uint64_t key; // 这里的key是事务号 (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
+// enum WaterMarkStatus : int { UNKNOWN = 0, PENDING, COMPLETED, REMOVED };
+// struct watermark_node_entry
+// {
+// public:
+//     /* data */
+//     uint64_t key; // 这里的key是事务号 (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
+//     WaterMarkStatus status;
+//     watermark_node_entry() : key(0), status(UNKNOWN) {}
+//     ~watermark_node_entry() {}
+// };
 
-    watermark_node_entry() : key(0){}
-    ~watermark_node_entry() {}
-};
-
-class WaterMarkList : public LockList<watermark_node_entry*> {
+class WaterMarkList {
 public:
-    WaterMarkList() : WaterMarkList("WaterMarkList") {
-    }
-    WaterMarkList(std::string list_name) : LockList<watermark_node_entry*>(list_name) {
+    WaterMarkList() {
         for (uint64_t i = 0; i < g_node_cnt; i++) {
             water_mark[i] = 0;
+        }
+        for (uint64_t i = 0; i < g_thread_cnt; i++) {
+            sids[i] = 0;
         }
     }
     ~WaterMarkList() {}
@@ -54,45 +56,36 @@ public:
         return glob_water_mark;
         // return water_mark[g_node_id];
     }
-public:
-    bool update_local_watermark() {
-        // 直接读取head->next开始遍历，找到第一个不需要删除的节点
-        bool updated = false;
-        ListNode<watermark_node_entry*>* curr = head->next;;
-        uint64_t new_minSid = water_mark[g_node_id];
-        while (curr) {
-            if (curr->status == NODE_REMOVED || 
-                curr->status == NODE_TAKEN) {
-                curr = curr->next;
-                continue;
-            }
-            new_minSid = max(new_minSid, curr->data->key);
-            break;
-        }
-        if (water_mark[g_node_id] < new_minSid) {
-            // 说明water_mark[g_node_id]对应的节点已经被删除了，可以把water_mark[g_node_id]更新到下一个节点的key了
-            water_mark[g_node_id] = new_minSid;
-            updated = true;
-            DEBUG_SCH("[WaterMarkList] update %s minsid to %lu\n", name.c_str(),water_mark[g_node_id]);
-        }
-        update_global_watermark();
-        return updated;
+
+    int key_to_index(uint64_t key) {
+        std::vector<uint64_t> parts = split_batch_key(key);
+        uint64_t batch_id = parts[0];
+        uint64_t txn_id = parts[2];
+        // 第一段是根据batch_id决定范围
+        int index = batch_id * g_aria_batch_size;
+        index += txn_id / g_node_cnt; // 每个节点的事务号是连续的，所以可以直接除以节点数得到索引
+        return index;
     }
-    Message* broadcast_watermark() {
-        // 这里可以直接广播minSid给所有节点，或者通过消息队列发送给所有节点
-        // 这里假设有一个全局的消息队列msg_queue，可以用来发送消息
-        WaterMarkMessage * msg =  (WaterMarkMessage*)Message::create_message(WATERMARK);
-        msg->set_watermark(water_mark[g_node_id]);
-        return msg;
-    }
-    void receive_watermark(uint64_t nid, uint64_t sid) {
-        // 这里可以直接更新对应节点的水印值，然后调用update_watermark来更新minSid
-        water_mark[nid] = sid;
-        DEBUG_SCH("[WaterMarkList] receive watermark from node %lu, sid: %lu\n", nid, sid);
-        update_global_watermark();
+
+    // 这个是每个工作线程跑的
+    bool update_local_watermark(uint64_t thd_id) {
+        uint64_t old_sid = water_mark[g_node_id];
+        uint64_t min = UINT64_MAX;
+        for (uint64_t i = 0; i < g_thread_cnt; i++) {
+            uint64_t current_sid = sids[i];
+            if (current_sid < min) min = current_sid;
+        }
+        assert(min >= old_sid);
+        if (min == old_sid) {
+            return false;
+        } else {
+            water_mark[g_node_id] = min;
+            DEBUG_SCH("[WaterMarkList] update local watermark to %lu\n", water_mark[g_node_id]);
+            update_global_watermark();
+        }
+        return true;
     }
     void update_global_watermark() {
-        // 这里可以直接遍历所有节点的水印值，找到最小的那个作为全局水印
         uint64_t new_glob_water_mark = UINT64_MAX;
         for (uint64_t i = 0; i < g_node_cnt; i++) {
             new_glob_water_mark = min(new_glob_water_mark, water_mark[i]);
@@ -102,9 +95,48 @@ public:
             DEBUG_SCH("[WaterMarkList] update global watermark to %lu\n", glob_water_mark);
         }
     }
+    Message* broadcast_watermark() {
+        // 这里可以直接广播minSid给所有节点，或者通过消息队列发送给所有节点
+        // 这里假设有一个全局的消息队列msg_queue，可以用来发送消息
+        WaterMarkMessage * msg =  (WaterMarkMessage*)Message::create_message(WATERMARK);
+        msg->set_watermark(water_mark[g_node_id]);
+        return msg;
+    }
+    void receive_watermark(uint64_t nid, uint64_t sid, uint64_t thd_id) {
+        // 这里可以直接更新对应节点的水印值，然后调用update_watermark来更新minSid
+        water_mark[nid] = sid;
+        // update_local_watermark(thd_id);
+        DEBUG_SCH("[WaterMarkList] receive watermark from node %lu, sid: %lu\n", nid, sid);
+        update_global_watermark();
+    }
+    void mark_completed(uint64_t key, uint64_t thd_id) {
+        uint64_t old_sid = sids[thd_id];
+		assert(key > water_mark[g_node_id]);
+		assert(key > sids[thd_id]);
+		sids[thd_id] = key;
+        DEBUG_SCH("[WaterMarkList] mark watermark %lu as completed by thread %lu, old sid: %lu, new sid: %lu, now sids: %s\n", key, thd_id, old_sid, sids[thd_id], get_sids_str().c_str());
+    }
+    std::string get_sids_str() {
+        std::string str = "[";
+        for (uint64_t i = 0; i < g_thread_cnt; i++) {
+            str += std::to_string(sids[i]);
+            if (i != g_thread_cnt - 1) str += ",";
+        }
+        str += "]";
+        return str;
+    }
 private:
-    uint64_t water_mark[NODE_CNT];
+    uint64_t sids[THREAD_CNT]; // 每个线程的水印
+    uint64_t water_mark[NODE_CNT]; // 远程的水印
     uint64_t glob_water_mark = 0; // 这个是全局的水印，表示所有节点都已经完成的最大事务号
+
+    // 这玩意是循环数组
+    // watermark_node_entry *track_list; // 这个是每个节点的水印，表示该节点已经完成的最大事务号
+    // int track_head;
+    // int list_size;
+    // int track_tail;
+
+    string name = "WaterMarkList";
 };
 
 

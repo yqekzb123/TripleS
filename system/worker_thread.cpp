@@ -34,6 +34,7 @@
 #include "small_lock_list.h"
 #include "water_mark.h"
 #include "ordered_list.h"
+#include "sdocc.h"
 
 void WorkerThread::setup() {
 	if( get_thd_id() == 0) {
@@ -424,6 +425,7 @@ RC WorkerThread::run() {
     heartbeat();
 
     #if CC_ALG == SDOCC
+    // handle_txn_for_validate();
     uint64_t current_minSid = check_water_mark->get_global_watermark();
     if (current_minSid != old_minSid) {
       handle_tmp_txn(current_minSid,old_minSid);
@@ -433,7 +435,13 @@ RC WorkerThread::run() {
     Message* msg;
     uint64_t dequeue_starttime = get_sys_clock();
     #if CC_ALG == SDOCC// || CC_ALG == SILO
-      msg = work_queue.sdocc_dequeue(get_thd_id());
+      txn_list_for_validate.get_next(UINT64_MAX,txn_man);
+      if (txn_man != NULL) {
+        msg = txn_man->last_msg;
+        txn_man->register_thread(this);
+      } else {
+        msg = work_queue.sdocc_dequeue(get_thd_id());
+      }
     #elif CC_ALG == ARIA
       msg = work_queue.work_dequeue(get_thd_id());
     #else
@@ -622,7 +630,19 @@ RC WorkerThread::run() {
     INC_STATS(get_thd_id(),worker_deactivate_txn_time,get_sys_clock() - ready_starttime);
     #if CC_ALG == SDOCC
     // 如果需要重试
+    if (msg->rtype == CL_QRY &&
+        txn_man!=nullptr && 
+        !txn_man->entered_tmp_queue &&
+        IS_LOCAL(txn_man->get_txn_id())) {
+      txn_list_for_validate.insert(txn_man);
+      DEBUG_SCH("Thd %ld txn %ld,%ld re-enqueue to list for validate\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id());
+      txn_list_for_validate_size++;
+      txn_man->entered_tmp_queue = true;
+    }
+
     if (rc == RETRY && IS_LOCAL(txn_man->get_txn_id())) {
+      assert(txn_man->sdocc_phase == SDOCC_CHECK || 
+             txn_man->sdocc_phase == SDOCC_REMOTE_CHECK);
       bool expected_value = false; 
       assert(txn_man->last_msg);
       if (((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued.compare_exchange_strong(expected_value, 1)) {
@@ -638,7 +658,7 @@ RC WorkerThread::run() {
           txn_man->retry_for_conflict = ((ClientQueryMessage*)txn_man->last_msg)->retry_for_conflict;
           work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
         } else {
-          DEBUG_SCH("Thd %ld txn %ld,%ld needs retry because watermark, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
+          DEBUG_SCH("Thd %ld txn %ld,%ld needs retry because watermark %ld, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), (check_water_mark->get_global_watermark() + 1), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
           ((ClientQueryMessage*)txn_man->last_msg)->retry_for_watermark++;
           txn_man->retry_for_watermark = ((ClientQueryMessage*)txn_man->last_msg)->retry_for_watermark;
           tmp_txn_list.insert(txn_man);
@@ -669,7 +689,7 @@ RC WorkerThread::run() {
 #endif
 
 RC WorkerThread::process_rfin(Message * msg) {
-  DEBUG("RFIN %ld\n",msg->get_txn_id());
+  DEBUG_WRK("RFIN %ld\n",msg->get_txn_id());
   assert(CC_ALG != CALVIN && CC_ALG != SDPCC);
 
   M_ASSERT_V(!IS_LOCAL(msg->get_txn_id()), "RFIN local: %ld %ld/%d\n", msg->get_txn_id(),
@@ -703,8 +723,7 @@ RC WorkerThread::process_rfin(Message * msg) {
 
 #if CC_ALG != ARIA
 RC WorkerThread::process_rack_prep(Message * msg) {
-  DEBUG("RACK_PREP %ld\n",msg->get_txn_id());
-
+  DEBUG_WRK("RACK_PREP %ld,%ld\n",msg->get_batch_id(),msg->get_txn_id());
   RC rc = RCOK;
 
   int responses_left = txn_man->received_response(((AckMessage*)msg)->rc);
@@ -727,7 +746,7 @@ RC WorkerThread::process_rack_prep(Message * msg) {
   // Done waiting
   #if CC_ALG == SDOCC
   // 对于SDOCC来说，即使远程因为水印需要retry，本地也得先验证一次
-    rc = txn_man->validate();
+    // rc = txn_man->validate();
   #else
   if(txn_man->get_rc() == RCOK) {
       rc = txn_man->validate();
@@ -735,18 +754,9 @@ RC WorkerThread::process_rack_prep(Message * msg) {
   #endif
 
   #if CC_ALG == SDOCC
-  // bool watermark_passed = false;
-  // uint64_t key = 0;
-  // if(rc == RCOK) {
-  //   // ! 检查水印
-  //   key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
-  //   watermark_passed = key <= check_water_mark->get_global_watermark();
-  //   // watermark_passed 
-  // }
-  // if(!watermark_passed || rc == RETRY || txn_man->get_rc() == RETRY) {
   if(txn_man->get_rc() == RETRY) {
     // !事务重新入队
-    // assert(false);
+    txn_man->sdocc_phase = SDOCC_CHECK;
     rc = RETRY;
   } 
   if (rc == RCOK && txn_man->get_rc() == RCOK) {
@@ -806,7 +816,7 @@ RC WorkerThread::process_rack_prep(Message * msg) {
 #endif
 
 RC WorkerThread::process_rack_rfin(Message * msg) {
-  DEBUG("RFIN_ACK %ld\n",msg->get_txn_id());
+  DEBUG_WRK("RFIN_ACK %ld\n",msg->get_txn_id());
 
   RC rc = RCOK;
 
@@ -845,7 +855,7 @@ RC WorkerThread::process_rack_rfin(Message * msg) {
 
 #if CC_ALG != ARIA
 RC WorkerThread::process_rqry_rsp(Message * msg) {
-  DEBUG("RQRY_RSP %ld\n",msg->get_txn_id());
+  DEBUG_WRK("RQRY_RSP %ld\n",msg->get_txn_id());
   assert(IS_LOCAL(msg->get_txn_id()));
   INC_STATS(get_thd_id(), trans_process_network, get_sys_clock() - txn_man->txn_stats.trans_process_network_start_time);
   txn_man->txn_stats.remote_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
@@ -896,7 +906,7 @@ RC WorkerThread::process_rqry_rsp(Message * msg) {
 
 #if CC_ALG != ARIA
 RC WorkerThread::process_rqry(Message * msg) {
-  DEBUG("RQRY %ld\n",msg->get_txn_id());
+  DEBUG_WRK("RQRY %ld,%ld\n",msg->get_batch_id(),msg->get_txn_id());
   M_ASSERT_V(!IS_LOCAL(msg->get_txn_id()), "RQRY local: %ld %ld/%d\n", msg->get_txn_id(),
              msg->get_txn_id() % g_node_cnt, g_node_id);
   assert(!IS_LOCAL(msg->get_txn_id()));
@@ -906,6 +916,8 @@ RC WorkerThread::process_rqry(Message * msg) {
 
   txn_man->send_RQRY_RSP = true;
   #if CC_ALG == SDOCC
+  uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+  // check_water_mark->insert_watermark(key, _thd_id);
   rc = txn_man->run_sdocc_txn();
   // if (!txn_man->query->rwset_known) printf("txn %ld,%ld rwset unknown in RQRY\n", txn_man->get_batch_id(), txn_man->get_txn_id());
   #else
@@ -974,7 +986,7 @@ RC WorkerThread::process_rtxn_cont(Message * msg) {
 
 #if CC_ALG != ARIA
 RC WorkerThread::process_rprepare(Message * msg) {
-  DEBUG("RPREP %ld\n",msg->get_txn_id());
+    DEBUG_WRK("RPREP %ld,%ld\n",msg->get_batch_id(),msg->get_txn_id());
     RC rc = RCOK;
 #if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
     LogRecord * record = logger.createRecord(msg->get_txn_id(),L_FLUSH,0,0);
@@ -1120,7 +1132,12 @@ RC WorkerThread::process_rtxn(Message * msg) {
   txn_man->send_RQRY_RSP = false;
   
   #if CC_ALG == SDOCC
-  rc = txn_man->run_sdocc_txn();
+  if (txn_man->sdocc_phase == SDOCC_PHASE::SDOCC_EXECUTION) {
+    rc = txn_man->run_sdocc_txn();
+  } else if (txn_man->sdocc_phase == SDOCC_PHASE::SDOCC_CHECK) {
+    DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn_man->get_batch_id(),txn_man->get_txn_id(),get_sdocc_phase_str(txn_man->sdocc_phase).c_str());
+    rc = txn_man->start_sdocc_check();
+  }
   // if (!txn_man->query->rwset_known) printf("txn %ld,%ld rwset unknown in RTXN\n", txn_man->get_batch_id(), txn_man->get_txn_id());
   #else
   rc = txn_man->run_txn();
@@ -1330,11 +1347,28 @@ ts_t WorkerThread::get_next_ts() {
 }
 
 #if CC_ALG == SDOCC
-
+void WorkerThread::handle_txn_for_validate() {
+  int out_cnt = 0;
+  double start_time = get_sys_clock();
+  std::vector<TxnManager*> to_reenqueue = txn_list_for_validate.pop_less_than(UINT64_MAX);
+  for (auto txn_man : to_reenqueue) {
+    assert(txn_man->sdocc_phase == SDOCC_CHECK);
+    uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+    DEBUG_SCH("[SDOCCThread] %ld handle txn for validate %ld,%ld, key %ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id(), key);
+    assert(txn_man->last_msg->get_rtype() == CL_QRY);
+    // work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
+    txn_list_for_validate_size--;
+    out_cnt++;
+  }
+  double end_time = get_sys_clock();
+  DEBUG_SCH("[SDOCCThread] %ld handle txn_for_validate, txn_list_for_validate_size size %ld, out_cnt %d, cosume time %lf\n", _thd_id, txn_list_for_validate_size, out_cnt, (end_time - start_time)/BILLION);
+}
+ 
 void WorkerThread::handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid) {
   double start_time = get_sys_clock();
   int out_cnt = 0;
   std::vector<TxnManager*> to_reenqueue = tmp_txn_list.pop_less_than(current_minSid + 1);
+  // std::vector<TxnManager*> to_reenqueue = tmp_txn_list.pop_less_than(UINT64_MAX);
   for (auto txn_man:to_reenqueue){
   // TxnManager* txn_man = nullptr;
   // for (;tmp_txn_list.get_next(current_minSid,txn_man);){
@@ -1388,15 +1422,27 @@ RC StatsPerIntervalThread::run(){
       // work_queue.sdpcc_list->DEBUG_PRINT_LIST_LENGTH();
       #endif
       #if CC_ALG == SDOCC
-      work_queue.sdocc_lockfree->DEBUG_PRINT_LIST_LENGTH();
+      // work_queue.sdocc_lockfree->DEBUG_PRINT_LIST_LENGTH();
       #endif
       DEBUG_TIME("------StatsPerIntervalThread %ld seconds--------\n",loop);
       loop++;
     }
-    // if (now_time - last_millisecond > ONE_MILLISECOND) {
-    #if CC_ALG == SDOCC 
-      check_water_mark->remove_consumed();
-      bool updated = check_water_mark->update_local_watermark();
+    // #if CC_ALG == SDOCC 
+    //   // check_water_mark->remove_consumed();
+    //   bool updated = check_water_mark->update_local_watermark(_thd_id);
+    //   if (updated) {
+    //     for (uint64_t i = 0; i < g_node_cnt; i++) {
+    //       if (i == g_node_id) continue;
+    //       Message * msg = check_water_mark->broadcast_watermark();
+    //       DEBUG_SCH("Worker %ld broadcast watermark %ld\n", get_thd_id(), check_water_mark->get_global_watermark());
+    //       if (msg) {
+    //         msg_queue.enqueue(_thd_id, msg, i);
+    //       }
+    //     }
+    //   }
+    // #endif 
+    #if CC_ALG == SDOCC
+      bool updated = check_water_mark->update_local_watermark(_thd_id);
       if (updated) {
         for (uint64_t i = 0; i < g_node_cnt; i++) {
           if (i == g_node_id) continue;
@@ -1407,7 +1453,7 @@ RC StatsPerIntervalThread::run(){
           }
         }
       }
-    #endif 
+    #endif
     #if CC_ALG == SDPCC
       // work_queue.sdpcc_list->mark_head();
       // 把第一个调度器的水印更新塞到这来，保证每个调度器的水印都能及时更新

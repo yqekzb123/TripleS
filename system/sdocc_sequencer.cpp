@@ -50,7 +50,7 @@ void SDOCCSequencer::put_one_txn_to_batch(uint64_t _thd_id, Message * msg) {
     assert(rtype == CL_QRY);
 
     // 这里就是给事务分配batch_id和txn_id了，保证同一batch内的事务id递增
-    msg->batch_id = batch_id;
+    msg->batch_id = g_node_id + g_node_cnt * batch_id;
     msg->txn_id = g_node_id + g_node_cnt * next_txn_id; 
     next_txn_id++;
     assert(msg->txn_id != UINT64_MAX);
@@ -66,12 +66,13 @@ void SDOCCSequencer::put_one_txn_to_batch(uint64_t _thd_id, Message * msg) {
     } 
 
     // 直接把事务发出去
-    uint64_t key = get_batch_key(msg->batch_id, msg->return_node_id, msg->txn_id);
-    watermark_node_entry* entry = (watermark_node_entry*)mem_allocator.align_alloc(sizeof(watermark_node_entry));
-    entry->key = key;
-    ListNode<watermark_node_entry*>* ld = check_water_mark->insert(entry, _thd_id);
+    // uint64_t key = get_batch_key(msg->batch_id, msg->return_node_id, msg->txn_id);
+    // watermark_node_entry* entry = (watermark_node_entry*)mem_allocator.align_alloc(sizeof(watermark_node_entry));
+    // entry->key = key;
+    // ListNode<watermark_node_entry*>* ld = check_water_mark->insert(entry, _thd_id);
     // DEBUG_SCH("check_water_mark save %ld for txn %ld,%ld.\n", key, msg->batch_id, msg->txn_id);
-    ((ClientQueryMessage*)msg)->list_node_pointer = ld;
+    // ((ClientQueryMessage*)msg)->list_node_pointer = ld;
+    // check_water_mark->insert_watermark(key, _thd_id);
 
     work_queue.sdocc_enqueue(_thd_id, msg, false);
     DEBUG_SEQ("PIPELINE PUT ONE TXN TO BATCH, txn_id: %ld, batch_id: %ld\n", msg->txn_id, msg->batch_id);

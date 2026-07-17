@@ -48,7 +48,6 @@ RC TxnManager::check() {
 }
 
 void update_local_watermark(uint64_t thd_id, TxnManager * txn_manager) {
-    // return;
     if (!IS_LOCAL(txn_manager->get_txn_id())) {
         // 说明不是本地事务，不需要更新水印
         return;
@@ -61,18 +60,17 @@ void update_local_watermark(uint64_t thd_id, TxnManager * txn_manager) {
     uint64_t old_min_sid = 0;
     bool suc = false;
 
-    if (txn_manager->list_node_pointer == nullptr) {
-        // 说明已经标记过，或者不是本地事务了，不需要再标记了
+    if (txn_manager->marked_for_retry) {
+        // 说明已经标记过了，不需要再标记了
         return;
     }
 
     old_min_sid = check_water_mark->get_current_watermark();
 
-    check_water_mark->mark_consumed_by_pointer(txn_manager->list_node_pointer,thd_id);
-    // 已经标记完了，那么就将list_node_pointer置为0；
-    txn_manager->list_node_pointer = nullptr;
+    check_water_mark->mark_completed(key, thd_id);
+    txn_manager->marked_for_retry = true;
 
-    // DEBUG_SCH("[SDOCC] %ld set %s key %ld [%ld,%ld] to complete, and set sid from %ld to %ld\n", thd_id, "CHECK", key,bid,txn_id, old_min_sid, check_water_mark->get_current_watermark());
+    DEBUG_SCH("[SDOCC] %ld set %s key %ld [%ld,%ld] to complete, and set sid from %ld to %ld\n", thd_id, "CHECK", key,bid,txn_id, old_min_sid, check_water_mark->get_current_watermark());
 }
 
 #endif

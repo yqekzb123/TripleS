@@ -943,7 +943,7 @@ void ClientQueryMessage::init() {
   cld_pointer = NULL;
   #endif
   #if CC_ALG == SDOCC
-  list_node_pointer = NULL;
+  // list_node_pointer = NULL;
   #endif
 }
 
@@ -1006,7 +1006,7 @@ void ClientQueryMessage::copy_to_txn(TxnManager * txn) {
   txn->cld_pointer = cld_pointer;
   #endif
   #if CC_ALG == SDOCC
-  txn->list_node_pointer = list_node_pointer;
+  // txn->list_node_pointer = list_node_pointer;
   #endif
 }
 

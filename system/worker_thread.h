@@ -84,12 +84,28 @@ private:
             return key_a <= watermark;
         }
     };
+    struct CompareTxnCanValidate {
+        bool operator() (TxnManager* a, uint64_t watermark) const {
+            // uint64_t key_a = get_batch_key(a->get_batch_id(), a->return_id, a->get_txn_id());
+            if (a!=nullptr && a->sdocc_phase == SDOCC_CHECK &&
+                a->is_ready()) {
+                assert(IS_LOCAL(a->get_txn_id()));
+                return true;
+            }
+            return false;
+        }
+    };
+
     // 用来放还不能重试的事务
+    OrderedList<TxnManager*,CompareTxnManager,CompareTxnCanValidate> txn_list_for_validate;
+    uint64_t txn_list_for_validate_size = 0;
+
     OrderedList<TxnManager*,CompareTxnManager,CompareTxnWater> tmp_txn_list;
     uint64_t tmp_txn_list_size = 0;
     // std::vector<TxnManager*> tmp_txn_list;
 
     void handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid);
+    void handle_txn_for_validate();
     #endif
 };
 

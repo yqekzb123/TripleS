@@ -630,9 +630,6 @@ RC YCSBTxnManager::run_sdocc_txn() {
     txn_stats.process_time_short += curr_time - starttime;
     txn_stats.wait_starttime = get_sys_clock();
 
-    // if (rc2 == WAIT_REM) {
-    //   rc = WAIT_REM;
-    // }
     bool remote_wait = true;
     #if RWSET_KNOWN
     if (query->rwset_known) {
@@ -641,6 +638,7 @@ RC YCSBTxnManager::run_sdocc_txn() {
     #endif
     if (is_done() && rc == RCOK && remote_wait) {// 如果执行完了，进入SDOCC检查阶段
       sdocc_phase = SDOCC_CHECK;
+      DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld enter phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
     } else if (rc == RETRY || rc == WAIT || rc == WAIT_REM) {
     } else if (!remote_wait) {
     } else {
@@ -648,11 +646,11 @@ RC YCSBTxnManager::run_sdocc_txn() {
     }
   }
   // assert(IS_LOCAL(get_txn_id()));
-  if (IS_LOCAL(get_txn_id()) && sdocc_phase == SDOCC_CHECK) {
-    // Perform SDOCC check logic here
-    DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
-    rc = start_sdocc_check();
-  } 
+  // if (IS_LOCAL(get_txn_id()) && sdocc_phase == SDOCC_CHECK) {
+  //   // Perform SDOCC check logic here
+  //   DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
+  //   rc = start_sdocc_check();
+  // } 
   return rc;
 }
 #endif

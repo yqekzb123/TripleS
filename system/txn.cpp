@@ -386,6 +386,8 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	retry_for_conflict = 0;
 	// store(0, std::memory_order_relaxed);
 	has_re_enqueued.store(false, std::memory_order_relaxed);
+	marked_for_retry = false;
+	entered_tmp_queue = false;
 #endif
 
 	registed_ = false;
@@ -436,6 +438,8 @@ void TxnManager::reset() {
 	sdocc_phase = SDOCC_INIT;
 	sdocc_send_remote = false;
 	sdocc_expected_rsp_cnt = 0;
+	marked_for_retry = false;
+	entered_tmp_queue = false;
 #endif
 	assert(txn);
 	assert(query);
@@ -582,24 +586,15 @@ RC TxnManager::start_sdocc_check() {
 	set_rc(rc);
 	if (is_multi_part()) {
 		txn_stats.trans_validate_network_start_time = get_sys_clock();
-		// rc = validate();
-		send_prepare_messages();
-		rc = WAIT_REM;
+		rc = validate(); 
+		if (rc == RCOK) {
+			send_prepare_messages();
+			sdocc_phase = SDOCC_REMOTE_CHECK;
+			rc = WAIT_REM;
+		}
 	} else {
 		rc = validate();
 		// !更新水印
-		// bool watermark_passed = false;
-		// uint64_t key = get_batch_key(get_batch_id(), return_id, get_txn_id());
-		// if(rc == RCOK) {
-		// 	// ! 检查水印
-    	// 	watermark_passed = key <= check_water_mark->get_global_watermark() - 1;
-		// }
-		// if(!watermark_passed || rc == RETRY) {
-		// if (rc == RETRY) {
-		// 	// assert(false);
-		// 	// !事务重新入队
-		// 	rc = RETRY;
-		// }  
 		if (rc == RCOK) {
 			assert(rc == RCOK);
 			// 可以提交了
@@ -613,7 +608,7 @@ RC TxnManager::start_sdocc_check() {
 RC TxnManager::start_sdocc_commit() {
 	DEBUG_WRK("%ld,%ld start_sdocc_commit\n",get_batch_id(), get_txn_id());
 	RC rc = RCOK;
-	assert(sdocc_phase == SDOCC_CHECK);
+	assert(sdocc_phase == SDOCC_CHECK || sdocc_phase == SDOCC_REMOTE_CHECK);
 	sdocc_phase = SDOCC_COMMIT;
 	if (is_multi_part()) {
 		send_finish_messages();
@@ -1192,7 +1187,6 @@ RC TxnManager::validate() {
 	// ! 检查水印
 	uint64_t key;
 	bool watermark_passed = false;
-	// if (rc == RCOK) {
 	if (IS_LOCAL(get_txn_id())) {
 		key = get_batch_key(get_batch_id(), return_id, get_txn_id());
 		watermark_passed = key <= (check_water_mark->get_global_watermark() + 1);
@@ -1203,21 +1197,35 @@ RC TxnManager::validate() {
 			DEBUG_WRK("(%ld,%ld) watermark passed, key %ld, watermark %ld\n",get_batch_id(),get_txn_id(),key,check_water_mark->get_global_watermark());
 		}
 	}
-	// !更新水印
 	if (IS_LOCAL(get_txn_id())) {
-		#if WORKLOAD == YCSB
-		YCSBQuery *ycsb_query = (YCSBQuery *)query;
-		if (!ycsb_query->rwset_variable) {
-			update_local_watermark(get_thd_id(), this);
-		} else {
-			if (rc == RCOK && watermark_passed) {
-				update_local_watermark(get_thd_id(), this);
-			}
-		}
-		#else 
-			update_local_watermark(get_thd_id(), this);
-		#endif
+		update_local_watermark(get_thd_id(), this);
 	}
+	// if (rc == RCOK) {
+	// if (IS_LOCAL(get_txn_id())) {
+		// key = get_batch_key(get_batch_id(), return_id, get_txn_id());
+		// watermark_passed = key <= (check_water_mark->get_global_watermark() + 1);
+		// if (!watermark_passed) {
+		// 	DEBUG_WRK("(%ld,%ld) watermark not passed, key %ld, watermark %ld\n",get_batch_id(),get_txn_id(),key,check_water_mark->get_global_watermark());
+		// 	rc = RETRY;
+		// } else {
+		// 	DEBUG_WRK("(%ld,%ld) watermark passed, key %ld, watermark %ld\n",get_batch_id(),get_txn_id(),key,check_water_mark->get_global_watermark());
+		// }
+	// }
+	// !更新水印
+	// if (IS_LOCAL(get_txn_id())) {
+		// #if WORKLOAD == YCSB
+		// YCSBQuery *ycsb_query = (YCSBQuery *)query;
+		// if (!ycsb_query->rwset_variable) {
+		// 	update_local_watermark(get_thd_id(), this);
+		// } else {
+		// 	if (rc == RCOK && watermark_passed) {
+		// 		update_local_watermark(get_thd_id(), this);
+		// 	}
+		// }
+		// #else 
+		// 	update_local_watermark(get_thd_id(), this);
+		// #endif
+	// }
 #endif
 
 	INC_STATS(get_thd_id(),txn_validate_time,get_sys_clock() - starttime);

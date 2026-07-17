@@ -18,8 +18,8 @@ bool Row_sdocc::add_reservation(std::vector<sdocc_version>& reservations, pthrea
     // 先加锁
     bool insert = false;
     uint64_t key = get_batch_key(batch_id,return_id,txn_id);
-    bool is_blind = false;
-    // bool is_blind = (WORKLOAD == YCSB);
+    // bool is_blind = false;
+    bool is_blind = (WORKLOAD == YCSB);
     pthread_mutex_lock(latch);
     // 然后遍历reservations，找到合适的位置插入；
     // 如果key是最大的，就插在最后面；如果key在中间，就插在中间；如果key已经存在，就不插入了，直接返回。

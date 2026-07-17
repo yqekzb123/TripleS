@@ -2405,11 +2405,11 @@ RC TPCCTxnManager::run_sdocc_txn() {
     }
   }
   // assert(IS_LOCAL(get_txn_id()));
-  if (IS_LOCAL(get_txn_id()) && sdocc_phase == SDOCC_CHECK) {
-    // Perform SDOCC check logic here
-    DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
-    rc = start_sdocc_check();
-  } 
+//   if (IS_LOCAL(get_txn_id()) && sdocc_phase == SDOCC_CHECK) {
+//     // Perform SDOCC check logic here
+//     DEBUG_WRK("[%ld] Run SDOCC txn %ld,%ld in phase %s\n",get_thd_id(),txn->batch_id,txn->txn_id,get_sdocc_phase_str(sdocc_phase).c_str());
+//     rc = start_sdocc_check();
+//   } 
   return rc;
 }
 

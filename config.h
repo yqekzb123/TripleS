@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB or TPCC or PPS
-#define WORKLOAD TPCC
+#define WORKLOAD YCSB
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -212,9 +212,9 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 1048576*8
-#define ZIPF_THETA 0.7
-#define TXN_WRITE_PERC 1.0
+#define SYNTH_TABLE_SIZE 16777216
+#define ZIPF_THETA 1.5
+#define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
 #define SCAN_LEN          20
@@ -252,11 +252,11 @@
 // are not modeled.
 #define TPCC_ACCESS_ALL       false
 #define WH_UPDATE         false
-#define NUM_WH 64
+#define NUM_WH 32
 // % of transactions that access multiple partitions
-#define MPR 0.15
+#define MPR 0.2
 #define MPIR 0.01
-#define MPR_NEWORDER 0.1
+#define MPR_NEWORDER MPR
 #if NODE_CNT == 1
 #define NO_REMOTE
 #endif
@@ -352,7 +352,7 @@ enum PPSTxnType {
 #define DEBUG_LOCKFREE_LIST false
 #define DEBUG_REORDER         false
 #define DEBUG_SEQUENCER     false
-#define DEBUG_SCHEDULER     false
+#define DEBUG_SCHEDULER     true
 #define DEBUG_WORKER        false
 #define DEBUG_TIMEREPORT     true
 #define DEBUG_LOCK          false

@@ -292,7 +292,7 @@ public:
   ListNode<watermark_node_entry*>* cld_pointer;
   #endif
   #if CC_ALG == SDOCC
-  ListNode<watermark_node_entry*>* list_node_pointer;
+  // ListNode<watermark_node_entry*>* list_node_pointer;
 
   std::atomic<bool> has_re_enqueued{0};
   uint64_t retry_cnt = 0;
