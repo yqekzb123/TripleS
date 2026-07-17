@@ -5,3 +5,5 @@ python3 run_experiments.py ycsb_skew_pip ycsb_writes ycsb_dist_ratio tpcc_wh ycs
 
 # python3 run_experiments.py ycsb_rwset_ratio
 # python3 run_experiments.py ycsb_sch_cnt
+
+python3 run_experiments.py ycsb_writes ycsb_dist_ratio tpcc_wh ycsb_rwset_ratio

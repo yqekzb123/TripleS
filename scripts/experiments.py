@@ -115,9 +115,9 @@ def ycsb_skew_pip():
     # scnt = [1]
     scnt = [3]
     # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    # skew = [0.5]
+    skew = [0.3]
     # skew = [0.1]
-    skew = [1.5]
+    # skew = [1.5]
     fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
     exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
     return fmt,exp
@@ -131,8 +131,8 @@ def ycsb_writes():
     # algos=['SDPCC']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    # tup_write_perc = [0.0,0.2,0.4,0.6,0.8,1.0]
+    # tup_write_perc = [0.2]
+    tup_write_perc = [0.0,0.2,0.4,0.6,0.8,1.0]
     load = [10000]
     total_cnt=[16]
     scnt = [3]
@@ -144,15 +144,15 @@ def ycsb_writes():
 def ycsb_random_idle():
     wl = 'YCSB'
     nnodes = [2]
-    algos=['CALVIN']
-    # algos=['CALVIN','ARIA','SDPCC','SDOCC']
+    # algos=['SDOCC']
+    algos=['CALVIN','ARIA','SDPCC','SDOCC']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
     tup_write_perc = [0.2]
     random_wait = 'true'
     # 0.0001ms, 0.001ms, 0.01ms, 0.1ms, 1ms
-    wait_time=['100000UL']
-    # wait_time=['0UL','100000UL']
+    # wait_time=['100000UL']
+    wait_time=['0UL','100000UL']
     # wait_time=['100UL','1000UL','10000UL','100000UL','1000000UL']
     load = [10000]
     total_cnt=[16]
@@ -246,7 +246,7 @@ def ycsb_dist_ratio():
     txn_write_perc = [1.0]
     tup_write_perc = [0.2]
     load = [10000]
-    mpr=[0.2]
+    mpr=[0.0]
     # mpr=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
     total_cnt=[16]
     scnt = [3]
@@ -416,8 +416,8 @@ def tpcc_wh():
     # algos=['CALVIN','ARIA','SDPCC','SDOCC']
     # npercpay=[0.0]
     npercpay=[0.489]
-    num_wh=[32]
-    # num_wh=[128,64,32,16,8]
+    # num_wh=[32]
+    num_wh=[128,64,32,16,8]
     # num_wh=[64,32,16,8]
     # num_wh=[256,128,64,32,16,8]
     load = [10000]
@@ -564,7 +564,7 @@ configs = {
     "MODE":"NORMAL_MODE",
     "SHMEM_ENV":"false",
     "STRICT_PPT":0,
-    "SET_AFFINITY":"false",
+    "SET_AFFINITY":"true",
     "SERVER_GENERATE_QUERIES":"false",
     "SKEW_METHOD":"ZIPF",
     "ENVIRONMENT_EC2":"false",

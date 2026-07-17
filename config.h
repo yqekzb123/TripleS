@@ -83,7 +83,7 @@
 /***********************************************/
 #define TPORT_TYPE tcp
 #define TPORT_PORT 18000
-#define SET_AFFINITY false
+#define SET_AFFINITY true
 
 #define MAX_TPORT_NAME 128
 #define MSG_SIZE 128 // in bytes
@@ -200,7 +200,7 @@
 // #define LONG_TXN_SCHEDULE false
 #define SCHEDULER_CNT 3
 
-#define OPEN_RANDOM_WAIT false
+#define OPEN_RANDOM_WAIT true
 #define RANDOM_WAIT_TIME 100000UL
 #define RANDOM_WAIT_TIME 100000UL
 
@@ -213,8 +213,8 @@
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
 #define SYNTH_TABLE_SIZE 16777216
-#define ZIPF_THETA 1.5
-#define TXN_WRITE_PERC 1
+#define ZIPF_THETA 0.0
+#define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
 #define SCAN_LEN          20
@@ -352,7 +352,7 @@ enum PPSTxnType {
 #define DEBUG_LOCKFREE_LIST false
 #define DEBUG_REORDER         false
 #define DEBUG_SEQUENCER     false
-#define DEBUG_SCHEDULER     true
+#define DEBUG_SCHEDULER     false
 #define DEBUG_WORKER        false
 #define DEBUG_TIMEREPORT     true
 #define DEBUG_LOCK          false
