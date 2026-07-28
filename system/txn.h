@@ -52,7 +52,7 @@ public:
 #endif
 #if CC_ALG == SDOCC
 	// uint64_t sdocc_read_reservation;
-	sdocc_version sdocc_write_reservation;
+	sdocc_version* sdocc_write_reservation = nullptr;
 #endif
 	void cleanup();
 };
@@ -252,14 +252,40 @@ public:
 
 #if CC_ALG == SDOCC
 	// uint64_t last_sdocc_read_reservation;
-	sdocc_version last_sdocc_write_reservation;
+	sdocc_version* last_sdocc_write_reservation;
 	// ListNode<watermark_node_entry*>* list_node_pointer;
 	bool marked_for_retry;
 	bool entered_tmp_queue;
 
+	// 等待远程提交相关
+	bool is_blind;   // 是否是盲写事务，即不需要等待提交
+	// std::atomic<uint64_t> wait_commit_cnt;  // 整体等待数量，即，本地等待的事务数+远程等待的节点数
+	// std::atomic<uint64_t> local_wait_commit_cnt; //本地等待的事务数
+	// std::atomic<uint64_t> remote_wait_commit_cnt;  //远程等待节点数
+
+	pthread_mutex_t successor_lock;
+	std::set<TxnManager*> successor_transaction; 
+
+	pthread_mutex_t predecessor_lock;
+	std::set<TxnManager*> predecessor_transaction; 
+	std::set<uint64_t> predecessor_node; 
+	int volatile wait_ready;
+
+	bool has_wait_predecessor_commit() {
+		// return wait_commit_cnt.load() == 0;
+		return predecessor_transaction.size() == 0;
+		// return predecessor_transaction.size() == 0 &&
+				// predecessor_node.size() == 0;
+				
+		// return local_wait_commit_cnt.load() == 0 && remote_wait_commit_cnt.load() == 0;
+	}
+
+	// 统计信息
 	uint64_t retry_cnt; // 当前是第几次重试了
 	uint64_t retry_for_watermark;
 	uint64_t retry_for_conflict;
+
+	// 临时队列相关的信息
 	double enter_tmp_queue_time;
 	std::atomic<bool> has_re_enqueued; // 是否已经重试入队过了，避免重复入队
 	// bool has_re_enqueued; // 是否已经重试入队过了，避免重复入队
@@ -382,7 +408,6 @@ protected:
 
 #if CC_ALG == SDOCC
 	RC 				check();
-	// RC 				finish(RC rc);
 #endif
 };
 

@@ -168,6 +168,7 @@
 #define RWSET_KNOWN_RATIO 1.0
 
 #define RWSET_VARIABLE_RATIO 0.0
+// #define NO_BLIND_WRITE true
 /***********************************************/
 // Dynamic write perc and skew
 /***********************************************/
@@ -200,7 +201,7 @@
 // #define LONG_TXN_SCHEDULE false
 #define SCHEDULER_CNT 3
 
-#define OPEN_RANDOM_WAIT true
+#define OPEN_RANDOM_WAIT false
 #define RANDOM_WAIT_TIME 100000UL
 #define RANDOM_WAIT_TIME 100000UL
 
@@ -213,7 +214,7 @@
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
 #define SYNTH_TABLE_SIZE 16777216
-#define ZIPF_THETA 0.0
+#define ZIPF_THETA 0.7
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
@@ -290,7 +291,7 @@ enum DATxnType {
 #define MAX_DA_TABLE_SIZE 10000
 
 
-#define TXN_TYPE          TPCC_DIST
+#define TXN_TYPE          TPCC_ALL
 #define PERC_PAYMENT 0.489
 #define FIRSTNAME_MINLEN      8
 #define FIRSTNAME_LEN         16

@@ -367,12 +367,17 @@ struct ListNode {
     ListNode(const T& d) : data(d), next(nullptr), status(NODE_AVAILABLE) {}
 };
 
-
+class TxnManager;
 struct sdocc_version {
     uint64_t id;
     bool available;
     bool is_blind;
     uint64_t data;
+
+    TxnManager* txn;
+
+    sdocc_version(uint64_t i, bool a, bool b, uint64_t d) : id(i), available(a), is_blind(b), data(d), txn(nullptr) {}
+    sdocc_version(uint64_t i, bool a, bool b, uint64_t d, TxnManager* t) : id(i), available(a), is_blind(b), data(d), txn(t) {}
 };
 
 // 写一个作为默认无效的值的宏

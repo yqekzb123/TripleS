@@ -102,7 +102,6 @@ private:
 
     OrderedList<TxnManager*,CompareTxnManager,CompareTxnWater> tmp_txn_list;
     uint64_t tmp_txn_list_size = 0;
-    // std::vector<TxnManager*> tmp_txn_list;
 
     void handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid);
     void handle_txn_for_validate();

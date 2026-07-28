@@ -380,7 +380,7 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 #endif
 #if CC_ALG == SDOCC
 	// last_sdocc_read_reservation = 0;
-	last_sdocc_write_reservation = {0, false, false, 0};
+	last_sdocc_write_reservation = nullptr;
 	retry_cnt = 0;
 	retry_for_watermark = 0;
 	retry_for_conflict = 0;
@@ -388,6 +388,18 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	has_re_enqueued.store(false, std::memory_order_relaxed);
 	marked_for_retry = false;
 	entered_tmp_queue = false;
+
+	// 用来考虑是不是盲写
+	is_blind = false;
+	// wait_commit_cnt = 0;
+	// local_wait_commit_cnt = 0;
+	// remote_wait_commit_cnt = 0;
+	successor_transaction.clear();
+	pthread_mutex_init(&successor_lock, NULL);
+
+	pthread_mutex_init(&predecessor_lock, NULL);
+	predecessor_transaction.clear();
+	predecessor_node.clear();
 #endif
 
 	registed_ = false;
@@ -434,12 +446,25 @@ void TxnManager::reset() {
 #endif
 #if CC_ALG == SDOCC
 	// last_sdocc_read_reservation = 0;
-	last_sdocc_write_reservation = {0, false, false, 0};
+	last_sdocc_write_reservation = nullptr;
 	sdocc_phase = SDOCC_INIT;
 	sdocc_send_remote = false;
 	sdocc_expected_rsp_cnt = 0;
 	marked_for_retry = false;
 	entered_tmp_queue = false;
+
+	is_blind = false;
+	// wait_commit_cnt = 0;
+	// local_wait_commit_cnt = 0;
+	// remote_wait_commit_cnt = 0;
+	wait_ready = true;
+	
+	pthread_mutex_init(&successor_lock, NULL);
+	successor_transaction.clear();
+
+	pthread_mutex_init(&predecessor_lock, NULL);
+	predecessor_transaction.clear();
+	predecessor_node.clear();
 #endif
 	assert(txn);
 	assert(query);
@@ -713,7 +738,7 @@ void TxnManager::send_finish_messages() {
 
 int TxnManager::received_response(RC rc) {
 	assert(txn->rc == RCOK || txn->rc == Abort || txn->rc == RETRY );
-	if (txn->rc == RCOK) txn->rc = rc;
+	if (txn->rc == RCOK) set_rc(rc);
 #if CC_ALG == CALVIN || CC_ALG == SDPCC
 	++rsp_cnt;
 #else
@@ -927,6 +952,9 @@ void TxnManager::cleanup(RC rc) {
 		row_t * row = calvin_locked_rows[i];
 		row->return_row(rc,RD,this,row);
 	}
+#endif
+#if CC_ALG == SDOCC
+	// finish();
 #endif
 	if (rc == Abort) {
 		txn->release_inserts(get_thd_id());
@@ -1183,6 +1211,9 @@ RC TxnManager::validate() {
 	}
 #endif
 #if CC_ALG == SDOCC
+	#if WORKLOAD == YCSB
+	is_blind = (get_txn_id() % 100 >= RWSET_VARIABLE_RATIO * 100);
+	#endif
 	rc = check();
 	// ! 检查水印
 	uint64_t key;
@@ -1200,32 +1231,6 @@ RC TxnManager::validate() {
 	if (IS_LOCAL(get_txn_id())) {
 		update_local_watermark(get_thd_id(), this);
 	}
-	// if (rc == RCOK) {
-	// if (IS_LOCAL(get_txn_id())) {
-		// key = get_batch_key(get_batch_id(), return_id, get_txn_id());
-		// watermark_passed = key <= (check_water_mark->get_global_watermark() + 1);
-		// if (!watermark_passed) {
-		// 	DEBUG_WRK("(%ld,%ld) watermark not passed, key %ld, watermark %ld\n",get_batch_id(),get_txn_id(),key,check_water_mark->get_global_watermark());
-		// 	rc = RETRY;
-		// } else {
-		// 	DEBUG_WRK("(%ld,%ld) watermark passed, key %ld, watermark %ld\n",get_batch_id(),get_txn_id(),key,check_water_mark->get_global_watermark());
-		// }
-	// }
-	// !更新水印
-	// if (IS_LOCAL(get_txn_id())) {
-		// #if WORKLOAD == YCSB
-		// YCSBQuery *ycsb_query = (YCSBQuery *)query;
-		// if (!ycsb_query->rwset_variable) {
-		// 	update_local_watermark(get_thd_id(), this);
-		// } else {
-		// 	if (rc == RCOK && watermark_passed) {
-		// 		update_local_watermark(get_thd_id(), this);
-		// 	}
-		// }
-		// #else 
-		// 	update_local_watermark(get_thd_id(), this);
-		// #endif
-	// }
 #endif
 
 	INC_STATS(get_thd_id(),txn_validate_time,get_sys_clock() - starttime);

@@ -201,6 +201,7 @@ public:
 #endif
 #if CC_ALG == SDOCC
   uint64_t retry_cnt = 0;
+  bool needs_wait = false;
 #endif
 
   // For Calvin PPS: part keys from secondary lookup for sequencer response

@@ -4,6 +4,9 @@
 #include "sdocc.h"
 #include "global.h"
 #include "water_mark.h"
+#include "work_queue.h"
+#include "msg_queue.h"
+#include "message.h"
 
 #if CC_ALG == SDOCC
 std::string get_sdocc_phase_str(SDOCC_PHASE phase) {

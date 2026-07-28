@@ -197,6 +197,7 @@ void TxnTable::restart_txn(uint64_t thd_id, uint64_t txn_id,uint64_t batch_id){
 }
 
 void TxnTable::release_transaction_manager(uint64_t thd_id, uint64_t txn_id, uint64_t batch_id){
+  // printf("release txn %ld,%ld\n",batch_id,txn_id);
   uint64_t starttime = get_sys_clock();
 
   uint64_t pool_id = txn_id % pool_size;
