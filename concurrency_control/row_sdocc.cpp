@@ -109,6 +109,51 @@ RC Row_sdocc::access(TxnManager * txn, access_t type, row_t * local_row){
     return RCOK;
 }
 
+RC Row_sdocc::wait_commit_dependency(TxnManager * txn) {
+    // 只要进来，就是一定是RETRY状态；
+    RC rc = RETRY;
+
+    // 只有过了水印，才能等待提交水印
+    uint64_t key = get_batch_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
+    bool watermark_passed = key <= (check_water_mark->get_global_watermark() + 1);
+    
+    // 先测试本地进行等待，远程的不管
+    bool is_local = IS_LOCAL(txn->get_txn_id());
+
+    // 考虑两个事务 Ti < Tj，当前事务是Tj，前驱是Ti
+    if (watermark_passed) {
+    // if (watermark_passed && is_local) {
+        TxnManager * predecessor = txn->last_sdocc_write_reservation->txn;
+        // 先给自己加Ti
+        pthread_mutex_lock(&txn->predecessor_lock);
+        txn->predecessor_transaction.insert(predecessor);
+        pthread_mutex_unlock(&txn->predecessor_lock);
+
+        // 然后给Ti加自己
+        pthread_mutex_lock(&predecessor->successor_lock);
+        predecessor->successor_transaction.insert(txn);
+        pthread_mutex_unlock(&predecessor->successor_lock);
+        // txn->local_wait_commit_cnt.fetch_add(1);
+        // txn->wait_commit_cnt.fetch_add(1);
+
+        // 再次验证，当前操作是不是已经提交了，如果已经提交，这一步操作按照RCOK来
+        if (txn->last_sdocc_write_reservation->available) {
+            pthread_mutex_lock(&txn->predecessor_lock);
+            auto iter = txn->predecessor_transaction.find(predecessor);
+            if (iter ==  txn->predecessor_transaction.end()) {
+                // 已经被Ti处理，所以等待重试即可
+            } else {
+                txn->predecessor_transaction.erase(predecessor);
+                rc = RCOK;
+            }
+            pthread_mutex_unlock(&txn->predecessor_lock);
+        } else {
+            DEBUG_WRK("[SDOCC] txn %ld,%ld read key %ld, but write reservation %ld,%d has not commit, waiting transaction %ld,%ld, now wait_commit_cnt %ld\n", txn->get_batch_id(), txn->get_txn_id(), key, txn->last_sdocc_write_reservation->id, txn->last_sdocc_write_reservation->available, predecessor->get_batch_id(),predecessor->get_txn_id(),txn->predecessor_transaction.size());
+        }
+    }
+    return rc;
+}
+
 RC Row_sdocc::check(TxnManager * txn, access_t type, row_t * local_row, Access *a) {
     // return RCOK;
     uint64_t key = get_batch_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
@@ -141,6 +186,11 @@ RC Row_sdocc::check(TxnManager * txn, access_t type, row_t * local_row, Access *
             DEBUG_WRK("[SDOCC] txn %ld,%ld read key %ld, but write reservation changed from %ld,%d to %ld,%d, return RETRY\n", txn->get_batch_id(), txn->get_txn_id(), key, a->sdocc_write_reservation->id, a->sdocc_write_reservation->available, txn->last_sdocc_write_reservation->id, txn->last_sdocc_write_reservation->available);
             rc = RETRY;
             a->sdocc_write_reservation = txn->last_sdocc_write_reservation;
+            if (txn->last_sdocc_write_reservation->available != true && 
+            txn->last_sdocc_write_reservation->is_blind != true) {
+                // 如果是在等待未提交事务
+                // rc = wait_commit_dependency(txn);
+            }
         } else {
             DEBUG_WRK("[SDOCC] txn %ld,%ld read key %ld, write reservation from %ld,%d to %ld,%d, return RCOK\n", txn->get_batch_id(), txn->get_txn_id(), key, a->sdocc_write_reservation->id, a->sdocc_write_reservation->available, txn->last_sdocc_write_reservation->id, txn->last_sdocc_write_reservation->available);
         }

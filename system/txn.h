@@ -408,6 +408,7 @@ protected:
 
 #if CC_ALG == SDOCC
 	RC 				check();
+	RC 				finish();
 #endif
 };
 

@@ -37,6 +37,8 @@ public:
     // 根据calvin_key获取这个事务能读取到的最新的reservation，只获得最新的那一个
     sdocc_version* get_reservations(std::vector<sdocc_version*>& reservations, pthread_mutex_t * latch, uint64_t batch_id,uint64_t return_id,uint64_t txn_id);
 
+    RC wait_commit_dependency(TxnManager * txn);
+
 private:
     row_t * _row;
 };
