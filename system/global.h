@@ -299,6 +299,8 @@ enum RemReqType {
   CALVIN_ABORT,
   ARIA_ACK,
   PIP_ACK,
+  SDOCC_ACK,
+
   WATERMARK,
   NO_MSG
 };
@@ -326,6 +328,7 @@ inline string rtype_to_string(RemReqType rtype) {
       case CALVIN_ACK: return "CALVIN_ACK";
       case CALVIN_ABORT: return "CALVIN_ABORT";
       case PIP_ACK: return "PIP_ACK";
+      case SDOCC_ACK: return "SDOCC_ACK";
       case WATERMARK: return "WATERMARK";
       case NO_MSG: return "NO_MSG";
       case LOG_MSG_RSP: return "LOG_MSG_RSP";

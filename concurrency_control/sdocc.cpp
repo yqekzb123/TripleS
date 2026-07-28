@@ -4,6 +4,9 @@
 #include "sdocc.h"
 #include "global.h"
 #include "water_mark.h"
+#include "work_queue.h"
+#include "msg_queue.h"
+#include "message.h"
 
 #if CC_ALG == SDOCC
 std::string get_sdocc_phase_str(SDOCC_PHASE phase) {
@@ -45,6 +48,48 @@ RC TxnManager::check() {
     }
     DEBUG_WRK("[%ld] Check SDOCC txn %ld,%ld, rc: %s\n",get_thd_id(),get_batch_id(),txn_id,rc == RCOK? "OK" : "RETRY");
     return rc;
+}
+
+RC TxnManager::finish() {
+    pthread_mutex_lock(&successor_lock);
+    for (TxnManager* successor : successor_transaction) {
+        pthread_mutex_lock(&successor->predecessor_lock);
+        auto iter = successor->predecessor_transaction.find(this);
+        // assert(iter != successor->predecessor_transaction.end());
+        if (iter ==  successor->predecessor_transaction.end()) {
+            // 已经被Tj自己处理了
+            pthread_mutex_unlock(&successor->predecessor_lock);
+            continue;
+        }
+        successor->predecessor_transaction.erase(this);
+        pthread_mutex_unlock(&successor->predecessor_lock);
+        // uint64_t count = successor->wait_commit_cnt.fetch_sub(1);
+        // successor->local_wait_commit_cnt.fetch_sub(1);
+        // 也就是说，经过这次--，这个事务能跑了，或者在本地能跑了
+        // if (count == 1) {
+        if (successor->predecessor_transaction.size() == 0) {
+            if (IS_LOCAL(successor->get_txn_id())) {
+                // 本地直接重启
+                if(ATOM_CAS(successor->wait_ready,false,true)) {
+                    work_queue.sdocc_enqueue(get_thd_id(), successor->last_msg, false);
+                    DEBUG_WRK("txn %ld,%ld re-enqueue successor %ld,%ld into queue\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id());
+                } else {
+                    DEBUG_WRK("txn %ld,%ld no re-enqueue successor %ld,%ld because not lock_ready\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id());
+                }
+            } else {
+                // 远程发消息
+                if(ATOM_CAS(successor->wait_ready,false,true)) {
+                    msg_queue.enqueue(get_thd_id(), Message::create_message(successor, SDOCC_ACK),
+                        GET_NODE_ID(successor->get_txn_id()));
+                    DEBUG_WRK("txn %ld,%ld notice successor %ld,%ld to remote node %ld\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id(),GET_NODE_ID(successor->get_txn_id()));
+                } else {
+                    DEBUG_WRK("txn %ld,%ld no notice successor %ld,%ld because not lock_ready\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id());
+                }
+            }
+        }
+    }
+    pthread_mutex_unlock(&successor_lock);
+    return RCOK;
 }
 
 void update_local_watermark(uint64_t thd_id, TxnManager * txn_manager) {

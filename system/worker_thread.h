@@ -56,6 +56,7 @@ public:
     RC process_log_msg(Message * msg);
     RC process_log_msg_rsp(Message * msg);
     RC process_log_flushed(Message * msg);
+    RC process_sdocc_wait_rsp(Message *msg);
     RC init_phase();
     uint64_t get_next_txn_id();
     bool is_cc_new_timestamp();
@@ -102,7 +103,6 @@ private:
 
     OrderedList<TxnManager*,CompareTxnManager,CompareTxnWater> tmp_txn_list;
     uint64_t tmp_txn_list_size = 0;
-    // std::vector<TxnManager*> tmp_txn_list;
 
     void handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid);
     void handle_txn_for_validate();

@@ -153,6 +153,7 @@ Message * Message::create_message(RemReqType rtype) {
     case RACK_PREP:
     case RACK_FIN:
     case PIP_ACK:
+    case SDOCC_ACK:
       msg = new AckMessage;
       break;
     case CL_QRY:
@@ -366,6 +367,7 @@ void Message::release_message(Message * msg) {
     case ARIA_ACK:
     case RACK_PREP:
     case RACK_FIN: 
+    case SDOCC_ACK:
     case PIP_ACK: {
       AckMessage * m_msg = (AckMessage*)msg;
       m_msg->release();
@@ -1212,6 +1214,7 @@ uint64_t AckMessage::get_size() {
 #endif
 #if CC_ALG == SDOCC
   size += sizeof(uint64_t);
+  size += sizeof(bool);
 #endif
   return size;
 }
@@ -1266,6 +1269,7 @@ void AckMessage::copy_from_buf(char * buf) {
 #endif
 #if CC_ALG == SDOCC
   COPY_VAL(retry_cnt,buf,ptr);
+  COPY_VAL(needs_wait,buf,ptr);
 #endif
 #if WORKLOAD == PPS && CC_ALG == CALVIN
 
@@ -1297,6 +1301,7 @@ void AckMessage::copy_to_buf(char * buf) {
 #endif
 #if CC_ALG == SDOCC
   COPY_BUF(buf,retry_cnt,ptr);
+  COPY_BUF(buf,needs_wait,ptr);
 #endif
 #if WORKLOAD == PPS && CC_ALG == CALVIN
 

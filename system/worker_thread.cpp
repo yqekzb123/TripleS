@@ -117,6 +117,9 @@ RC WorkerThread::process(Message * msg) {
 			case LOG_MSG_RSP:
         rc = process_log_msg_rsp(msg);
 				break;
+      case SDOCC_ACK:
+        rc = process_sdocc_wait_rsp(msg);
+        break;
 			default:
         printf("Msg: %d\n",msg->get_rtype());
         fflush(stdout);
@@ -242,19 +245,15 @@ void WorkerThread::commit() {
 
   // Send result back to client
 #if CC_ALG == ARIA
-// #elif CC_ALG == SDOCC || CC_ALG == SILO
-//   DEBUG_SEQ("SDOCC ACK to %ld for (%ld,%ld)\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id());
-//   msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,CL_RSP),1);
-//   // assert(txn_man->return_id == g_node_id);
-//   work_queue.sequencer_enqueue(_thd_id,Message::create_message(txn_man,PIP_ACK));
 #else
-  // work_queue.sequencer_enqueue(_thd_id,Message::create_message(txn_man,PIP_ACK));
   DEBUG_WRK("ACK to %ld for (%ld,%ld) to client %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), txn_man->client_id);
   msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,CL_RSP),txn_man->client_id);
 #endif
-  // #if CC_ALG != SDOCC  && CC_ALG != SILO
-  release_txn_man();
-  // #endif
+  
+  // printf("Txn %ld,%ld local commit\n",txn_man->get_batch_id(), txn_man->get_txn_id());
+  #if CC_ALG != SDOCC && CC_ALG != SILO
+  release_txn_man(); 
+  #endif
   
   // Do not use txn_man after this
 }
@@ -468,7 +467,7 @@ RC WorkerThread::run() {
 #endif
     //uint64_t starttime = get_sys_clock();
     int algo = CC_ALG;
-    if((msg->rtype != CL_QRY) || algo == CALVIN) {
+    if((msg->rtype != CL_QRY) || algo == CALVIN || algo == SDOCC) {
       txn_man = get_transaction_manager(msg);
 
       if (CC_ALG != CALVIN && IS_LOCAL(txn_man->get_txn_id())) {
@@ -659,10 +658,28 @@ RC WorkerThread::run() {
         uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
         bool watermark_passed = key <= (check_water_mark->get_global_watermark() + 1);
         if (watermark_passed) {
-          DEBUG_SCH("Thd %ld txn %ld,%ld needs retry because conflict, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
+          DEBUG_SCH("Thd %ld txn %ld,%ld needs retry because conflict, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
           ((ClientQueryMessage*)txn_man->last_msg)->retry_for_conflict++;
           txn_man->retry_for_conflict = ((ClientQueryMessage*)txn_man->last_msg)->retry_for_conflict;
-          work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
+
+          // 这个时候设置，当前事务需要重启
+          ATOM_CAS(txn_man->wait_ready, true, false);
+          DEBUG_SCH("Thd %ld txn %ld,%ld, set lock ready to false\n",get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id());
+
+          if (txn_man->has_wait_predecessor_commit()) {
+            // 只有在水印通过，且所有前驱事务都提交以后，才能重试
+            if(ATOM_CAS(txn_man->wait_ready,false,true)) {
+              work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
+              DEBUG_SCH("Thd %ld txn %ld,%ld, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
+            } else {
+              DEBUG_SCH("Thd %ld txn %ld,%ld, not re-enqueue to list because not lock_ready\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id());
+            }
+          } else {
+            assert(RWSET_VARIABLE_RATIO > 0.0 || WORKLOAD == TPCC);
+            // 否则，什么也不用做，重试会交给前驱事务来处理
+            // tmp_txn_list.insert(txn_man);
+            // tmp_txn_list_size++;
+          }
         } else {
           DEBUG_SCH("Thd %ld txn %ld,%ld needs retry because watermark %ld, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), (check_water_mark->get_global_watermark() + 1), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
           ((ClientQueryMessage*)txn_man->last_msg)->retry_for_watermark++;
@@ -721,7 +738,11 @@ RC WorkerThread::process_rfin(Message * msg) {
     msg_queue.enqueue(get_thd_id(), Message::create_message(txn_man, RACK_FIN),
                       GET_NODE_ID(msg->get_txn_id()));
   }
+
+  // printf("Txn %ld,%ld remote commit\n",txn_man->get_batch_id(), txn_man->get_txn_id());
+  #if CC_ALG != SDOCC
   release_txn_man();
+  #endif
 
   return RCOK;
 }
@@ -738,6 +759,18 @@ RC WorkerThread::process_rack_prep(Message * msg) {
   uint64_t max_tid = ((AckMessage*)msg)->max_tid;
   txn_man->find_tid_silo(max_tid);
 #endif
+#if CC_ALG == SDOCC
+  if (((AckMessage*)msg)->rc == RETRY && 
+      ((AckMessage*)msg)->needs_wait) {
+    // txn_man->wait_commit_cnt.fetch_add(1);
+    // txn_man->remote_wait_commit_cnt.fetch_add(1);
+    pthread_mutex_lock(&txn_man->predecessor_lock);
+    txn_man->predecessor_node.insert(msg->return_node_id);
+    pthread_mutex_unlock(&txn_man->predecessor_lock);
+    DEBUG_WRK("%ld,%ld from %ld return retry\n", msg->get_batch_id(),msg->get_txn_id(), msg->return_node_id);
+  }
+#endif
+
   if (responses_left > 0) return WAIT;
   #if CC_ALG == SDOCC
   if (txn_man->retry_cnt != ((AckMessage*)msg)->retry_cnt) {
@@ -857,6 +890,28 @@ RC WorkerThread::process_rack_rfin(Message * msg) {
   work_queue.sequencer_enqueue(get_thd_id(),message);
 #endif
   return rc;
+}
+
+RC WorkerThread::process_sdocc_wait_rsp(Message* msg) {
+  DEBUG_WRK("SDOCC_ACK %ld,%ld", msg->get_batch_id(),msg->get_txn_id());
+  #if CC_ALG == SDOCC
+  assert(IS_LOCAL(msg->get_txn_id()));
+  // uint64_t count = txn_man->wait_commit_cnt.fetch_sub(1);
+  // txn_man->remote_wait_commit_cnt.fetch_sub(1);
+  pthread_mutex_lock(&txn_man->predecessor_lock);
+  txn_man->predecessor_node.erase(msg->return_node_id);
+  pthread_mutex_unlock(&txn_man->predecessor_lock);
+  // if (count == 1) {
+  if (txn_man->has_wait_predecessor_commit()){
+    if(ATOM_CAS(txn_man->wait_ready,false,true)) {
+      work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
+      DEBUG_WRK("SDOCC ACK, re-enqueue successor %ld,%ld into queue\n",txn_man->get_batch_id(),txn_man->get_txn_id());
+    } else {
+      DEBUG_WRK("SDOCC ACK, no re-enqueue successor %ld,%ld because not lock_ready\n",txn_man->get_batch_id(),txn_man->get_txn_id());
+    }
+  }
+  #endif
+  return RCOK;
 }
 
 #if CC_ALG != ARIA
@@ -1011,12 +1066,20 @@ RC WorkerThread::process_rprepare(Message * msg) {
       return WAIT;
     } else {
       txn_man->retry_cnt = ((PrepareMessage *)msg)->retry_cnt;
+      ATOM_CAS(txn_man->wait_ready,true,false);
     }
     txn_man->set_rc(RCOK);
     #endif
     rc  = txn_man->validate();
     txn_man->set_rc(rc);
+    #if CC_ALG == SDOCC
+    bool needs_wait = !txn_man->has_wait_predecessor_commit();
+    AckMessage* ack_msg = (AckMessage*)Message::create_message(txn_man,RACK_PREP);
+    ack_msg->needs_wait = needs_wait;
+    msg_queue.enqueue(get_thd_id(),ack_msg,msg->return_node_id);
+    #else
     msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,RACK_PREP),msg->return_node_id);
+    #endif
     // Clean up as soon as abort is possible
     if(rc == Abort) {
       txn_man->abort();
@@ -1069,13 +1132,14 @@ RC WorkerThread::process_rtxn(Message * msg) {
       txn_man = txn_table.get_transaction_manager(get_thd_id(),txn_id,batch_id);
       txn_man->register_thread(this);
     }
+    #if CC_ALG != SDOCC
     uint64_t ready_starttime = get_sys_clock();
     bool ready = txn_man->unset_ready();
     INC_STATS(get_thd_id(),worker_activate_txn_time,get_sys_clock() - ready_starttime);
     assert(ready);
     DEBUG("Thd %ld txn %ld,%ld unset ready\n",
           get_thd_id(), txn_man->get_batch_id(),txn_man->get_txn_id());
-
+    #endif
     if (CC_ALG == WAIT_DIE) {
       txn_man->set_timestamp(get_next_ts());
     }

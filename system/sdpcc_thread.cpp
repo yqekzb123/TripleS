@@ -34,6 +34,7 @@
 #include "message.h"
 #include "work_queue.h"
 #include <vector>
+#include "water_mark.h"
 
 #if CC_ALG == SDPCC
 void SDPCCLockThread::setup() {}
