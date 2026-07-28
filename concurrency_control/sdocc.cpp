@@ -78,6 +78,7 @@ RC TxnManager::finish() {
                 }
             } else {
                 // 远程发消息
+                assert(OPEN_REMOTE_WAIT_COMMIT);
                 if(ATOM_CAS(successor->wait_ready,false,true)) {
                     msg_queue.enqueue(get_thd_id(), Message::create_message(successor, SDOCC_ACK),
                         GET_NODE_ID(successor->get_txn_id()));

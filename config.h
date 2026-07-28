@@ -167,7 +167,8 @@
 #define RWSET_KNOWN false
 #define RWSET_KNOWN_RATIO 1.0
 
-#define RWSET_VARIABLE_RATIO 0.0
+#define RWSET_VARIABLE_RATIO 1.0
+#define OPEN_REMOTE_WAIT_COMMIT true
 // #define NO_BLIND_WRITE true
 /***********************************************/
 // Dynamic write perc and skew

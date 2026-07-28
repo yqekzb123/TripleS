@@ -112,6 +112,7 @@ RC Row_sdocc::access(TxnManager * txn, access_t type, row_t * local_row){
 RC Row_sdocc::wait_commit_dependency(TxnManager * txn) {
     // 只要进来，就是一定是RETRY状态；
     RC rc = RETRY;
+    // printf("txn %ld,%ld enter wait_commit_dependency\n",txn->get_batch_id(), txn->get_txn_id());
 
     // 只有过了水印，才能等待提交水印
     uint64_t key = get_batch_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
@@ -121,8 +122,11 @@ RC Row_sdocc::wait_commit_dependency(TxnManager * txn) {
     bool is_local = IS_LOCAL(txn->get_txn_id());
 
     // 考虑两个事务 Ti < Tj，当前事务是Tj，前驱是Ti
+    #if OPEN_REMOTE_WAIT_COMMIT
     if (watermark_passed) {
-    // if (watermark_passed && is_local) {
+    #else
+    if (watermark_passed && is_local) {
+    #endif
         TxnManager * predecessor = txn->last_sdocc_write_reservation->txn;
         // 先给自己加Ti
         pthread_mutex_lock(&txn->predecessor_lock);
@@ -176,9 +180,6 @@ RC Row_sdocc::check(TxnManager * txn, access_t type, row_t * local_row, Access *
     
     if (type == RD || type == SCAN) {
         // 读操作，检查写操作，即处理读写冲突
-        // #if WORKLOAD == YCSB
-        // if (txn->last_sdocc_write_reservation.id > a->sdocc_write_reservation.id) {
-        // #else
         if (txn->last_sdocc_write_reservation->id > a->sdocc_write_reservation->id || 
             (txn->last_sdocc_write_reservation->available != true && 
              txn->last_sdocc_write_reservation->is_blind != true)) {
@@ -189,7 +190,7 @@ RC Row_sdocc::check(TxnManager * txn, access_t type, row_t * local_row, Access *
             if (txn->last_sdocc_write_reservation->available != true && 
             txn->last_sdocc_write_reservation->is_blind != true) {
                 // 如果是在等待未提交事务
-                // rc = wait_commit_dependency(txn);
+                rc = wait_commit_dependency(txn);
             }
         } else {
             DEBUG_WRK("[SDOCC] txn %ld,%ld read key %ld, write reservation from %ld,%d to %ld,%d, return RCOK\n", txn->get_batch_id(), txn->get_txn_id(), key, a->sdocc_write_reservation->id, a->sdocc_write_reservation->available, txn->last_sdocc_write_reservation->id, txn->last_sdocc_write_reservation->available);

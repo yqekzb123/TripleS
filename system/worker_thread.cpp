@@ -251,9 +251,9 @@ void WorkerThread::commit() {
 #endif
   
   // printf("Txn %ld,%ld local commit\n",txn_man->get_batch_id(), txn_man->get_txn_id());
-  // #if CC_ALG != SDOCC && CC_ALG != SILO
+  #if CC_ALG != SDOCC && CC_ALG != SILO
   release_txn_man(); 
-  // #endif
+  #endif
   
   // Do not use txn_man after this
 }
@@ -740,9 +740,9 @@ RC WorkerThread::process_rfin(Message * msg) {
   }
 
   // printf("Txn %ld,%ld remote commit\n",txn_man->get_batch_id(), txn_man->get_txn_id());
-  // #if CC_ALG != SDOCC
+  #if CC_ALG != SDOCC
   release_txn_man();
-  // #endif
+  #endif
 
   return RCOK;
 }
@@ -902,7 +902,7 @@ RC WorkerThread::process_sdocc_wait_rsp(Message* msg) {
   txn_man->predecessor_node.erase(msg->return_node_id);
   pthread_mutex_unlock(&txn_man->predecessor_lock);
   // if (count == 1) {
-  if (txn_man->predecessor_node.size() == 0){
+  if (txn_man->has_wait_predecessor_commit() == 0){
     if(ATOM_CAS(txn_man->wait_ready,false,true)) {
       work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
       DEBUG_WRK("SDOCC ACK, re-enqueue successor %ld,%ld into queue\n",txn_man->get_batch_id(),txn_man->get_txn_id());
@@ -1082,7 +1082,7 @@ RC WorkerThread::process_rprepare(Message * msg) {
     // Clean up as soon as abort is possible
     if(rc == Abort) {
       txn_man->abort();
-      
+    }
 
     return rc;
 }

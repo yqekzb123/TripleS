@@ -285,7 +285,7 @@ def ycsb_rwset_variable_ratio():
     # rwset = [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
     # rwset = [0.0,0.01,0.05,0.1]
     # rwset = [0.0,0.2,0.4,0.6,0.8,1.0]
-    rwset = [0.0]
+    rwset = [1.0]
     total_cnt=[16]
     scnt = [3]
     fmt = ["WORKLOAD","CC_ALG","RWSET_VARIABLE_RATIO","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]

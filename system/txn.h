@@ -273,10 +273,13 @@ public:
 
 	bool has_wait_predecessor_commit() {
 		// return wait_commit_cnt.load() == 0;
+		#if OPEN_REMOTE_WAIT_COMMIT
+		return predecessor_transaction.size() == 0 &&
+				predecessor_node.size() == 0;
+		#else
 		return predecessor_transaction.size() == 0;
-		// return predecessor_transaction.size() == 0 &&
-				// predecessor_node.size() == 0;
-				
+		#endif
+		// 
 		// return local_wait_commit_cnt.load() == 0 && remote_wait_commit_cnt.load() == 0;
 	}
 

@@ -954,7 +954,7 @@ void TxnManager::cleanup(RC rc) {
 	}
 #endif
 #if CC_ALG == SDOCC
-	// finish();
+	finish();
 #endif
 	if (rc == Abort) {
 		txn->release_inserts(get_thd_id());

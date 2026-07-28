@@ -55,11 +55,8 @@ RC SDOCCSequencerThread::run() {
             INC_STATS(_thd_id, seq_idle_time, get_sys_clock() - idle_starttime);
             idle_starttime = 0;
         }
-		// work_queue.sdocc_enqueue(_thd_id, msg, false);
 		int rtype = msg->get_rtype();
-		// if (rtype == PIP_ACK) {
-		// 	sdocc_seq_man.process_ack(msg, _thd_id);
-		// } else 
+
 		if (rtype == CL_QRY) {
 			sdocc_seq_man.put_one_txn_to_batch(_thd_id, msg);
 		} else {
