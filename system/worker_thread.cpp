@@ -606,7 +606,14 @@ RC WorkerThread::run() {
     //     usleep(wait_time);
     //   }
     // }
-    if (get_thd_id() % g_thread_cnt == 0 && msg->batch_id != last_batch_id) {
+    
+    if (
+        get_thd_id() % g_thread_cnt == 1 && 
+        msg->batch_id > last_batch_id &&
+        msg->rtype == CL_QRY &&
+        // msg->txn_id % 3000 == 0 &&
+        msg->batch_id != 0
+      ) {
       last_batch_id = msg->batch_id;
       uint64_t wait_time = RANDOM_WAIT_TIME; // 单位为微秒
       DEBUG_WRK("Thd %ld batch %ld wait for %ld us\n", get_thd_id(), msg->batch_id, wait_time);

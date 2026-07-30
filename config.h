@@ -13,7 +13,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 4
+#define NODE_CNT 2
 #define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB or TPCC or PPS
-#define WORKLOAD TPCC
+#define WORKLOAD YCSB
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -194,7 +194,7 @@
 // Benchmark
 /***********************************************/
 // max number of rows touched per transaction
-#define MAX_ROW_PER_TXN       128
+#define MAX_ROW_PER_TXN       64
 #define QUERY_INTVL         1UL
 #define MAX_TXN_PER_PART 500000
 #define FIRST_PART_LOCAL      true
@@ -205,7 +205,7 @@
 // #define LONG_TXN_SCHEDULE false
 #define SCHEDULER_CNT 5
 
-#define OPEN_RANDOM_WAIT false
+#define OPEN_RANDOM_WAIT true
 #define RANDOM_WAIT_TIME 100000UL
 
 // ==== [YCSB] ====
@@ -216,8 +216,8 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 1048576*8
-#define ZIPF_THETA 0.7
+#define SYNTH_TABLE_SIZE 16777216
+#define ZIPF_THETA 0.0
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
@@ -256,11 +256,11 @@
 // are not modeled.
 #define TPCC_ACCESS_ALL       false
 #define WH_UPDATE         false
-#define NUM_WH 128
+#define NUM_WH 32
 // % of transactions that access multiple partitions
-#define MPR 0.15
+#define MPR 0.2
 #define MPIR 0.01
-#define MPR_NEWORDER 0.1
+#define MPR_NEWORDER MPR
 #if NODE_CNT == 1
 #define NO_REMOTE
 #endif
