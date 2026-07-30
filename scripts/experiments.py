@@ -109,12 +109,12 @@ def ycsb_scaling_ARIA():
 # for test
 def ycsb_skew():
     wl = 'YCSB'
-    nnodes = [4]
+    nnodes = [2]
     # algos=['CALVIN','ARIA','SDPCC','SDOCC']
     # algos=['ARIA','SDPCC','SDOCC']
     algos=['SDPCC']
     base_table_size=1048576*8
-    txn_write_perc = [1]
+    txn_write_perc = [1.0]
     tup_write_perc = [0.2]
     load = [10000]
     total_cnt=[15]
@@ -122,9 +122,9 @@ def ycsb_skew():
     # scnt = [1]
     scnt = [3]
     # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    # skew = [0.7]
+    skew = [0.7]
     # skew = [0.1]
-    skew = [1.5]
+    # skew = [1.5]
     fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
     exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
     return fmt,exp
@@ -134,6 +134,7 @@ def ycsb_skew_PCC():
     nnodes = [2]
     # algos=['CALVIN','ARIA','SDPCC','SDOCC']
     # algos=['ARIA','SDPCC','SDOCC']
+    # algos=['CALVIN']
     algos=['CALVIN','SDPCC']
     base_table_size=1048576*8
     txn_write_perc = [1]
@@ -156,9 +157,9 @@ def ycsb_skew_OCC():
     nnodes = [2]
     # algos=['CALVIN','ARIA','SDPCC','SDOCC']
     # algos=['ARIA','SDPCC','SDOCC']
-    algos=['SDPCC']
+    algos=['SDOCC']
     base_table_size=1048576*8
-    txn_write_perc = [1]
+    txn_write_perc = [1.0]
     tup_write_perc = [0.2]
     load = [10000]
     total_cnt=[16]
@@ -177,7 +178,7 @@ def ycsb_writes_PCC():
     # nnodes = [4]
     nnodes = [2]
     algos=['CALVIN','SDPCC']
-    # algos=['SDPCC']
+    # algos=['CALVIN']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
     # tup_write_perc = [0.2]
@@ -211,7 +212,7 @@ def ycsb_writes_OCC():
 def ycsb_random_idle_PCC():
     wl = 'YCSB'
     nnodes = [2]
-    # algos=['SDOCC']
+    # algos=['CALVIN']
     algos=['CALVIN','SDPCC']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
@@ -275,7 +276,7 @@ def ycsb_dist_ratio_PCC():
     wl = 'YCSB'
     nnodes = [2]
     algos=['CALVIN','SDPCC']
-    # algos=['SDPCC']
+    # algos=['CALVIN']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
     tup_write_perc = [0.2]
@@ -362,8 +363,8 @@ def ycsb_sch_cnt():
 
 def ycsb_batch_size_PCC():
     wl = 'YCSB'
-    algos=['CALVIN','SDPCC','SDOCC']
-    # algos=['ARIA']
+    algos=['CALVIN','SDPCC']
+    # algos=['CALVIN']
     aria_batch_size=[50,100,500,1000,2000,3000,5000,9000]
     # aria_batch_size=[9999]
     # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
@@ -391,8 +392,8 @@ def ycsb_aria_batch():
     wl = 'YCSB'
     # algos=['CALVIN','ARIA','SDPCC','SDOCC']
     algos=['ARIA']
-    aria_batch_size=[50,100,500,1000,2000,3000,5000,9000]
-    # aria_batch_size=[9999]
+    # aria_batch_size=[50,100,500,1000,2000,3000,5000,9000]
+    aria_batch_size=[50,100,500,1000,2000,3000]
     skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
     # skew = [0.3]
     fmt = ["WORKLOAD","ARIA_BATCH_SIZE","ZIPF_THETA","CC_ALG"]
@@ -403,7 +404,7 @@ def ycsb_aria_batch():
 def ycsb_aria_batch2():
     wl = 'YCSB'
     algos=['ARIA']
-    aria_batch_size=[50,100,500,1000,2000,3000,5000,9000,9999]
+    aria_batch_size=[50,100,500,1000,2000]
     mpr=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
     skew = 0.7
     fmt = ["WORKLOAD","ARIA_BATCH_SIZE","MPR","CC_ALG","ZIPF_THETA"]
@@ -414,7 +415,7 @@ def ycsb_aria_batch2():
 def ycsb_aria_batch3():
     wl = 'YCSB'
     algos=['ARIA']
-    aria_batch_size=[50,100,500,1000,2000,3000,5000,9000,9999]
+    aria_batch_size=[50,100,500]
     tup_write_perc = [0.0,0.2,0.4,0.6,0.8,1.0]
     skew = 0.7
     fmt = ["WORKLOAD","ARIA_BATCH_SIZE","TXN_WRITE_PERC","CC_ALG","ZIPF_THETA"]
@@ -478,6 +479,7 @@ def tpcc_wh_PCC():
     wl = 'TPCC'
     nnodes = [2]
     algos=['CALVIN','SDPCC']
+    # algos=['CALVIN']
     # npercpay=[0.0]
     npercpay=[0.489]
     # num_wh=[32]
@@ -541,7 +543,7 @@ def tpcc_aria_batch():
     wl = 'TPCC'
     nnodes = 2
     algos=['ARIA']
-    aria_batch_size=[50,100,500,1000,2000,3000,5000,9000,9999]
+    aria_batch_size=[50,100,500,1000]
     num_wh=[128,64,32,16,8]
     fmt = ["WORKLOAD","ARIA_BATCH_SIZE","NUM_WH","CC_ALG"]
     exp = [[wl,bs,wh*nnodes,algo] for algo,wh,bs in itertools.product(algos,num_wh,aria_batch_size)]
@@ -590,7 +592,7 @@ experiment_map = {
 
     # TPCC_WH
     'tpcc_wh_PCC': tpcc_wh_PCC,
-    'tpcc_wh_OCC': tpcc_wh_PCC,
+    'tpcc_wh_OCC': tpcc_wh_OCC,
     'tpcc_aria_batch': tpcc_aria_batch, # Aria的TPCC WH
 
     # 下面是优化测试

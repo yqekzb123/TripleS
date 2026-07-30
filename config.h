@@ -13,7 +13,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 4
+#define NODE_CNT 2
 #define THREAD_CNT 15
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -167,6 +167,7 @@
 #define RWSET_KNOWN false
 #define RWSET_KNOWN_RATIO 1.0
 // 盲写优化
+// 0.0代表盲写优化全开
 #define RWSET_VARIABLE_RATIO 0.0
 #define OPEN_REMOTE_WAIT_COMMIT true
 // #define NO_BLIND_WRITE true
@@ -217,9 +218,9 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 33554432
-#define ZIPF_THETA 1.5
-#define TXN_WRITE_PERC 1
+#define SYNTH_TABLE_SIZE 16777216
+#define ZIPF_THETA 0.7
+#define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
 #define SCAN_LEN          20
