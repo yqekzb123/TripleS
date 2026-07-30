@@ -20,7 +20,6 @@
 #include "global.h"
 #include "helper.h"
 #include "concurrentqueue.h"
-#include "lock_free_queue.h"
 #include <boost/lockfree/queue.hpp>
 #include "semaphore.h"
 class BaseQuery;
@@ -41,7 +40,6 @@ public:
   void enqueue(uint64_t thd_id, Message * msg, uint64_t dest);
   uint64_t dequeue(uint64_t thd_id, Message *& msg);
 private:
- //LockfreeQueue m_queue;
 // This is close to max capacity for boost
 #if NETWORK_DELAY_TEST
   boost::lockfree::queue<msg_entry*> ** cl_m_queue;

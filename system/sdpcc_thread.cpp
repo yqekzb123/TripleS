@@ -96,49 +96,21 @@ RC SDPCCLockThread::run() {
 			rc = txn_man->acquire_locks();
 		}
 
+		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+		#if OPEN_DISTRIBUTED_WATERMARK
+		check_water_mark->mark_completed(key, get_thd_id());
+		DEBUG_SCH("[SDPCCThread] %ld mark %ld,%ld key %ld complete\n", _thd_id, txn_man->get_batch_id(),txn_man->get_txn_id(), key);
+		uint64_t current_minSid = check_water_mark->get_global_watermark();
+		#else
 		// 更新水印minSid
 		uint64_t old_sid = sids[id];
-		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
-		// sids[id] = (txn_man->get_batch_id() << 32) + (txn_man->return_id << 24) + txn_man->get_txn_id() + 1;
 		assert(key > minSid);
 		assert(key > sids[id]);
 		sids[id] = key;
-
 		uint64_t current_minSid = minSid;
 		DEBUG_SCH("[SDPCCThread] %ld set sid from %ld to %ld, now minSid %ld\n", _thd_id, old_sid, sids[id], minSid);
-		//Update minSid
-		// if (_thd_id == the_first_scheduler_id) {
-		// 	uint64_t min = UINT64_MAX;
-		// 	// #if DEBUG_SCHEDULER
-		// 	// std::string sid_log = "[SDPCCThread] " + std::to_string(_thd_id) + " minSid update: sids = ";
-		// 	// #endif
-		// 	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
-		// 		uint64_t current_sid = sids[i];
-		// 		// #if DEBUG_SCHEDULER
-		// 		// sid_log += std::to_string(current_sid) + " ";
-		// 		// #endif
-		// 		if (current_sid < min) min = current_sid;
-		// 	}
-		// 	assert(min >= minSid);
-		// 	minSid = min;
-		// 	// #if DEBUG_SCHEDULER
-		// 	// sid_log += "| new minSid = " + std::to_string(minSid);
-		// 	// std::vector<uint64_t> ids = split_batch_key(minSid);
-		// 	// sid_log += "| now (" + std::to_string(ids[0]) + "," + std::to_string(ids[2]) +") can running\n";
-		// 	// std::cout << sid_log;
-		// 	// #endif
-		// }
-
+		#endif
 		txn_man->last_msg = msg;
-		
-		// // 这个是水印对应的 lock
-		
-
-		// if (tmp_txn_list.size() > 0){
-		// 	TxnManager* last_txn = tmp_txn_list.back();
-		// 	uint64_t last_key = get_batch_key(last_txn->get_batch_id(), last_txn->return_id, last_txn->get_txn_id());
-		// 	assert(key > last_key);
-		// }
 
 		tmp_txn_list.push_back(txn_man);
 		DEBUG_SCH("[SDPCCThread] %ld txn %ld,%ld enter tmp_txn_list\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id());
@@ -146,11 +118,6 @@ RC SDPCCLockThread::run() {
 			// !检查是否要塞入队列的逻辑
 			handle_tmp_txn(current_minSid, old_minSid);
 		}
-		// work_queue.insert_sdpcc_list_lockfree(_thd_id, txn_man);	
-		// if (rc == RCOK) {
-		// 	work_queue.enqueue(_thd_id,txn_man->last_msg,false);
-		// }
-
 		txn_man->set_ready();
 
 		INC_STATS(_thd_id,mtx[33],get_sys_clock() - prof_starttime);
@@ -174,9 +141,8 @@ void SDPCCLockThread::handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minS
 		if (txn_man->decr_lr() == 0) {
 			// 塞到队列里
 			if(ATOM_CAS(txn_man->lock_ready,false,true)) {
-				work_queue.enqueue(_thd_id,txn_man->last_msg,false);
-				// work_queue.insert_sdpcc_list_lockfree(_thd_id, txn_man);
 				DEBUG_SCH("[SDPCCThread] %ld enqueue txn %ld,%ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id());
+				work_queue.enqueue(_thd_id,txn_man->last_msg,false);
 			} else {
 				DEBUG_SCH("[SDPCCThread] %ld handle txn %ld,%ld failed, lock_ready_cnt %d, key %ld, current_minSid %ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id(), txn_man->lock_ready_cnt ,key, current_minSid);
 			}

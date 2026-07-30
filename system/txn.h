@@ -371,10 +371,6 @@ public:
 	int last_batch_id;
 	int last_txn_id;
 	Message* last_msg;
-
-    // 如果此事务被插入到 sdpcc_scheduled_list_lockfree 中，
-    // scheduled_entry 指向其对应的 list_node_entry（用于更新 snapshot）
-    struct list_node_entry* scheduled_entry = nullptr;
 protected:
 
 	int rsp_cnt;

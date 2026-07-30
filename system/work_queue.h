@@ -24,7 +24,6 @@
 #include <boost/circular_buffer.hpp>
 #include "semaphore.h"
 #include "small_lock_list.h"
-#include "circle_list.h"
 //#include "message.h"
 
 class BaseQuery;
@@ -54,17 +53,11 @@ public:
     void sequencer_enqueue(uint64_t thd_id, Message * msg);
     Message * sequencer_dequeue(uint64_t thd_id);
 
-    // 判断能不能取出事务的两个条件函数
-    void insert_list_lockfree(uint64_t thd_id,
-                      TxnMsgLockList * list,
-                      Message * msg, TxnManager * txn);
     TxnManager * get_txn_from_list_lockfree(uint64_t thd_id, TxnMsgLockList * list, uint64_t &key);
     Message * get_msg_from_list_lockfree(uint64_t thd_id, TxnMsgLockList * list, uint64_t &key);
     // 用于SDPCC的
 
 #if CC_ALG == SDPCC
-    void insert_sdpcc_list_lockfree(uint64_t thd_id, TxnManager * txn);
-    TxnManager * get_from_sdpcc_list_lockfree(uint64_t thd_id, uint64_t &key);
     Message * sdpcc_sched_dequeue(uint64_t thd_id);
 #endif
 
@@ -79,7 +72,6 @@ public:
     Message * txn_dequeue(uint64_t thd_id);
     void sdocc_enqueue(uint64_t thd_id, Message* msg, bool not_ready);
     Message * sdocc_dequeue(uint64_t thd_id);
-    void insert_sdocc_list_lockfree(uint64_t thd_id, TxnManager * txn);
     TxnManager * get_from_sdocc_list_lockfree(uint64_t thd_id);
 #endif
 
@@ -107,8 +99,6 @@ public:
     // PIP Calvin相关
     #if CC_ALG == SDPCC
     bool sched_ready;
-    TxnMsgLockList * sdpcc_scheduled_list_lockfree;
-    CircleList* sdpcc_list;
     #endif
 
     #if CC_ALG == SDOCC// || CC_ALG == SILO

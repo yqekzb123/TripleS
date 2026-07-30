@@ -16,30 +16,15 @@
 #include <stdint.h>
 #include <pthread.h>
 #include "helper.h"
-// #include "small_lock_list.h"
 #include "message.h"
-// #include "global.h"
-// #include 
-
-// 写一个带key或者水印时间的，包括事务TxnManager的结构体
-// enum WaterMarkStatus : int { UNKNOWN = 0, PENDING, COMPLETED, REMOVED };
-// struct watermark_node_entry
-// {
-// public:
-//     /* data */
-//     uint64_t key; // 这里的key是事务号 (txn->get_batch_id() << 32) + (txn->return_id << 24) + txn->get_txn_id() + 1;
-//     WaterMarkStatus status;
-//     watermark_node_entry() : key(0), status(UNKNOWN) {}
-//     ~watermark_node_entry() {}
-// };
 
 class WaterMarkList {
 public:
-    WaterMarkList() {
+    WaterMarkList(uint64_t tc) : thd_cnt(tc) {
         for (uint64_t i = 0; i < g_node_cnt; i++) {
             water_mark[i] = 0;
         }
-        for (uint64_t i = 0; i < g_thread_cnt; i++) {
+        for (uint64_t i = 0; i < tc; i++) {
             sids[i] = 0;
         }
     }
@@ -71,7 +56,7 @@ public:
     bool update_local_watermark(uint64_t thd_id) {
         uint64_t old_sid = water_mark[g_node_id];
         uint64_t min = UINT64_MAX;
-        for (uint64_t i = 0; i < g_thread_cnt; i++) {
+        for (uint64_t i = 0; i < thd_cnt; i++) {
             uint64_t current_sid = sids[i];
             if (current_sid < min) min = current_sid;
         }
@@ -105,27 +90,28 @@ public:
     void receive_watermark(uint64_t nid, uint64_t sid, uint64_t thd_id) {
         // 这里可以直接更新对应节点的水印值，然后调用update_watermark来更新minSid
         water_mark[nid] = sid;
-        // update_local_watermark(thd_id);
         DEBUG_SCH("[WaterMarkList] receive watermark from node %lu, sid: %lu\n", nid, sid);
         update_global_watermark();
     }
     void mark_completed(uint64_t key, uint64_t thd_id) {
-        uint64_t old_sid = sids[thd_id];
+        uint64_t t_idx = thd_id % thd_cnt;
+        uint64_t old_sid = sids[t_idx];
 		assert(key > water_mark[g_node_id]);
-		assert(key > sids[thd_id]);
-		sids[thd_id] = key;
-        DEBUG_SCH("[WaterMarkList] mark watermark %lu as completed by thread %lu, old sid: %lu, new sid: %lu, now sids: %s\n", key, thd_id, old_sid, sids[thd_id], get_sids_str().c_str());
+		assert(key > sids[t_idx]);
+		sids[t_idx] = key;
+        DEBUG_SCH("[WaterMarkList] mark watermark %lu as completed by thread %lu, old sid: %lu, new sid: %lu, now sids: %s\n", key, thd_id, old_sid, sids[t_idx], get_sids_str().c_str());
     }
     std::string get_sids_str() {
         std::string str = "[";
-        for (uint64_t i = 0; i < g_thread_cnt; i++) {
+        for (uint64_t i = 0; i < thd_cnt; i++) {
             str += std::to_string(sids[i]);
-            if (i != g_thread_cnt - 1) str += ",";
+            if (i != thd_cnt - 1) str += ",";
         }
         str += "]";
         return str;
     }
 private:
+    uint64_t thd_cnt; // 多少个线程
     uint64_t sids[THREAD_CNT]; // 每个线程的水印
     uint64_t water_mark[NODE_CNT]; // 远程的水印
     uint64_t glob_water_mark = 0; // 这个是全局的水印，表示所有节点都已经完成的最大事务号

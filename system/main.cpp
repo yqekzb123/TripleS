@@ -136,17 +136,20 @@ int main(int argc, char *argv[]) {
 	return 0;
 #endif
 
-#if CC_ALG == SDPCC
+	#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
 	sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_scheduler_thread_cnt);
 	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
 		sids[i] = 0;
 	}
-#endif
-	#if CC_ALG == SDOCC
-	check_water_mark = new WaterMarkList();
-	// check_water_mark = new WaterMarkList("sdocc_check_water_mark");
+	#endif
+	#if (CC_ALG == SDPCC && OPEN_DISTRIBUTED_WATERMARK)
+	check_water_mark = new WaterMarkList(g_scheduler_thread_cnt);
 	#endif
 
+	#if CC_ALG == SDOCC 
+	check_water_mark = new WaterMarkList(g_thread_cnt);
+	#endif
+	
 	printf("Initializing work queue... ");
 	fflush(stdout);
 	work_queue.init();

@@ -61,6 +61,14 @@ void InputThread::setup() {
 				msgs->erase(msgs->begin());
 				continue;
 			}
+			if (msg->rtype == WATERMARK) {
+				DEBUG_SCH("OutputThread %ld receive watermark %ld from node %ld\n", get_thd_id(), ((WaterMarkMessage*)msg)->get_watermark(), msg->get_return_id());
+				check_water_mark->receive_watermark(msg->get_return_id(), ((WaterMarkMessage*)msg)->get_watermark(), get_thd_id());
+				msg->release();
+				delete msg;
+				msgs->erase(msgs->begin());
+				continue;
+			}
 #endif
 #if CC_ALG == SDOCC
 			if (msg->rtype == WATERMARK) {
@@ -185,6 +193,14 @@ RC InputThread::server_recv_loop() {
 			if(msg->rtype == RDONE || msg->rtype == CL_QRY) {
 				assert(ISSERVERN(msg->get_return_id()));
 				work_queue.sched_enqueue(get_thd_id(),msg);
+				msgs->erase(msgs->begin());
+				continue;
+			}
+			if (msg->rtype == WATERMARK) {
+				DEBUG_SCH("OutputThread %ld receive watermark %ld from node %ld\n", get_thd_id(), ((WaterMarkMessage*)msg)->get_watermark(), msg->get_return_id());
+				check_water_mark->receive_watermark(msg->get_return_id(), ((WaterMarkMessage*)msg)->get_watermark(), get_thd_id());
+				msg->release();
+				delete msg;
 				msgs->erase(msgs->begin());
 				continue;
 			}

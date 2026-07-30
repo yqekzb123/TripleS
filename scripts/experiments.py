@@ -106,6 +106,29 @@ def ycsb_scaling_ARIA():
     exp = [[wl,algo,n,base_table_size*n,mpr,prorate_rate,tup_wr_perc,txn_wr_perc,ld,sk,thr,cthr,sthr,rthr,sthr,rthr,100] for thr,cthr,sthr,rthr,txn_wr_perc,tup_wr_perc,sk,ld,mpr,prorate_rate,n,algo in itertools.product(tcnt,ctcnt,scnt,rcnt,txn_write_perc,tup_write_perc,skew,load,mpr,prorate,nnodes,algos)]
     return fmt,exp
 
+# for test
+def ycsb_skew():
+    wl = 'YCSB'
+    nnodes = [4]
+    # algos=['CALVIN','ARIA','SDPCC','SDOCC']
+    # algos=['ARIA','SDPCC','SDOCC']
+    algos=['SDPCC']
+    base_table_size=1048576*8
+    txn_write_perc = [1]
+    tup_write_perc = [0.2]
+    load = [10000]
+    total_cnt=[15]
+    # total_cnt=[16]
+    # scnt = [1]
+    scnt = [3]
+    # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
+    # skew = [0.7]
+    # skew = [0.1]
+    skew = [1.5]
+    fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
+    exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
+    return fmt,exp
+
 def ycsb_skew_PCC():
     wl = 'YCSB'
     nnodes = [2]
@@ -539,6 +562,8 @@ def tpcc_aria_batch2():
 ##############################
 
 experiment_map = {
+    # for test
+    'ycsb_skew' : ycsb_skew,
     # YCSB_WRITE
     'ycsb_writes_PCC': ycsb_writes_PCC, # calvin sdpcc
     'ycsb_writes_OCC': ycsb_writes_OCC, # sdocc

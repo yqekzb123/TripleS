@@ -334,7 +334,7 @@ RC WorkerThread::run() {
 	while(!simulation->is_done()) {
     txn_man = NULL;
     heartbeat();
-    enum class message_original {no_msg, work_queue, LockfreeQueue};
+    enum class message_original {no_msg, work_queue};
     progress_stats();
     Message* msg = NULL;
     uint64_t key = 0;
@@ -347,14 +347,6 @@ RC WorkerThread::run() {
         txn_man = get_transaction_manager(msg);
       }
     }
-    // 如果没有msg，再去拿本地的事务
-    // if (!msg) {
-    //   txn_man = work_queue.get_from_sdpcc_list_lockfree(_thd_id, key);
-    //   if (txn_man) {
-    //     msg_orig = message_original::LockfreeQueue;
-    //     msg = txn_man->last_msg;
-    //   }
-    // }
     if (txn_man == NULL) {
       if (idle_starttime == 0) idle_starttime = get_sys_clock();
         continue;
@@ -1508,31 +1500,9 @@ RC StatsPerIntervalThread::run(){
       txn_cnt_last_time = txn_cnt_this_time;
       txn_cnt_this_time = 0;
       last_second = now_time;
-
-      #if CC_ALG == SDPCC
-      // work_queue.sdpcc_scheduled_list_lockfree->DEBUG_PRINT_LIST_LENGTH();
-      // work_queue.sdpcc_list->DEBUG_PRINT_LIST_LENGTH();
-      #endif
-      #if CC_ALG == SDOCC
-      // work_queue.sdocc_lockfree->DEBUG_PRINT_LIST_LENGTH();
-      #endif
       DEBUG_TIME("------StatsPerIntervalThread %ld seconds--------\n",loop);
       loop++;
     }
-    // #if CC_ALG == SDOCC 
-    //   // check_water_mark->remove_consumed();
-    //   bool updated = check_water_mark->update_local_watermark(_thd_id);
-    //   if (updated) {
-    //     for (uint64_t i = 0; i < g_node_cnt; i++) {
-    //       if (i == g_node_id) continue;
-    //       Message * msg = check_water_mark->broadcast_watermark();
-    //       DEBUG_SCH("Worker %ld broadcast watermark %ld\n", get_thd_id(), check_water_mark->get_global_watermark());
-    //       if (msg) {
-    //         msg_queue.enqueue(_thd_id, msg, i);
-    //       }
-    //     }
-    //   }
-    // #endif 
     #if CC_ALG == SDOCC
       bool updated = check_water_mark->update_local_watermark(_thd_id);
       if (updated) {
@@ -1547,8 +1517,19 @@ RC StatsPerIntervalThread::run(){
       }
     #endif
     #if CC_ALG == SDPCC
-      // work_queue.sdpcc_list->mark_head();
-      // 把第一个调度器的水印更新塞到这来，保证每个调度器的水印都能及时更新
+      #if OPEN_DISTRIBUTED_WATERMARK
+      bool updated = check_water_mark->update_local_watermark(_thd_id);
+      if (updated) {
+        for (uint64_t i = 0; i < g_node_cnt; i++) {
+          if (i == g_node_id) continue;
+          Message * msg = check_water_mark->broadcast_watermark();
+          DEBUG_SCH("Worker %ld broadcast watermark %ld\n", get_thd_id(), check_water_mark->get_global_watermark());
+          if (msg) {
+            msg_queue.enqueue(_thd_id, msg, i);
+          }
+        }
+      }
+      #else
       uint64_t min = UINT64_MAX;
 			for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
 				uint64_t current_sid = sids[i];
@@ -1556,6 +1537,7 @@ RC StatsPerIntervalThread::run(){
 			}
 			assert(min >= minSid);
 			minSid = min;
+      #endif
     #endif
       // last_millisecond = now_time;
     // }

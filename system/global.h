@@ -167,7 +167,9 @@ extern UInt32 g_rem_thread_cnt;
 #if CC_ALG == SDPCC
 extern UInt32 g_scheduler_thread_cnt;
 extern uint64_t the_first_scheduler_id;
-extern uint64_t * sids;
+extern uint64_t * sids;   // 优化后的单机水印
+
+extern WaterMarkList* check_water_mark;  // 没优化的全局水印
 #endif
 #if CC_ALG == SDOCC
 extern WaterMarkList* check_water_mark;

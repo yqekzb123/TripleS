@@ -23,7 +23,6 @@
 #include "txn.h"
 #include "water_mark.h"
 #include <boost/lockfree/queue.hpp>
-#include "circle_list.h"
 
 void QWorkQueue::init() {
 
@@ -61,8 +60,6 @@ void QWorkQueue::init() {
 	#endif
 	#if CC_ALG == SDPCC
 		sched_ready = true;
-		sdpcc_scheduled_list_lockfree = new TxnMsgLockList("SdpccScheduledList");
-		sdpcc_list = new CircleList(g_inflight_max,g_node_cnt);
 	#endif
 	#if CC_ALG == ARIA
 		read_ready = true;
@@ -503,31 +500,6 @@ Message * QWorkQueue::dequeue(uint64_t thd_id) {
 }
 
 // 下面是 PIPLINE相关的代码
-// 最基本的lock-free list插入函数，需要指定线程号，插入的链表，还有插入的消息
-void QWorkQueue::insert_list_lockfree(uint64_t thd_id, 
-									  TxnMsgLockList * list, 
-									  Message * msg, TxnManager * txn) {
-	uint64_t key;
-	if (msg) {
-		key = get_batch_key(msg->get_batch_id(), msg->get_return_id(), msg->get_txn_id());
-	} else {
-		key = get_batch_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
-	}
-	list_node_entry * entry = (list_node_entry*)mem_allocator.align_alloc(sizeof(list_node_entry));
-	entry->key = key;
-	if (txn) {
-		entry->txn = txn;
-		entry->entry_type = ENTRY_TYPE::TYPE_TXN;
-		txn->scheduled_entry = entry;
-	} else {
-		entry->entry_type = ENTRY_TYPE::TYPE_MSG;
-		entry->txn = NULL;
-	}
-	entry->msg = msg;
-
-	list->insert(entry, thd_id);
-}
-
 #if CC_ALG == SDOCC// || CC_ALG == SILO
 Message * QWorkQueue::sdocc_sequencer_dequeue(uint64_t thd_id) {
 	Message * msg = sequencer_dequeue(thd_id);
@@ -667,10 +639,6 @@ Message* QWorkQueue::sdocc_dequeue(uint64_t thd_id) {
 	return msg;
 }
 
-void QWorkQueue::insert_sdocc_list_lockfree(uint64_t thd_id, TxnManager * txn) {
-	insert_list_lockfree(thd_id, sdocc_lockfree, nullptr, txn);
-	return;
-}
 TxnManager * QWorkQueue::get_from_sdocc_list_lockfree(uint64_t thd_id) {
 	// 第一个函数
 	std::function<bool(list_node_entry*)> func = [](list_node_entry * arg) -> bool {
@@ -748,40 +716,5 @@ Message * QWorkQueue::sdpcc_sched_dequeue(uint64_t thd_id) {
 		ATOM_CAS(sched_ready, false, true);
 	}
 	return msg;
-}
-
-void QWorkQueue::insert_sdpcc_list_lockfree(uint64_t thd_id, TxnManager * txn) {
-	// insert_list_lockfree(thd_id, sdpcc_scheduled_list_lockfree, nullptr, txn);
-	uint64_t key = get_batch_key(txn->get_batch_id(), txn->return_id, txn->get_txn_id());
-	sdpcc_list->insert(thd_id, key, txn);
-	return;
-}
-
-TxnManager * QWorkQueue::get_from_sdpcc_list_lockfree(uint64_t thd_id, uint64_t &key) {
-	uint64_t starttime = get_sys_clock();
-	std::function<bool(circle_node_entry&)> judge_lock_watermark = [](circle_node_entry & arg) -> bool {
-		assert(arg.key <= minSid && arg.txn->lock_ready_cnt <= 0);
-		if (arg.key <= minSid && arg.txn->lock_ready_cnt <= 0) {
-			if (arg.txn->lock_ready_cnt < 0) {
-				DEBUG_LOCKFREE("[LockFreeList] get_from_sdpcc_list_lockfree txn %p lock_ready_cnt=%d\n", arg.txn, arg.txn->lock_ready_cnt);
-			}
-			return true;
-		}
-		DEBUG_LOCKFREE("[LockFreeList] get_from_sdpcc_list_lockfree cond2 skip txn %p key=%lu lock_ready_cnt=%d \n", arg.txn, arg.key, arg.txn->lock_ready_cnt);
-		return false;
-	};
-	TxnManager* txn = nullptr;
-	bool succ = sdpcc_list->try_take(judge_lock_watermark, txn, thd_id);
-
-	if (succ) {
-		// DEBUG("[LockFreeList] thd %ld get_from_sdpcc_list_lockfree key=%lu txn=%p\n", thd_id, entry->key, entry->txn);
-		INC_STATS(thd_id,small_lock_get_cnt,1);
-		INC_STATS(thd_id,small_lock_queue_wait_time,get_sys_clock() - starttime);
-		return txn;
-	} else {
-		INC_STATS(thd_id,small_lock_no_get_cnt,1);
-		INC_STATS(thd_id,small_lock_queue_wait_time,get_sys_clock() - starttime);
-		return NULL;
-	}
 }
 #endif
