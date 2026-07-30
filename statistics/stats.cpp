@@ -1319,7 +1319,7 @@ void Stats_thd::print(FILE * outf, bool prog) {
     fprintf(outf,",rcnt%lu=%lu",i,sdocc_retry_for_watermark[i]);
   }
   sdocc_avg_retry_time = (double)sdocc_total_retry_for_watermark/(double)sdocc_total_txn_cnt;
-  fprintf(outf,"\nsdocc_avg_retry_time=%lf,",sdocc_avg_retry_time);
+  fprintf(outf,"\nsdocc_avg_retry_time_for_watermark=%lf,",sdocc_avg_retry_time);
   #endif
   #if CC_ALG == SDOCC
   fprintf(outf,"\nsdocc_retry_for_conflict\n");
@@ -1327,7 +1327,7 @@ void Stats_thd::print(FILE * outf, bool prog) {
     fprintf(outf,",rcnt%lu=%lu",i,sdocc_retry_for_conflict[i]);
   }
   sdocc_avg_retry_time = (double)sdocc_total_retry_for_conflict/(double)sdocc_total_txn_cnt;
-  fprintf(outf,"\nsdocc_avg_retry_time=%lf,",sdocc_avg_retry_time);
+  fprintf(outf,"\nsdocc_avg_retry_time_for_conflict=%lf,",sdocc_avg_retry_time);
   #endif
   double sdocc_avg_round_time = (double)remote_round_cnt/(double)sdocc_total_txn_cnt;
   fprintf(outf,"avg_round_time=%lf,",sdocc_avg_round_time);
