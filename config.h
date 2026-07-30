@@ -22,7 +22,7 @@
 // PART_CNT should be at least NODE_CNT
 #define PART_CNT NODE_CNT
 #define CLIENT_NODE_CNT NODE_CNT
-#define CLIENT_THREAD_CNT 4
+#define CLIENT_THREAD_CNT 2
 #define CLIENT_REM_THREAD_CNT 2
 #define CLIENT_SEND_THREAD_CNT 2
 #define CLIENT_RUNTIME false
@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB or TPCC or PPS
-#define WORKLOAD YCSB
+#define WORKLOAD TPCC
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -106,7 +106,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG SDOCC
+#define CC_ALG ARIA
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -153,7 +153,7 @@
 #define DETERMINISTIC_ABORT_MODE false
 #define DETERMINISTIC_ABORT_RATIO 0.2
 // [ARIA]
-#define ARIA_BATCH_SIZE 3000
+#define ARIA_BATCH_SIZE 500
 // [TICTOC]
 #define MAX_NUM_WAITS 4
 #define PRE_ABORT true
@@ -167,7 +167,7 @@
 #define RWSET_KNOWN false
 #define RWSET_KNOWN_RATIO 1.0
 
-#define RWSET_VARIABLE_RATIO 1.0
+#define RWSET_VARIABLE_RATIO 0.0
 #define OPEN_REMOTE_WAIT_COMMIT true
 // #define NO_BLIND_WRITE true
 /***********************************************/
@@ -214,8 +214,8 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 16777216
-#define ZIPF_THETA 1.5
+#define SYNTH_TABLE_SIZE 1048576*8
+#define ZIPF_THETA 0.7
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
@@ -254,11 +254,11 @@
 // are not modeled.
 #define TPCC_ACCESS_ALL       false
 #define WH_UPDATE         false
-#define NUM_WH 32
+#define NUM_WH 64
 // % of transactions that access multiple partitions
-#define MPR 0.2
+#define MPR 0.15
 #define MPIR 0.01
-#define MPR_NEWORDER MPR
+#define MPR_NEWORDER 0.1
 #if NODE_CNT == 1
 #define NO_REMOTE
 #endif
