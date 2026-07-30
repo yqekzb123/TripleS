@@ -343,7 +343,7 @@ configs = {
     "MPR_NEWORDER":"MPR",
 #TXN
     "PRORATE_RATIO":0,
-    "ARIA_BATCH_SIZE":3000,
+    "ARIA_BATCH_SIZE":9000,
     "LOGGING":"false",
 #OTHERS
     # "DEBUG_DISTR":"false",
