@@ -615,6 +615,7 @@ RC TxnManager::start_sdocc_check() {
 		if (rc == RCOK) {
 			send_prepare_messages();
 			sdocc_phase = SDOCC_REMOTE_CHECK;
+			DEBUG_WAIT("%ld,%ld enter SDOCC_REMOTE_CHECK\n", get_batch_id(),get_txn_id());
 			rc = WAIT_REM;
 		}
 	} else {
@@ -631,7 +632,7 @@ RC TxnManager::start_sdocc_check() {
 }
 
 RC TxnManager::start_sdocc_commit() {
-	DEBUG_WRK("%ld,%ld start_sdocc_commit\n",get_batch_id(), get_txn_id());
+	DEBUG_WAIT("%ld,%ld start_sdocc_commit\n",get_batch_id(), get_txn_id());
 	RC rc = RCOK;
 	assert(sdocc_phase == SDOCC_CHECK || sdocc_phase == SDOCC_REMOTE_CHECK);
 	sdocc_phase = SDOCC_COMMIT;
@@ -710,7 +711,7 @@ RC TxnManager::start_commit() {
 
 void TxnManager::send_prepare_messages() {
 	rsp_cnt = query->partitions_touched.size() - 1;
-	DEBUG_WRK("%ld Send PREPARE messages to %d\n",get_txn_id(),rsp_cnt);
+	DEBUG_WAIT("%ld Send PREPARE messages to %d\n",get_txn_id(),rsp_cnt);
 	for(uint64_t i = 0; i < query->partitions_touched.size(); i++) {
 		if(GET_NODE_ID(query->partitions_touched[i]) == g_node_id) {
 			continue;

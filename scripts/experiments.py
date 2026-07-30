@@ -280,16 +280,18 @@ def ycsb_rwset_variable_ratio():
     txn_write_perc = [1.0]
     tup_write_perc = [0.2]
     load = [10000]
-    # rwset = [0.2]
+    # rwset = [1.0]
     # rwset = [0.00,0.05,0.10,0.15,0.20]
     # rwset = [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
     # rwset = [0.0,0.01,0.05,0.1]
-    # rwset = [0.0,0.2,0.4,0.6,0.8,1.0]
-    rwset = [1.0]
+    rwset = [0.0,0.2,0.4,0.6,0.8,1.0]
+    # rwset = [1.0]
     total_cnt=[16]
     scnt = [3]
-    fmt = ["WORKLOAD","CC_ALG","RWSET_VARIABLE_RATIO","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,rwset,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,thr,s_cnt] for thr,s_cnt,ld,tup_wr_perc,txn_wr_perc,n,rwset,algo in itertools.product(total_cnt,scnt,load,tup_write_perc,txn_write_perc,nnodes,rwset,algos)]
+    skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
+    # skew = [1.5]
+    fmt = ["WORKLOAD","CC_ALG","RWSET_VARIABLE_RATIO","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","SCHEDULER_CNT"]
+    exp = [[wl,algo,rwset,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,sk,thr,s_cnt] for thr,s_cnt,ld,tup_wr_perc,txn_wr_perc,n,rwset,algo,sk in itertools.product(total_cnt,scnt,load,tup_write_perc,txn_write_perc,nnodes,rwset,algos,skew)]
     return fmt,exp
 
 def ycsb_sch_cnt():

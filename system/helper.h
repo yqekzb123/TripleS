@@ -66,6 +66,12 @@
     fflush(stdout); \
   }
 
+#define DEBUG_WAIT(...) \
+  if(DEBUG_WAIT_COMMIT) { \
+    fprintf(stdout,__VA_ARGS__); \
+    fflush(stdout); \
+  }
+
 #define DEBUG_TIME(...) \
   if(DEBUG_TIMEREPORT) { \
     fprintf(stdout,__VA_ARGS__); \

@@ -215,7 +215,7 @@
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
 #define SYNTH_TABLE_SIZE 16777216
-#define ZIPF_THETA 0.7
+#define ZIPF_THETA 1.5
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
@@ -356,6 +356,7 @@ enum PPSTxnType {
 #define DEBUG_SEQUENCER     false
 #define DEBUG_SCHEDULER     false
 #define DEBUG_WORKER        false
+#define DEBUG_WAIT_COMMIT   false
 #define DEBUG_TIMEREPORT     true
 #define DEBUG_LOCK          false
 // #define DEBUG_TIMESTAMP       false

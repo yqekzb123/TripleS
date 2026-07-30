@@ -51,7 +51,7 @@ void SDOCCSequencer::put_one_txn_to_batch(uint64_t _thd_id, Message * msg) {
 
     // 这里就是给事务分配batch_id和txn_id了，保证同一batch内的事务id递增
     msg->batch_id = g_node_id + g_node_cnt * batch_id;
-    msg->txn_id = g_node_id + g_node_cnt * next_txn_id; 
+    msg->txn_id = g_node_id + g_node_cnt * next_txn_id + msg->batch_id * ARIA_BATCH_SIZE; 
     next_txn_id++;
     assert(msg->txn_id != UINT64_MAX);
     assert(ISCLIENTN(msg->get_return_id()));

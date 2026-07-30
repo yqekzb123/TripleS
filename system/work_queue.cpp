@@ -577,6 +577,7 @@ void QWorkQueue::sdocc_enqueue(uint64_t thd_id, Message* msg, bool not_ready) {
 	uint64_t starttime = get_sys_clock();
 	assert(msg);
 	DEBUG_M("QWorkQueue::enqueue work_queue_entry alloc\n");
+	DEBUG_WRK("Thd %ld SDOCC enqueue msg %ld,%ld\n", thd_id, msg->get_batch_id(), msg->get_txn_id());
 	work_queue_entry * entry;
 
 	entry = (work_queue_entry*)mem_allocator.align_alloc(sizeof(work_queue_entry));

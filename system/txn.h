@@ -269,11 +269,16 @@ public:
 	pthread_mutex_t predecessor_lock;
 	std::set<TxnManager*> predecessor_transaction; 
 	std::set<uint64_t> predecessor_node; 
+	bool predecessor_node_already[NODE_CNT];
+
 	int volatile wait_ready;
+	// 用来标记，当前事务是否已经被前驱事务标记需要重做
+	uint64_t volatile recover_txn = 0;  
 
 	bool has_wait_predecessor_commit() {
 		// return wait_commit_cnt.load() == 0;
 		#if OPEN_REMOTE_WAIT_COMMIT
+		DEBUG_WAIT("txn %ld,%ld remain %ld transaction and %ld node\n",get_batch_id(),get_txn_id(),predecessor_transaction.size(),predecessor_node.size());
 		return predecessor_transaction.size() == 0 &&
 				predecessor_node.size() == 0;
 		#else

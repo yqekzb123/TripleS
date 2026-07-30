@@ -79,6 +79,8 @@ bool Row_sdocc::clean_reservation(std::vector<sdocc_version*>& reservations, pth
         if (reservations[i-1]->id == key) {
             // reservations.erase(reservations.begin() + i - 1);
             reservations[i-1]->available = true;
+            
+            reservations[i-1]->txn = nullptr;
             removed = true;
             break;
         }
@@ -127,6 +129,12 @@ RC Row_sdocc::wait_commit_dependency(TxnManager * txn) {
     #else
     if (watermark_passed && is_local) {
     #endif
+        pthread_mutex_lock(write_latch);
+        if (txn->last_sdocc_write_reservation->txn == nullptr ) {
+            assert(txn->last_sdocc_write_reservation->available);
+            pthread_mutex_unlock(write_latch);
+            return RCOK;
+        }
         TxnManager * predecessor = txn->last_sdocc_write_reservation->txn;
         // 先给自己加Ti
         pthread_mutex_lock(&txn->predecessor_lock);
@@ -137,24 +145,15 @@ RC Row_sdocc::wait_commit_dependency(TxnManager * txn) {
         pthread_mutex_lock(&predecessor->successor_lock);
         predecessor->successor_transaction.insert(txn);
         pthread_mutex_unlock(&predecessor->successor_lock);
-        // txn->local_wait_commit_cnt.fetch_add(1);
-        // txn->wait_commit_cnt.fetch_add(1);
 
-        // 再次验证，当前操作是不是已经提交了，如果已经提交，这一步操作按照RCOK来
-        if (txn->last_sdocc_write_reservation->available) {
-            pthread_mutex_lock(&txn->predecessor_lock);
-            auto iter = txn->predecessor_transaction.find(predecessor);
-            if (iter ==  txn->predecessor_transaction.end()) {
-                // 已经被Ti处理，所以等待重试即可
-            } else {
-                txn->predecessor_transaction.erase(predecessor);
-                rc = RCOK;
-            }
-            pthread_mutex_unlock(&txn->predecessor_lock);
-        } else {
-            DEBUG_WRK("[SDOCC] txn %ld,%ld read key %ld, but write reservation %ld,%d has not commit, waiting transaction %ld,%ld, now wait_commit_cnt %ld\n", txn->get_batch_id(), txn->get_txn_id(), key, txn->last_sdocc_write_reservation->id, txn->last_sdocc_write_reservation->available, predecessor->get_batch_id(),predecessor->get_txn_id(),txn->predecessor_transaction.size());
-        }
+        // DEBUG_WAIT("[SDOCC] txn %ld,%ld read key %ld, but write reservation %ld,%d has not commit, waiting transaction %ld,%ld, now wait_commit_cnt %ld\n", txn->get_batch_id(), txn->get_txn_id(), key, txn->last_sdocc_write_reservation->id, txn->last_sdocc_write_reservation->available, predecessor->get_batch_id(),predecessor->get_txn_id(),txn->predecessor_transaction.size());
+
+        pthread_mutex_unlock(write_latch);
     }
+    std::vector<uint64_t> ids = split_batch_key(txn->last_sdocc_write_reservation->id);
+    DEBUG_WAIT("[SDOCC] txn %ld,%ld read key %ld, but write reservation %ld,%d has not commit, waiting transaction %ld,%ld, now wait_commit_cnt %ld\n", txn->get_batch_id(), txn->get_txn_id(), key, txn->last_sdocc_write_reservation->id, txn->last_sdocc_write_reservation->available, 
+    ids[0], ids[2], txn->predecessor_transaction.size());
+    // predecessor->get_batch_id(),predecessor->get_txn_id(),txn->predecessor_transaction.size());
     return rc;
 }
 

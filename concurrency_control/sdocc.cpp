@@ -35,6 +35,11 @@ RC TxnManager::check() {
     RC rc = RCOK;
     // return RCOK;
     uint64_t txn_id = get_txn_id();
+    // 验证开始之前，先把自己塞到队列里。即，给Tj加Tj
+    pthread_mutex_lock(&predecessor_lock);
+    predecessor_transaction.insert(this);
+    pthread_mutex_unlock(&predecessor_lock);
+
     for (uint64_t i = 0; i < txn->row_cnt; i++) {
         Access * access = txn->accesses[i];
         row_t * row = access->orig_row;
@@ -46,6 +51,10 @@ RC TxnManager::check() {
         // ! 这里暂时强行设定RCOK，不会因为check而重试
         // rc = RCOK;
     }
+    // 验证结束后，再把自己从队列里删除，代表Tj的验证结束了。
+    pthread_mutex_lock(&predecessor_lock);
+    predecessor_transaction.erase(this);
+    pthread_mutex_unlock(&predecessor_lock);
     DEBUG_WRK("[%ld] Check SDOCC txn %ld,%ld, rc: %s\n",get_thd_id(),get_batch_id(),txn_id,rc == RCOK? "OK" : "RETRY");
     return rc;
 }
@@ -62,30 +71,34 @@ RC TxnManager::finish() {
             continue;
         }
         successor->predecessor_transaction.erase(this);
+        DEBUG_WAIT("txn %ld,%ld clean successor %ld,%ld from its queue, its queue remain %ld.\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id(),successor->predecessor_transaction.size());
+
+        if (successor->predecessor_transaction.size() == 0 && 
+            successor->recover_txn == 0) {
+            // 如果遗留事务为空，那么此时需要获得Ti的处理权。
+            successor->recover_txn = 2;
+            // successor->recover_txn = get_txn_id();
+        }
         pthread_mutex_unlock(&successor->predecessor_lock);
-        // uint64_t count = successor->wait_commit_cnt.fetch_sub(1);
-        // successor->local_wait_commit_cnt.fetch_sub(1);
-        // 也就是说，经过这次--，这个事务能跑了，或者在本地能跑了
-        // if (count == 1) {
-        if (successor->predecessor_transaction.size() == 0) {
+
+        // if (successor->predecessor_transaction.size() == 0) {
+        // 如果管理权在自己手上
+        // if (successor->recover_txn == get_txn_id()) {
+        if (successor->recover_txn == 2) {
             if (IS_LOCAL(successor->get_txn_id())) {
                 // 本地直接重启
-                if(ATOM_CAS(successor->wait_ready,false,true)) {
-                    work_queue.sdocc_enqueue(get_thd_id(), successor->last_msg, false);
-                    DEBUG_WRK("txn %ld,%ld re-enqueue successor %ld,%ld into queue\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id());
-                } else {
-                    DEBUG_WRK("txn %ld,%ld no re-enqueue successor %ld,%ld because not lock_ready\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id());
-                }
+                work_queue.sdocc_enqueue(get_thd_id(), successor->last_msg, false);
+                DEBUG_WAIT("txn %ld,%ld re-enqueue successor %ld,%ld into queue\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id());
             } else {
                 // 远程发消息
                 assert(OPEN_REMOTE_WAIT_COMMIT);
-                if(ATOM_CAS(successor->wait_ready,false,true)) {
-                    msg_queue.enqueue(get_thd_id(), Message::create_message(successor, SDOCC_ACK),
-                        GET_NODE_ID(successor->get_txn_id()));
-                    DEBUG_WRK("txn %ld,%ld notice successor %ld,%ld to remote node %ld\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id(),GET_NODE_ID(successor->get_txn_id()));
-                } else {
-                    DEBUG_WRK("txn %ld,%ld no notice successor %ld,%ld because not lock_ready\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id());
-                }
+                // if(ATOM_CAS(successor->wait_ready,false,true)) {
+                msg_queue.enqueue(get_thd_id(), Message::create_message(successor, SDOCC_ACK),
+                    GET_NODE_ID(successor->get_txn_id()));
+                DEBUG_WAIT("txn %ld,%ld notice successor %ld,%ld to remote node %ld\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id(),GET_NODE_ID(successor->get_txn_id()));
+                // } else {
+                    // DEBUG_WRK("txn %ld,%ld no notice successor %ld,%ld because not lock_ready\n",get_batch_id(),get_txn_id(),successor->get_batch_id(),successor->get_txn_id());
+                // }
             }
         }
     }

@@ -251,9 +251,9 @@ void WorkerThread::commit() {
 #endif
   
   // printf("Txn %ld,%ld local commit\n",txn_man->get_batch_id(), txn_man->get_txn_id());
-  #if CC_ALG != SDOCC && CC_ALG != SILO
+  // #if CC_ALG != SDOCC && CC_ALG != SILO
   release_txn_man(); 
-  #endif
+  // #endif
   
   // Do not use txn_man after this
 }
@@ -634,7 +634,7 @@ RC WorkerThread::run() {
     }
     INC_STATS(get_thd_id(),worker_deactivate_txn_time,get_sys_clock() - ready_starttime);
     #if CC_ALG == SDOCC
-    // 如果需要重试
+    // 在执行完成后，保证验证的顺序是一致的
     if (msg->rtype == CL_QRY &&
         txn_man!=nullptr && 
         !txn_man->entered_tmp_queue &&
@@ -651,6 +651,7 @@ RC WorkerThread::run() {
       bool expected_value = false; 
       assert(txn_man->last_msg);
       if (((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued.compare_exchange_strong(expected_value, 1)) {
+        DEBUG_WAIT("%ld,%ld set has_re_enqueued to true, and try to re-enqueue\n",txn_man->get_batch_id(), txn_man->get_txn_id());
         // DEBUG_SCH("Thd %ld txn %ld,%ld needs retry, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
         ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt++;
         txn_man->retry_cnt = ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt;
@@ -662,24 +663,23 @@ RC WorkerThread::run() {
           ((ClientQueryMessage*)txn_man->last_msg)->retry_for_conflict++;
           txn_man->retry_for_conflict = ((ClientQueryMessage*)txn_man->last_msg)->retry_for_conflict;
 
-          // 这个时候设置，当前事务需要重启
-          ATOM_CAS(txn_man->wait_ready, true, false);
-          DEBUG_SCH("Thd %ld txn %ld,%ld, set lock ready to false\n",get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id());
-
-          if (txn_man->has_wait_predecessor_commit()) {
-            // 只有在水印通过，且所有前驱事务都提交以后，才能重试
-            if(ATOM_CAS(txn_man->wait_ready,false,true)) {
+          // 先检查当前事务能不能跑哈
+          pthread_mutex_lock(&txn_man->predecessor_lock);
+          if (txn_man->has_wait_predecessor_commit() && 
+              txn_man->recover_txn == 0) {
+              // 只有事务重启控制权在当前节点上才能跑
               work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
-              DEBUG_SCH("Thd %ld txn %ld,%ld, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
-            } else {
-              DEBUG_SCH("Thd %ld txn %ld,%ld, not re-enqueue to list because not lock_ready\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id());
-            }
+              DEBUG_WAIT("Thd %ld txn %ld,%ld, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
           } else {
             assert(RWSET_VARIABLE_RATIO > 0.0 || WORKLOAD == TPCC);
             // 否则，什么也不用做，重试会交给前驱事务来处理
             // tmp_txn_list.insert(txn_man);
             // tmp_txn_list_size++;
+            // !因为没有re-enqueue，要把值改回来
+            expected_value = true;
+            ((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued.compare_exchange_strong(expected_value, 0);
           }
+          pthread_mutex_unlock(&txn_man->predecessor_lock);
         } else {
           DEBUG_SCH("Thd %ld txn %ld,%ld needs retry because watermark %ld, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), (check_water_mark->get_global_watermark() + 1), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
           ((ClientQueryMessage*)txn_man->last_msg)->retry_for_watermark++;
@@ -687,6 +687,8 @@ RC WorkerThread::run() {
           tmp_txn_list.insert(txn_man);
           tmp_txn_list_size++;
         }
+      } else {
+        DEBUG_WAIT("alert!!! txn %ld,%ld has_re_enqueued is true. cannot re-enqueue.\n",txn_man->get_batch_id(), txn_man->get_txn_id());
       }
     }
     #endif
@@ -740,9 +742,9 @@ RC WorkerThread::process_rfin(Message * msg) {
   }
 
   // printf("Txn %ld,%ld remote commit\n",txn_man->get_batch_id(), txn_man->get_txn_id());
-  #if CC_ALG != SDOCC
+  // #if CC_ALG != SDOCC
   release_txn_man();
-  #endif
+  // #endif
 
   return RCOK;
 }
@@ -752,7 +754,7 @@ RC WorkerThread::process_rfin(Message * msg) {
 RC WorkerThread::process_rack_prep(Message * msg) {
   DEBUG_WRK("RACK_PREP %ld,%ld\n",msg->get_batch_id(),msg->get_txn_id());
   RC rc = RCOK;
-
+  RC orig_rc = txn_man->get_rc();
   int responses_left = txn_man->received_response(((AckMessage*)msg)->rc);
   assert(responses_left >=0);
 #if CC_ALG == SILO
@@ -762,12 +764,19 @@ RC WorkerThread::process_rack_prep(Message * msg) {
 #if CC_ALG == SDOCC
   if (((AckMessage*)msg)->rc == RETRY && 
       ((AckMessage*)msg)->needs_wait) {
-    // txn_man->wait_commit_cnt.fetch_add(1);
-    // txn_man->remote_wait_commit_cnt.fetch_add(1);
+    assert(OPEN_REMOTE_WAIT_COMMIT);
     pthread_mutex_lock(&txn_man->predecessor_lock);
-    txn_man->predecessor_node.insert(msg->return_node_id);
+    if (!txn_man->predecessor_node_already[msg->return_node_id]) {
+      // 如果没有提前发回来
+      txn_man->predecessor_node.insert(msg->return_node_id);
+      DEBUG_WAIT("%ld,%ld from %ld return retry\n", msg->get_batch_id(),msg->get_txn_id(), msg->return_node_id);
+    }
+    else {
+      // 如果提前发回来
+      txn_man->set_rc(orig_rc);
+      DEBUG_WAIT("%ld,%ld from %ld return retry, but has early sdocc ack\n", msg->get_batch_id(),msg->get_txn_id(), msg->return_node_id);
+    }
     pthread_mutex_unlock(&txn_man->predecessor_lock);
-    DEBUG_WRK("%ld,%ld from %ld return retry\n", msg->get_batch_id(),msg->get_txn_id(), msg->return_node_id);
   }
 #endif
 
@@ -893,25 +902,36 @@ RC WorkerThread::process_rack_rfin(Message * msg) {
 }
 
 RC WorkerThread::process_sdocc_wait_rsp(Message* msg) {
-  DEBUG_WRK("SDOCC_ACK %ld,%ld", msg->get_batch_id(),msg->get_txn_id());
+  DEBUG_WAIT("SDOCC_ACK %ld,%ld\n", msg->get_batch_id(),msg->get_txn_id());
   #if CC_ALG == SDOCC
   assert(IS_LOCAL(msg->get_txn_id()));
-  // uint64_t count = txn_man->wait_commit_cnt.fetch_sub(1);
-  // txn_man->remote_wait_commit_cnt.fetch_sub(1);
+  assert(OPEN_REMOTE_WAIT_COMMIT);
   pthread_mutex_lock(&txn_man->predecessor_lock);
-  txn_man->predecessor_node.erase(msg->return_node_id);
-  pthread_mutex_unlock(&txn_man->predecessor_lock);
-  // if (count == 1) {
-  if (txn_man->has_wait_predecessor_commit() == 0){
-    if(ATOM_CAS(txn_man->wait_ready,false,true)) {
-      work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
-      DEBUG_WRK("SDOCC ACK, re-enqueue successor %ld,%ld into queue\n",txn_man->get_batch_id(),txn_man->get_txn_id());
-    } else {
-      DEBUG_WRK("SDOCC ACK, no re-enqueue successor %ld,%ld because not lock_ready\n",txn_man->get_batch_id(),txn_man->get_txn_id());
-    }
+  if (txn_man->predecessor_node.find(msg->return_node_id) == txn_man->predecessor_node.end()) {
+    // 如果没找着
+    DEBUG_WAIT("SDOCC_ACK %ld,%ld early than rack_prep.\n", msg->get_batch_id(),msg->get_txn_id());
+    txn_man->predecessor_node_already[msg->return_node_id] = true;
+    pthread_mutex_unlock(&txn_man->predecessor_lock);
+    return WAIT;
   }
+
+  // 如果找着了
+  txn_man->predecessor_node.erase(msg->return_node_id);
+  // pthread_mutex_unlock(&txn_man->predecessor_lock);
+
+
+  // if (txn_man->recover_txn == 0) txn_man->recover_txn = 1;
+  // pthread_mutex_lock(&txn_man->predecessor_lock);
+  if (txn_man->has_wait_predecessor_commit()) {
+    txn_man->sdocc_phase = SDOCC_CHECK;
+  }
+  //     txn_man->recover_txn == 1) {
+  //   work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
+  //   printf("SDOCC ACK, re-enqueue txn %ld,%ld into queue\n",txn_man->get_batch_id(),txn_man->get_txn_id());
+  // }
+  pthread_mutex_unlock(&txn_man->predecessor_lock);
   #endif
-  return RCOK;
+  return RETRY;
 }
 
 #if CC_ALG != ARIA
@@ -1066,7 +1086,8 @@ RC WorkerThread::process_rprepare(Message * msg) {
       return WAIT;
     } else {
       txn_man->retry_cnt = ((PrepareMessage *)msg)->retry_cnt;
-      ATOM_CAS(txn_man->wait_ready,true,false);
+      // ATOM_CAS(txn_man->wait_ready,true,false);
+      txn_man->recover_txn = 0;
     }
     txn_man->set_rc(RCOK);
     #endif
@@ -1075,6 +1096,7 @@ RC WorkerThread::process_rprepare(Message * msg) {
     #if CC_ALG == SDOCC
     bool needs_wait = !txn_man->has_wait_predecessor_commit();
     AckMessage* ack_msg = (AckMessage*)Message::create_message(txn_man,RACK_PREP);
+    ack_msg->needs_wait = needs_wait;
     msg_queue.enqueue(get_thd_id(),ack_msg,msg->return_node_id);
     #else
     msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,RACK_PREP),msg->return_node_id);
@@ -1160,9 +1182,10 @@ RC WorkerThread::process_rtxn(Message * msg) {
       // 这里是下一次重试的入口，将has_re_enqueued置为false，以便于允许下一次重试重新入队
       if (txn_man->last_msg) {
         ((ClientQueryMessage*)txn_man->last_msg)->has_re_enqueued.store(false, std::memory_order_relaxed);
+        // 在重启以后重设控制权
+        txn_man->recover_txn = 0;
+        DEBUG_WAIT("%ld,%ld set has_re_enqueued to false\n",txn_man->get_batch_id(),txn_man->get_txn_id());
       }
-      // txn_man->has_re_enqueued = false;
-      // txn_man->retry_cnt++;
     #else
       txn_man->txn_stats.starttime = get_sys_clock();
       txn_man->txn_stats.restart_starttime = txn_man->txn_stats.starttime;
