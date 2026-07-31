@@ -162,7 +162,7 @@ public:
   RC run_aria_txn();
 #endif
 #if CC_ALG == SDOCC
-  // !还没实现
+  // !还没实现x
   RC run_sdocc_txn();
   RC send_remote_subtxn();
 #endif

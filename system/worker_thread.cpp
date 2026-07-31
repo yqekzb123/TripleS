@@ -606,7 +606,14 @@ RC WorkerThread::run() {
             } else {
               assert(false);
             }
-            while (simulation->aria_barrier[index].barrier_count != g_node_cnt - 1 && !simulation->is_done()) {}
+            uint64_t wait_starttime = get_sys_clock();
+            bool enter = false;
+            while (simulation->aria_barrier[index].barrier_count != g_node_cnt - 1 && !simulation->is_done()) {
+              if (get_sys_clock() - wait_starttime > 1000000000 && !enter) {
+                DEBUG_SCH("Worker %ld waiting for ARIA_ACK barrier for batch %ld phase %d, current count: %ld\n", get_thd_id(), simulation->current_batch_id, simulation->aria_phase, simulation->aria_barrier[index].barrier_count);
+                enter = true;
+              }
+            }
             // while (simulation->barrier_count != g_node_cnt - 1 && !simulation->is_done()) {}
             // simulation->barrier_count = 0;
             // memset(simulation->barriers, 0, sizeof(uint64_t) * g_node_cnt);
@@ -958,7 +965,7 @@ RC WorkerThread::process_rqry_rsp(Message * msg) {
 #else
 RC WorkerThread::process_rqry_rsp(Message * msg) {
   RC rc = RCOK;
-  DEBUG("RQRY_RSP %ld\n",msg->get_txn_id());
+  DEBUG_WRK("RQRY_RSP %ld from %ld\n",msg->get_txn_id(), msg->return_node_id);
   assert(IS_LOCAL(msg->get_txn_id()));
   if (txn_man->participants_cnt == 1) {
     INC_STATS(get_thd_id(), trans_process_network, get_sys_clock() - txn_man->txn_stats.trans_process_network_start_time);
@@ -1005,13 +1012,14 @@ RC WorkerThread::process_rqry(Message * msg) {
 }
 #else
 RC WorkerThread::process_rqry(Message * msg) {
-  DEBUG("RQRY %ld\n",msg->get_txn_id());
+  DEBUG_WRK("RQRY %ld\n",msg->get_txn_id());
   assert(!IS_LOCAL(msg->get_txn_id()));
   RC rc = RCOK;
   msg->copy_to_txn(txn_man);
   QueryMessage * ycsb_query = (QueryMessage * ) msg;
   rc = txn_man->process_aria_remote(ycsb_query->aria_phase);
   msg_queue.enqueue(get_thd_id(),Message::create_message(txn_man,RQRY_RSP),txn_man->return_id);
+  DEBUG_WRK("RQRY %ld done, send RQRY_RSP to %ld\n",msg->get_txn_id(),txn_man->return_id);
   return rc;
 }
 #endif
@@ -1352,6 +1360,7 @@ RC WorkerThread::process_aria_rtxn(Message * msg) {
 RC WorkerThread::process_aria_ack(Message * msg) {
   AckMessage * ack = (AckMessage *)msg;
   // 考虑几种情况吧，消息落后于当前阶段了，这个明显不对
+  DEBUG_SCH("Worker %ld received ARIA_ACK for node %ld, ack batch %ld phase %ld, current batch %ld phase %d\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->aria_phase, simulation->current_batch_id, simulation->aria_phase);
 
   int index = 0;
   if (ack->aria_phase == ARIA_RESERVATION) {
@@ -1379,33 +1388,6 @@ RC WorkerThread::process_aria_ack(Message * msg) {
   DEBUG_SCH("%s\n", str.c_str());
   msg->release();
   delete msg;
-  // } else if (ack->batch_id == simulation->current_batch_id && ack->aria_phase == simulation->aria_phase) {
-  //   // 说明这个ACK是当前轮的，直接处理
-  //   if (simulation->aria_barrier[simulation->aria_barrier_index].check_barrier(ack->get_return_id())) {
-  //     // 如果对应的节点已经到达屏障了，说明这个ACK是重复的，出了问题
-  //     assert(false);
-  //   } else {
-  //     DEBUG_SCH("Worker %ld received ARIA_ACK for node %ld, batch %ld phase %ld\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->aria_phase);
-  //     // DEBUG_SCH("Worker %ld reached barrier for node %ld\n", get_thd_id(), msg->get_return_id());
-  //     simulation->aria_barrier[simulation->aria_barrier_index].set_barrier(ack->get_return_id());
-  //     std::string str = simulation->aria_barrier[0].get_barrier_str("0") + simulation->aria_barrier[1].get_barrier_str("1");
-  //     DEBUG_SCH("%s\n", str.c_str());
-  //     msg->release();
-  //     delete msg;
-  //   }
-  // }
-
-
-  // if (simulation->barriers[ack->get_return_id()]) {
-  //   work_queue.enqueue(_thd_id, msg, false);
-  //   DEBUG_SCH("Worker %ld received ARIA_ACK for node %ld, but already reached barrier, re-enqueueing, now phase %d\n", get_thd_id(), ack->get_return_id(), simulation->aria_phase);
-  // } else {
-  //   simulation->barriers[ack->get_return_id()] = true;
-  //   // DEBUG_SCH("Worker %ld reached barrier for node %ld\n", get_thd_id(), msg->get_return_id());
-  //   simulation->barrier_count++;
-  //   msg->release();
-  //   delete msg;
-  // }
   return RCOK;
 }
 #endif

@@ -13,8 +13,8 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 2
-#define THREAD_CNT 15
+#define NODE_CNT 12
+#define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
 #define LOGGER_THREAD_CNT 3
@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB or TPCC or PPS
-#define WORKLOAD YCSB
+#define WORKLOAD TPCC
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -106,7 +106,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG SDPCC
+#define CC_ALG ARIA
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -218,7 +218,7 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 16777216
+#define SYNTH_TABLE_SIZE 1048576*8
 #define ZIPF_THETA 0.7
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
@@ -258,11 +258,11 @@
 // are not modeled.
 #define TPCC_ACCESS_ALL       false
 #define WH_UPDATE         false
-#define NUM_WH 32
+#define NUM_WH 384
 // % of transactions that access multiple partitions
-#define MPR 0.2
+#define MPR 0.15
 #define MPIR 0.01
-#define MPR_NEWORDER MPR
+#define MPR_NEWORDER 0.1
 #if NODE_CNT == 1
 #define NO_REMOTE
 #endif
@@ -297,7 +297,7 @@ enum DATxnType {
 
 
 #define TXN_TYPE          TPCC_ALL
-#define PERC_PAYMENT 0.489
+#define PERC_PAYMENT 0.0
 #define FIRSTNAME_MINLEN      8
 #define FIRSTNAME_LEN         16
 #define LASTNAME_LEN        16

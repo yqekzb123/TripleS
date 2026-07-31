@@ -1736,7 +1736,7 @@ RC TPCCTxnManager::run_aria_txn() {
 	RC rc = RCOK;
 	uint64_t starttime = get_sys_clock();
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
-	DEBUG_WRK("(%ld,%ld) Run aria txn\n",txn->txn_id,txn->batch_id);
+	DEBUG_WRK("(%ld,%ld) Run aria txn\n",txn->batch_id,txn->txn_id);
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;
 	uint64_t c_id = tpcc_query->c_id;
@@ -1974,6 +1974,7 @@ RC TPCCTxnManager::run_aria_txn() {
 }
 
 RC TPCCTxnManager::send_remote_read_requests() {
+	std::string str = "send_remote_read_requests: ";
 	for (uint64_t i = 0; i < query->partitions_touched.size(); i++) {
 		uint64_t node = query->partitions_touched[i];
 		if (node == g_node_id) {
@@ -1983,7 +1984,10 @@ RC TPCCTxnManager::send_remote_read_requests() {
 		msg->aria_phase = ARIA_READ;
 		msg_queue.enqueue(get_thd_id(), msg, node);
 		participants_cnt++;
+		str += std::to_string(node) + " ";
 	}
+	str += "\n";
+	DEBUG_WRK("(%ld,%ld) %s\n",txn->batch_id,txn->txn_id,str.c_str());
 	txn_stats.trans_process_network_start_time = get_sys_clock();
   	return participants_cnt == 0? RCOK : WAIT_REM;
 }
@@ -2006,7 +2010,7 @@ RC TPCCTxnManager::send_remote_write_requests() {
 RC TPCCTxnManager::process_aria_remote(ARIA_PHASE aria_phase) {
 	RC rc = RCOK;
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
-	DEBUG_WRK("(%ld,%ld) Run calvin txn\n",txn->txn_id,txn->batch_id);
+	DEBUG_WRK("(%ld,%ld) Run aria remote txn, phase %d\n",txn->batch_id,txn->txn_id,aria_phase);
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;
 	uint64_t c_id = tpcc_query->c_id;

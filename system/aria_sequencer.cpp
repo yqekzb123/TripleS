@@ -99,7 +99,8 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
     uint64_t starttime = get_sys_clock();
     uint64_t txn_id = msg->txn_id;
     uint64_t batch_id = msg->batch_id;
-    DEBUG_SCH("process ack txn_id: %ld, rc: %d txns_left %ld, aria phase %d\n", txn_id, ((AckMessage *)msg)->rc, txns_left, simulation->aria_phase);
+    if (txns_left < 1)
+        DEBUG_SCH("process ack txn_id: %ld,%ld, rc: %d txns_left %ld, aria phase %d\n", batch_id, txn_id, ((AckMessage *)msg)->rc, txns_left, simulation->aria_phase);
     for (uint64_t i = 0; i < aria_batch.size(); i++) {
         if (aria_batch[i]->msg->txn_id == txn_id && aria_batch[i]->msg->batch_id == batch_id) {
             if (((AckMessage *)msg)->rc == RCOK) {
