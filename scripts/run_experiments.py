@@ -40,8 +40,19 @@ perfTime = 60
 fromtimelist=[]
 totimelist=[]
 
-keywords = ['tput', 'seq_idle_time', 'sched_idle_time', 'worker_idle_time', 'fscl50', 'fscl99','sdocc_avg_retry_time','sdocc_avg_retry_time_for_watermark','sdocc_avg_retry_time_for_conflict']
-keywords_cal_type = ['sum', 'sum', 'sum', 'sum', 'sum', 'sum']
+keywords = ['tput', 
+            'seq_idle_time', 'sched_idle_time', 'worker_idle_time', 
+            'fscl50', 'fscl99',
+            'sdocc_avg_retry_time','sdocc_avg_retry_time_for_watermark','sdocc_avg_retry_time_for_conflict',
+            'total_txn_abort_cnt','total_txn_commit_cnt','unique_txn_abort_cnt',
+            'watermark_cnt','othermsg_cnt']
+keywords_cal_type = ['sum', 
+                     'avg', 'avg', 'avg', 
+                     'avg', 'avg', 
+                     'avg', 'avg', 'avg',
+                     'sum', 'sum', 'sum',
+                     'sum', 'sum'
+                     ]
 draw_keywords = ['tput']
 
 if len(sys.argv) < 2:

@@ -1472,6 +1472,10 @@ RC StatsPerIntervalThread::run(){
 
   txn_cnt_last_time = stats.get_txn_cnts();
   tsetup();
+
+  // For watermark
+  int watermark_advance = 0;
+  uint64_t now = 0, last_send_time = 0;
   
   while (!simulation->is_done()){
     now_time = get_sys_clock();
@@ -1487,7 +1491,10 @@ RC StatsPerIntervalThread::run(){
     }
     #if CC_ALG == SDOCC
       bool updated = check_water_mark->update_local_watermark(_thd_id);
-      if (updated) {
+      if (updated) watermark_advance ++;
+      now = get_sys_clock();
+      if (watermark_advance >= DELTA_THRESHOLD ||
+        now - last_send_time >= MAX_WATERMARK_SYNC_INTERVAL) {
         for (uint64_t i = 0; i < g_node_cnt; i++) {
           if (i == g_node_id) continue;
           Message * msg = check_water_mark->broadcast_watermark();
@@ -1496,12 +1503,27 @@ RC StatsPerIntervalThread::run(){
             msg_queue.enqueue(_thd_id, msg, i);
           }
         }
+        watermark_advance = 0;
+        last_send_time = get_sys_clock();
       }
+      // if (updated) {
+      //   for (uint64_t i = 0; i < g_node_cnt; i++) {
+      //     if (i == g_node_id) continue;
+      //     Message * msg = check_water_mark->broadcast_watermark();
+      //     DEBUG_SCH("Worker %ld broadcast watermark %ld\n", get_thd_id(), check_water_mark->get_global_watermark());
+      //     if (msg) {
+      //       msg_queue.enqueue(_thd_id, msg, i);
+      //     }
+      //   }
+      // }
     #endif
     #if CC_ALG == SDPCC
       #if OPEN_DISTRIBUTED_WATERMARK
       bool updated = check_water_mark->update_local_watermark(_thd_id);
-      if (updated) {
+      if (updated) watermark_advance ++;
+      now = get_sys_clock();
+      if (watermark_advance >= DELTA_THRESHOLD ||
+        now - last_send_time >= MAX_WATERMARK_SYNC_INTERVAL) {
         for (uint64_t i = 0; i < g_node_cnt; i++) {
           if (i == g_node_id) continue;
           Message * msg = check_water_mark->broadcast_watermark();
@@ -1510,6 +1532,8 @@ RC StatsPerIntervalThread::run(){
             msg_queue.enqueue(_thd_id, msg, i);
           }
         }
+        watermark_advance = 0;
+        last_send_time = get_sys_clock();
       }
       #else
       uint64_t min = UINT64_MAX;

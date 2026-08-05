@@ -256,6 +256,12 @@ void Stats_thd::clear() {
   mbuf_send_intv_time=0;
   msg_copy_output_time=0;
 
+  watermark_handle_time = 0;
+  othermsg_handle_time = 0;
+
+  watermark_cnt = 0;
+  othermsg_cnt = 0;
+
   // Btree
   btree_traversal_time=0;
   btree_insert_time=0;
@@ -491,7 +497,11 @@ void Stats_thd::print_client(FILE * outf, bool prog) {
   ",msg_unpack_time_avg=%f"
   ",mbuf_send_intv_time=%f"
   ",mbuf_send_intv_time_avg=%f"
-          ",msg_copy_output_time=%f",
+  ",msg_copy_output_time=%f"
+  ",watermark_handle_time=%f"
+  ",othermsg_handle_time=%f"
+  ",watermark_cnt=%ld"
+  ",othermsg_cnt=%ld",
           msg_queue_delay_time / BILLION, msg_queue_cnt, msg_queue_enq_cnt,
           msg_queue_delay_time_avg / BILLION, msg_send_time / BILLION, msg_send_time_avg / BILLION,
           msg_recv_time / BILLION, msg_recv_time_avg / BILLION, msg_recv_idle_time / BILLION,
@@ -499,7 +509,8 @@ void Stats_thd::print_client(FILE * outf, bool prog) {
           msg_batch_size_bytes_avg, msg_batch_size_bytes_to_server, msg_batch_size_bytes_to_client,
           msg_send_cnt, msg_recv_cnt, msg_unpack_time / BILLION, msg_unpack_time_avg / BILLION,
           mbuf_send_intv_time / BILLION, mbuf_send_intv_time_avg / BILLION,
-          msg_copy_output_time / BILLION);
+          msg_copy_output_time / BILLION, watermark_handle_time / BILLION, othermsg_handle_time / BILLION,
+          watermark_cnt, othermsg_cnt);
 
   if (!prog) {
   client_client_latency.quicksort(0,client_client_latency.cnt-1);
@@ -919,7 +930,11 @@ void Stats_thd::print(FILE * outf, bool prog) {
   ",msg_unpack_time_avg=%f"
   ",mbuf_send_intv_time=%f"
   ",mbuf_send_intv_time_avg=%f"
-          ",msg_copy_output_time=%f",
+  ",msg_copy_output_time=%f"
+  ",watermark_handle_time=%f"
+  ",othermsg_handle_time=%f"
+  ",watermark_cnt=%ld"
+  ",othermsg_cnt=%ld",
           msg_queue_delay_time / BILLION, msg_queue_cnt, msg_queue_enq_cnt,
           msg_queue_delay_time_avg / BILLION, msg_send_time / BILLION, msg_send_time_avg / BILLION,
           msg_recv_time / BILLION, msg_recv_time_avg / BILLION, msg_recv_idle_time / BILLION,
@@ -927,7 +942,8 @@ void Stats_thd::print(FILE * outf, bool prog) {
           msg_batch_size_bytes_avg, msg_batch_size_bytes_to_server, msg_batch_size_bytes_to_client,
           msg_send_cnt, msg_recv_cnt, msg_unpack_time / BILLION, msg_unpack_time_avg / BILLION,
           mbuf_send_intv_time / BILLION, mbuf_send_intv_time_avg / BILLION,
-          msg_copy_output_time / BILLION);
+          msg_copy_output_time / BILLION, watermark_handle_time / BILLION, othermsg_handle_time / BILLION,
+          watermark_cnt, othermsg_cnt);
 
     // Btree
   double btree_traversal_time_avg = 0;
@@ -1511,6 +1527,13 @@ void Stats_thd::combine(Stats_thd * stats) {
   msg_unpack_time+=stats->msg_unpack_time;
   mbuf_send_intv_time+=stats->mbuf_send_intv_time;
   msg_copy_output_time+=stats->msg_copy_output_time;
+
+  watermark_handle_time+=stats->watermark_handle_time;
+  othermsg_handle_time+=stats->othermsg_handle_time;
+
+  watermark_cnt+=stats->watermark_cnt;
+  othermsg_cnt+=stats->othermsg_cnt;
+
 
   //Btree
   btree_traversal_time+=stats->btree_traversal_time;

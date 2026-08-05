@@ -207,6 +207,11 @@ public:
   double msg_unpack_time;
   double mbuf_send_intv_time;
   double msg_copy_output_time;
+  // 水印消息处理时间，和其他消息处理时间占比
+  double watermark_handle_time;
+  double othermsg_handle_time;
+  uint64_t watermark_cnt;
+  uint64_t othermsg_cnt;
 
   // Btree
   double btree_traversal_time;

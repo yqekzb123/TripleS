@@ -129,7 +129,12 @@ RC SDPCCLockThread::run() {
 }
 
 void SDPCCLockThread::handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid) {
-	DEBUG_SCH("[SDPCCThread] %ld handle tmp_txn_list, current_minSid %ld, old_minSid %ld\n", _thd_id,current_minSid,old_minSid);
+	static int i = 0;
+	if (i>1000) {
+		// printf("[SDPCCThread] %ld handle tmp_txn_list, current_minSid %ld, old_minSid %ld tmp_txn_list.size %ld\n", _thd_id,current_minSid,old_minSid, tmp_txn_list.size());
+		i = 0;
+	}
+	i++;
 	// 开始尝试遍历vector中key小于current_minSid的，然后根据有没有加到锁，塞到队列里去.
 	uint64_t idx = 0;
 	for(idx = 0; idx < tmp_txn_list.size(); idx++) {

@@ -170,6 +170,7 @@ RC InputThread::server_recv_loop() {
 	uint64_t starttime;
 
 	std::vector<Message*> * msgs;
+	// uint64_t st_time, et_time;
 	while (!simulation->is_done()) {
 		heartbeat();
 		starttime = get_sys_clock();
@@ -181,21 +182,31 @@ RC InputThread::server_recv_loop() {
 
 		if (msgs == NULL) continue;
 		while(!msgs->empty()) {
+			// st_time = get_sys_clock();
 			Message * msg = msgs->front();
 			if(msg->rtype == INIT_DONE) {
 				msgs->erase(msgs->begin());
+				// et_time = get_sys_clock();
+				INC_STATS(_thd_id,othermsg_cnt,1);
+				// INC_STATS(_thd_id,othermsg_handle_time,et_time-st_time);
 				continue;
 			}
 #if CC_ALG == CALVIN || CC_ALG == SDPCC
 			if(msg->rtype == CALVIN_ACK ||(msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id()))) {
 				work_queue.sequencer_enqueue(get_thd_id(),msg);
 				msgs->erase(msgs->begin());
+				// et_time = get_sys_clock();
+				INC_STATS(_thd_id,othermsg_cnt,1);
+				// INC_STATS(_thd_id,othermsg_handle_time,et_time-st_time);
 				continue;
 			}
 			if(msg->rtype == RDONE || msg->rtype == CL_QRY) {
 				assert(ISSERVERN(msg->get_return_id()));
 				work_queue.sched_enqueue(get_thd_id(),msg);
 				msgs->erase(msgs->begin());
+				// et_time = get_sys_clock();
+				INC_STATS(_thd_id,othermsg_cnt,1);
+				// INC_STATS(_thd_id,othermsg_handle_time,et_time-st_time);
 				continue;
 			}
 #endif
@@ -206,6 +217,9 @@ RC InputThread::server_recv_loop() {
 				msg->release();
 				delete msg;
 				msgs->erase(msgs->begin());
+				INC_STATS(_thd_id,watermark_cnt,1);
+				// et_time = get_sys_clock();
+				// INC_STATS(_thd_id,watermark_handle_time,et_time-st_time);
 				continue;
 			}
 #endif
@@ -216,11 +230,17 @@ RC InputThread::server_recv_loop() {
 				msg->release();
 				delete msg;
 				msgs->erase(msgs->begin());
+				INC_STATS(_thd_id,watermark_cnt,1);
+				// et_time = get_sys_clock();
+				// INC_STATS(_thd_id,watermark_handle_time,et_time-st_time);
 				continue;
 			}
 #endif
 			work_queue.enqueue(get_thd_id(),msg,false);
 			msgs->erase(msgs->begin());
+			// et_time = get_sys_clock();
+			INC_STATS(_thd_id,othermsg_cnt,1);
+			// INC_STATS(_thd_id,othermsg_handle_time,et_time-st_time);
 		}
 		delete msgs;
 		INC_STATS(_thd_id,mtx[29], get_sys_clock() - starttime);

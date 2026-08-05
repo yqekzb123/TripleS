@@ -324,7 +324,6 @@ int main(int argc, char *argv[]) {
 
 #if SET_AFFINITY
 	uint64_t cpu_cnt = 5;
-	// g_total_client_thread_cnt + g_total_thread_cnt * (g_node_id % 2);
 	cpu_set_t cpus;
 #endif
 	// spawn and run txns again.
