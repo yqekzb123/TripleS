@@ -344,7 +344,8 @@ int main(int argc, char *argv[]) {
 	pthread_barrier_init( &warmup_bar, NULL, all_thd_cnt);
 
 #if SET_AFFINITY
-	uint64_t cpu_cnt = g_total_client_thread_cnt + g_total_thread_cnt * (g_node_id % 2);
+	uint64_t cpu_cnt = 5;
+	// g_total_client_thread_cnt + g_total_thread_cnt * (g_node_id % 2);
 	cpu_set_t cpus;
 #endif
 	// spawn and run txns again.

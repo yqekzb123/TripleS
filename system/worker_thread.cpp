@@ -519,6 +519,7 @@ RC WorkerThread::run() {
   uint64_t bool_phase_end = false;
 
   bool last_batch_id = 0;
+  int wait_cnt = 0;
   
 	while(!simulation->is_done()) {
     txn_man = NULL;
@@ -613,9 +614,10 @@ RC WorkerThread::run() {
         msg->rtype == CL_QRY &&
         // msg->txn_id % 3000 == 0 &&
         msg->batch_id != 0
+        // wait_cnt < 3
       ) {
       last_batch_id = msg->batch_id;
-      uint64_t wait_time = RANDOM_WAIT_TIME; // 单位为微秒
+      uint64_t wait_time = RANDOM_WAIT_TIME * (ARIA_BATCH_SIZE / 3000); // 单位为微秒
       DEBUG_WRK("Thd %ld batch %ld wait for %ld us\n", get_thd_id(), msg->batch_id, wait_time);
       usleep(wait_time);
     }
