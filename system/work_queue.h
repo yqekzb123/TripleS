@@ -57,7 +57,7 @@ public:
     Message * get_msg_from_list_lockfree(uint64_t thd_id, TxnMsgLockList * list, uint64_t &key);
     // 用于SDPCC的
 
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
     Message * sdpcc_sched_dequeue(uint64_t thd_id);
 #endif
 
@@ -97,7 +97,7 @@ public:
     // uint64_t get_new_wq_cnt() {return new_query_queue.size();}
 
     // PIP Calvin相关
-    #if CC_ALG == SDPCC
+    #if SDPCC_FAMILY
     bool sched_ready;
     #endif
 

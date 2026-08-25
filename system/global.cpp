@@ -71,7 +71,7 @@ AbortQueue abort_queue;
 MessageQueue msg_queue;
 Client_txn client_man;
 Sequencer seq_man;
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 SDPCCSequencer sdpcc_seq_man;
 #endif
 #if CC_ALG == SDOCC// || CC_ALG == SILO
@@ -131,15 +131,18 @@ UInt32 g_part_cnt = PART_CNT;
 UInt32 g_virtual_part_cnt = VIRTUAL_PART_CNT;
 UInt32 g_core_cnt = CORE_CNT;
 
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 UInt32 g_scheduler_thread_cnt = SCHEDULER_CNT;
 UInt32 g_thread_cnt = THREAD_CNT + 1 - g_scheduler_thread_cnt;
 uint64_t the_first_scheduler_id = 0;
 // 调度器的水印 for SDPCC ------------------
 uint64_t * sids;
 uint64_t minSid = 0;
+#if CC_ALG == SDPCC
+SDPCCLongHoleManager * sdpcc_long_hole_man;
 
 WaterMarkList* check_water_mark;
+#endif
 #else
 UInt32 g_thread_cnt = THREAD_CNT;
 uint64_t minSid = 0;
@@ -160,7 +163,7 @@ UInt32 g_send_thread_cnt = SEND_THREAD_CNT;
 #if CC_ALG == CALVIN
     // sequencer + scheduler thread
     UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 2;
-#elif CC_ALG == SDPCC
+#elif SDPCC_FAMILY
     UInt32 g_total_thread_cnt = g_thread_cnt + g_scheduler_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1;
 #elif CC_ALG == SDOCC// || CC_ALG == SILO
     UInt32 g_total_thread_cnt = g_thread_cnt + g_rem_thread_cnt + g_send_thread_cnt + g_stats_per_interval_thread_cnt + g_logger_thread_cnt + 1; // sequencer thread

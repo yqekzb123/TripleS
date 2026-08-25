@@ -74,6 +74,17 @@ SHORTNAMES = {
     "ZIPF_THETA" : "SKEW",
     "MSG_TIME_LIMIT" : "BT",
     "MSG_SIZE_MAX" : "BS",
+    "SCHEDULER_CNT" : "SC",
+    "REQ_PER_QUERY" : "RPQ",
+    "REQ_PER_SHORT_QUERY" : "SRPQ",
+    "LONG_QUERY_PERC" : "LP",
+    "LONG_TXN_WORKLOAD" : "LTX",
+    "MAX_ROW_PER_TXN" : "MRT",
+    "OPEN_DISTRIBUTED_WATERMARK" : "DW",
+    "SDPCC_LONG_HOLE_MODE" : "HOLE",
+    "SDPCC_LONG_HOLE_ADAPTIVE" : "ADP",
+    "SDPCC_LONG_BLOOM_BITS" : "BB",
+    "SDPCC_LONG_BLOOM_HASHES" : "BH",
     "DATA_PERC":"D",
     "ACCESS_PERC":"A",
     "PRIORITY":"",
@@ -114,6 +125,15 @@ stat_map = OrderedDict([
   ('record_write_cnt', []),
   ('parts_touched', []),
   ('avg_parts_touched', []),
+
+  # SDMVCC per-key read intents and version reclamation
+  ('sdmvcc_intents_registered', []),
+  ('sdmvcc_intents_released', []),
+  ('sdmvcc_intent_waits', []),
+  ('sdmvcc_notifications', []),
+  ('sdmvcc_versions_created', []),
+  ('sdmvcc_versions_reclaimed', []),
+  ('sdmvcc_version_bytes', []),
 
   # Client
   ('txn_sent_cnt', []),
@@ -1205,4 +1225,3 @@ def write_breakdown_file(fname,summary,summary_client):
                     s += ', ' + '{0:0.6f}'.format(summary_client[p])
             f.write(s + '\n')
         f.write('\n')
-

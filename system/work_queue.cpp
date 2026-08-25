@@ -58,7 +58,7 @@ void QWorkQueue::init() {
 		sdocc_ready = true;
 		sdocc_lockfree = new TxnMsgLockList("SdoccList");
 	#endif
-	#if CC_ALG == SDPCC
+	#if SDPCC_FAMILY
 		sched_ready = true;
 	#endif
 	#if CC_ALG == ARIA
@@ -286,7 +286,7 @@ Message* QWorkQueue::work_dequeue(uint64_t thd_id) {
 #endif // CC_ALG == ARIA
 
 void QWorkQueue::sched_enqueue(uint64_t thd_id, Message * msg) {
-	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
+	assert(CALVIN_FAMILY);
 	assert(msg);
 	assert(ISSERVERN(msg->return_node_id));
 	uint64_t starttime = get_sys_clock();
@@ -312,7 +312,7 @@ void QWorkQueue::sched_enqueue(uint64_t thd_id, Message * msg) {
 Message * QWorkQueue::sched_dequeue(uint64_t thd_id) {
 	uint64_t starttime = get_sys_clock();
 
-	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
+	assert(CALVIN_FAMILY);
 	Message * msg = NULL;
 	work_queue_entry * entry = NULL;
 
@@ -667,11 +667,11 @@ TxnManager * QWorkQueue::get_from_sdocc_list_lockfree(uint64_t thd_id) {
 }
 #endif
 
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 Message * QWorkQueue::sdpcc_sched_dequeue(uint64_t thd_id) {
 	uint64_t starttime = get_sys_clock();
 
-	assert(CC_ALG == SDPCC);
+	assert(SDPCC_FAMILY);
 	Message * msg = NULL;
 	work_queue_entry * entry = NULL;
 

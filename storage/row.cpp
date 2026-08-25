@@ -30,6 +30,7 @@
 #include "row_aria.h"
 #include "row_sdocc.h"
 #include "row_sdpcc.h"
+#include "row_sdmvcc.h"
 #include "mem_alloc.h"
 #include "manager.h"
 #include <new>
@@ -76,6 +77,8 @@ void row_t::init_manager(row_t * row) {
 #elif CC_ALG == SDPCC
 	manager = (Row_sdpcc *) mem_allocator.align_alloc(sizeof(Row_sdpcc));
 	// manager = (Row_lock *) mem_allocator.align_alloc(sizeof(Row_lock));
+#elif CC_ALG == SDMVCC
+	manager = new (mem_allocator.align_alloc(sizeof(Row_sdmvcc))) Row_sdmvcc();
 #endif
 	manager->init(this);
 }
@@ -185,6 +188,8 @@ RC row_t::get_lock(access_t type, TxnManager * txn) {
 #if CC_ALG == CALVIN || CC_ALG == SDPCC
 	lock_t lt = (type == RD || type == SCAN)? LOCK_SH : LOCK_EX;
 	rc = this->manager->lock_get(lt, txn);
+#elif CC_ALG == SDMVCC
+	rc = this->manager->register_access(type, txn);
 #endif
 	return rc;
 }
@@ -286,6 +291,15 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 #elif CC_ALG == CALVIN || CC_ALG == SDPCC
 	access->data = this;
 	goto end;
+#elif CC_ALG == SDMVCC
+	uint64_t init_time = get_sys_clock();
+	txn->cur_row = (row_t *) mem_allocator.alloc(sizeof(row_t));
+	txn->cur_row->init(get_table(), get_part_id());
+	rc = manager->read(txn->sdmvcc_snapshot(), txn->cur_row);
+	access->data = txn->cur_row;
+	txn->consume_sdmvcc_access(this);
+	INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);
+	goto end;
 #elif CC_ALG == SDOCC
 	uint64_t init_time = get_sys_clock();
 	DEBUG_M("row_t::get_row SDOCC alloc \n");
@@ -386,6 +400,11 @@ uint64_t row_t::return_row(RC rc, access_t type, TxnManager *txn, row_t *row) {
 #elif CC_ALG == SDOCC
 	assert(row != NULL);
 	manager->clean(txn, type);
+	row->free_row();
+	mem_allocator.free(row, sizeof(row_t));
+	return 0;
+#elif CC_ALG == SDMVCC
+	assert(row != NULL);
 	row->free_row();
 	mem_allocator.free(row, sizeof(row_t));
 	return 0;

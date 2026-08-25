@@ -33,6 +33,7 @@ class INDEX;
 class TxnQEntry;
 class YCSBQuery;
 class TPCCQuery;
+class Row_sdmvcc;
 //class r_query;
 struct list_node_entry;
 
@@ -212,7 +213,7 @@ public:
 
 	void release_locks(RC rc);
 	bool isRecon() {
-		assert(CC_ALG == CALVIN || CC_ALG == SDPCC || !recon);
+		assert(CALVIN_FAMILY || !recon);
 		return recon;
 	};
 	bool recon;
@@ -223,6 +224,23 @@ public:
 	row_t * volatile cur_row;
 	// [NO_WAIT, WAIT_DIE]
 	int volatile   lock_ready;
+
+#if CC_ALG == SDMVCC
+	struct SDMVCCAccessRegistration {
+		row_t *row;
+		access_t type;
+		bool armed;
+		uint32_t remaining_uses;
+		bool intent_released;
+	};
+	std::vector<SDMVCCAccessRegistration> sdmvcc_accesses;
+	uint64_t sdmvcc_snapshot() const;
+	// 0: duplicate, 1: new per-key intent, 2: RD-to-WR upgrade.
+	int register_sdmvcc_access(row_t *row, access_t type);
+	void arm_sdmvcc_intents();
+	void consume_sdmvcc_access(row_t *row);
+	void finish_sdmvcc(RC rc);
+#endif
 
 #if CC_ALG == ARIA
 	vector<vector<ycsb_request *>> read_set;
@@ -417,4 +435,3 @@ protected:
 };
 
 #endif
-

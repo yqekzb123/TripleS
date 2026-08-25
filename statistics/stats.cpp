@@ -25,6 +25,8 @@
 #include "mem_alloc.h"
 #include "stats_array.h"
 #include "work_queue.h"
+#include "sdpcc_long_hole.h"
+#include "row_sdmvcc.h"
 
 void Stats_thd::init(uint64_t thd_id) {
   DEBUG_M("Stats_thd::init part_cnt alloc\n");
@@ -1815,6 +1817,12 @@ void Stats::print(bool prog) {
   else
 	  fprintf(outf, "[summary] ");
   totals->print(outf,prog);
+#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+  if (sdpcc_long_hole_man != NULL) sdpcc_long_hole_man->print(outf);
+#endif
+#if CC_ALG == SDMVCC
+  Row_sdmvcc::print_stats(outf);
+#endif
   mem_util(outf);
   cpu_util(outf);
 
@@ -2001,5 +2009,3 @@ void Stats::cpu_util(FILE * outf) {
   lastSysCPU = timeSample.tms_stime;
   lastUserCPU = timeSample.tms_utime;
 }
-
-

@@ -100,7 +100,7 @@ RC WorkerThread::process(Message * msg) {
 				break;
       case CL_QRY:
 			case RTXN:
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
         rc = process_calvin_rtxn(msg);
 #elif CC_ALG == ARIA
         rc = process_aria_rtxn(msg);
@@ -295,7 +295,7 @@ void WorkerThread::abort() {
 }
 
 TxnManager * WorkerThread::get_transaction_manager(Message * msg) {
-#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC// || CC_ALG == SILO
+#if CC_ALG == CALVIN || CC_ALG == ARIA || CC_ALG == SDOCC || SDPCC_FAMILY// || CC_ALG == SILO
   TxnManager* local_txn_man = txn_table.get_transaction_manager(get_thd_id(), msg->get_txn_id(), msg->get_batch_id());
 #else
   TxnManager * local_txn_man = txn_table.get_transaction_manager(get_thd_id(),msg->get_txn_id(),0);
@@ -322,7 +322,7 @@ char type2char(DATxnType txn_type)
   }
 }
 
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 RC WorkerThread::run() {
   tsetup();
   printf("Running WorkerThread %ld\n",_thd_id);
@@ -714,7 +714,7 @@ RC WorkerThread::run() {
 
 RC WorkerThread::process_rfin(Message * msg) {
   DEBUG_WRK("RFIN %ld\n",msg->get_txn_id());
-  assert(CC_ALG != CALVIN && CC_ALG != SDPCC);
+  assert(!CALVIN_FAMILY);
 
   M_ASSERT_V(!IS_LOCAL(msg->get_txn_id()), "RFIN local: %ld %ld/%d\n", msg->get_txn_id(),
              msg->get_txn_id() % g_node_cnt, g_node_id);
@@ -1069,7 +1069,7 @@ RC WorkerThread::process_rtxn_cont(Message * msg) {
 RC WorkerThread::process_rprepare(Message * msg) {
     DEBUG_WRK("RPREP %ld,%ld\n",msg->get_batch_id(),msg->get_txn_id());
     RC rc = RCOK;
-#if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
+#if LOGGING && !CALVIN_FAMILY
     LogRecord * record = logger.createRecord(msg->get_txn_id(),L_FLUSH,0,0);
     if(g_repl_cnt > 0) {
       msg_queue.enqueue(get_thd_id(), Message::create_message(record, LOG_MSG),
@@ -1280,7 +1280,7 @@ RC WorkerThread::process_log_flushed(Message * msg) {
 RC WorkerThread::process_rfwd(Message * msg) {
   DEBUG("RFWD (%ld,%ld)\n",msg->get_batch_id(),msg->get_txn_id());
   txn_man->txn_stats.remote_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
-  assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
+  assert(CALVIN_FAMILY);
   int responses_left = txn_man->received_response(((ForwardMessage*)msg)->rc);
   assert(responses_left >=0);
   if(txn_man->calvin_collect_phase_done()) {
@@ -1298,7 +1298,7 @@ RC WorkerThread::process_calvin_rtxn(Message * msg) {
   DEBUG("START %ld %f %lu\n", txn_man->get_txn_id(),
         simulation->seconds_from_start(get_sys_clock()), txn_man->txn_stats.starttime);
   assert(ISSERVERN(txn_man->return_id));
-  #if CC_ALG == SDPCC
+  #if SDPCC_FAMILY
   uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
   // assert(key <= minSid);
   assert(txn_man->lock_ready_cnt <= 0);
@@ -1498,7 +1498,7 @@ RC StatsPerIntervalThread::run(){
         }
       }
     #endif
-    #if CC_ALG == SDPCC
+    #if SDPCC_FAMILY
       #if OPEN_DISTRIBUTED_WATERMARK
       bool updated = check_water_mark->update_local_watermark(_thd_id);
       if (updated) {

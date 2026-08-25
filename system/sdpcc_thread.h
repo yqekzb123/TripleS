@@ -27,9 +27,13 @@ public:
     void setup();
     void handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minSid);
 private:
+    struct PendingTxn {
+        TxnManager *txn;
+        uint64_t wait_start;
+    };
     TxnManager * m_txn;
 
-    std::vector<TxnManager*> tmp_txn_list;
+    std::vector<PendingTxn> tmp_txn_list;
 };
 
 class SDPCCSequencerThread : public Thread {

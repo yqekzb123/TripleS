@@ -28,7 +28,7 @@
 
 void MessageThread::init(uint64_t thd_id) {
   buffer_cnt = g_total_node_cnt;
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
   buffer_cnt++;
 #endif
   DEBUG_M("MessageThread::init buffer[] alloc\n");
@@ -98,7 +98,7 @@ static uint64_t mget_size() {
   uint64_t size = 0;
   size += sizeof(RemReqType);
   size += sizeof(uint64_t);
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
   size += sizeof(uint64_t);
 #endif
   // for stats, send message queue time
@@ -153,7 +153,7 @@ void MessageThread::run() {
   sbuf->cnt += 1;
   sbuf->ptr += msg->get_size();
   // Free message here, no longer needed unless CALVIN sequencer
-  if(CC_ALG != CALVIN && CC_ALG != SDPCC) {
+  if(!CALVIN_FAMILY) {
     Message::release_message(msg);
   }
   if (sbuf->starttime == 0) sbuf->starttime = get_sys_clock();

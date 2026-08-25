@@ -13,8 +13,8 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 12
-#define THREAD_CNT 16
+#define NODE_CNT 2
+#define THREAD_CNT 15
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
 #define LOGGER_THREAD_CNT 3
@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB or TPCC or PPS
-#define WORKLOAD TPCC
+#define WORKLOAD YCSB
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -106,7 +106,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG ARIA
+#define CC_ALG SDMVCC
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -174,6 +174,19 @@
 // [SDPCC]
 // true即关闭SDPCC的本地水印优化
 #define OPEN_DISTRIBUTED_WATERMARK false
+
+// SDPCC long-transaction watermark-hole optimization (YCSB prototype).
+// 0: disabled, 1: exact read/write sets, 2: Bloom-filter read/write sets.
+#define SDPCC_LONG_HOLE_DISABLED 0
+#define SDPCC_LONG_HOLE_EXACT 1
+#define SDPCC_LONG_HOLE_BLOOM 2
+#define SDPCC_LONG_HOLE_MODE SDPCC_LONG_HOLE_DISABLED
+#define SDPCC_LONG_HOLE_ADAPTIVE false
+#define SDPCC_LONG_HOLE_ADAPTIVE_WINDOW 1024
+#define SDPCC_LONG_HOLE_ENABLE_PCT 8
+#define SDPCC_LONG_HOLE_DISABLE_PCT 4
+#define SDPCC_LONG_BLOOM_BITS 8192
+#define SDPCC_LONG_BLOOM_HASHES 4
 /***********************************************/
 // Dynamic write perc and skew
 /***********************************************/
@@ -195,7 +208,7 @@
 // Benchmark
 /***********************************************/
 // max number of rows touched per transaction
-#define MAX_ROW_PER_TXN       64
+#define MAX_ROW_PER_TXN 512
 #define QUERY_INTVL         1UL
 #define MAX_TXN_PER_PART 500000
 #define FIRST_PART_LOCAL      true
@@ -218,9 +231,9 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 1048576*8
+#define SYNTH_TABLE_SIZE 16777216
 #define ZIPF_THETA 0.7
-#define TXN_WRITE_PERC 1.0
+#define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
 #define SCAN_LEN          20
@@ -258,11 +271,11 @@
 // are not modeled.
 #define TPCC_ACCESS_ALL       false
 #define WH_UPDATE         false
-#define NUM_WH 384
+#define NUM_WH 32
 // % of transactions that access multiple partitions
-#define MPR 0.15
+#define MPR 0.2
 #define MPIR 0.01
-#define MPR_NEWORDER 0.1
+#define MPR_NEWORDER MPR
 #if NODE_CNT == 1
 #define NO_REMOTE
 #endif
@@ -297,7 +310,7 @@ enum DATxnType {
 
 
 #define TXN_TYPE          TPCC_ALL
-#define PERC_PAYMENT 0.0
+#define PERC_PAYMENT 0.489
 #define FIRSTNAME_MINLEN      8
 #define FIRSTNAME_LEN         16
 #define LASTNAME_LEN        16
@@ -408,6 +421,9 @@ enum PPSTxnType {
 #define ARIA 31
 #define SDOCC 32  // 流水线OCC
 #define SDPCC 33  // 流水线PCC
+#define SDMVCC 34 // SDPCC scheduling + deterministic MVCC + per-key read intents
+#define SDPCC_FAMILY (CC_ALG == SDPCC || CC_ALG == SDMVCC)
+#define CALVIN_FAMILY (CC_ALG == CALVIN || SDPCC_FAMILY)
 // TIMESTAMP allocation method.
 #define TS_MUTEX          1
 #define TS_CAS            2
@@ -467,4 +483,3 @@ enum PPSTxnType {
 #define ENVIRONMENT_EC2 false
 
 #endif
-

@@ -24,6 +24,7 @@
 #include "sdpcc_sequencer.h"
 #include "client_query.h"
 #include "global.h"
+#include "sdpcc_long_hole.h"
 #include "io_thread.h"
 #include "log_thread.h"
 #include "logger.h"
@@ -60,7 +61,7 @@ LogThread * log_thds;
 CalvinLockThread * calvin_lock_thds;
 CalvinSequencerThread * calvin_seq_thds;
 #endif
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 SDPCCLockThread * sdpcc_lock_thds;
 SDPCCSequencerThread * sdpcc_seq_thds;
 #endif
@@ -136,11 +137,15 @@ int main(int argc, char *argv[]) {
 	return 0;
 #endif
 
-	#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+	#if SDPCC_FAMILY
 	sids = (uint64_t *) mem_allocator.alloc(sizeof(uint64_t) * g_scheduler_thread_cnt);
 	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
 		sids[i] = 0;
 	}
+	#if CC_ALG == SDPCC
+	sdpcc_long_hole_man = new SDPCCLongHoleManager();
+	sdpcc_long_hole_man->init(g_scheduler_thread_cnt);
+	#endif
 	#endif
 	#if (CC_ALG == SDPCC && OPEN_DISTRIBUTED_WATERMARK)
 	check_water_mark = new WaterMarkList(g_scheduler_thread_cnt);
@@ -206,7 +211,7 @@ int main(int argc, char *argv[]) {
 	seq_man.init(m_wl);
 	printf("Done\n");
 #endif
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 	printf("Initializing sequencer... ");
 	fflush(stdout);
 	sdpcc_seq_man.init(m_wl);
@@ -246,7 +251,7 @@ int main(int argc, char *argv[]) {
 #if CC_ALG == CALVIN
 	all_thd_cnt += 2; // sequencer + scheduler thread
 #endif
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 	all_thd_cnt += (g_scheduler_thread_cnt + 1); // sequencer + scheduler thread
 #endif
 
@@ -285,7 +290,7 @@ int main(int argc, char *argv[]) {
 	calvin_seq_thds = new CalvinSequencerThread[1];
 #endif
 
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 	sdpcc_lock_thds = new SDPCCLockThread[g_scheduler_thread_cnt];
 	sdpcc_seq_thds = new SDPCCSequencerThread[1];
 #endif
@@ -369,7 +374,7 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 
-#if CC_ALG != CALVIN && CC_ALG != ARIA && CC_ALG != SDOCC && CC_ALG != SDPCC
+#if CC_ALG != CALVIN && CC_ALG != ARIA && CC_ALG != SDOCC && !SDPCC_FAMILY
 	abort_thds[0].init(id,g_node_id,m_wl);
 	pthread_create(&p_thds[id++], NULL, run_thread, (void *)&abort_thds[0]);
 #endif
@@ -394,7 +399,7 @@ int main(int argc, char *argv[]) {
 	pthread_create(&p_thds[id++], &attr, run_thread, (void *)&calvin_seq_thds[0]);
 #endif
 
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 	the_first_scheduler_id = id; 
 	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
 	#if SET_AFFINITY

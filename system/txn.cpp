@@ -41,6 +41,7 @@
 #include "array.h"
 #include "manager.h"
 #include "water_mark.h"
+#include "row_sdmvcc.h"
 
 void TxnStats::init() {
 	starttime=0;
@@ -139,7 +140,7 @@ void TxnStats::commit_stats(uint64_t thd_id, uint64_t txn_id, uint64_t batch_id,
 	total_work_queue_cnt += work_queue_cnt;
 	assert(total_process_time >= process_time);
 
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
 
 	INC_STATS(thd_id,lat_s_loc_work_queue_time,work_queue_time);
 	INC_STATS(thd_id,lat_s_loc_msg_queue_time,msg_queue_time);
@@ -356,10 +357,13 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	return_id = UINT64_MAX;
 
 	this->h_wl = h_wl;
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY || CC_ALG == SDMVCC
 	phase = CALVIN_RW_ANALYSIS;
 	locking_done = false;
 	calvin_locked_rows.init(MAX_ROW_PER_TXN);
+#endif
+#if CC_ALG == SDMVCC
+	sdmvcc_accesses.clear();
 #endif
 #if CC_ALG == SILO
 	_pre_abort = (g_params["pre_abort"] == "true");
@@ -426,10 +430,13 @@ void TxnManager::reset() {
 	// Silo
 	commit_timestamp = 0;
 
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY || CC_ALG == SDMVCC
 	phase = CALVIN_RW_ANALYSIS;
 	locking_done = false;
 	calvin_locked_rows.clear();
+#endif
+#if CC_ALG == SDMVCC
+	sdmvcc_accesses.clear();
 #endif
 #if CC_ALG == ARIA
 	for (uint64_t i = 0; i < g_node_cnt; i++) {
@@ -485,7 +492,7 @@ void TxnManager::release() {
 	INC_STATS(get_thd_id(),mtx[1],get_sys_clock()-prof_starttime);
 	txn = NULL;
 
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY || CC_ALG == SDMVCC
 	calvin_locked_rows.release();
 #endif
 #if CC_ALG == SILO
@@ -514,7 +521,7 @@ RC TxnManager::commit() {
 	assert(rc == RCOK);
 	release_locks(RCOK);
 	commit_stats();
-#if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
+#if LOGGING && !CALVIN_FAMILY
 		LogRecord * record = logger.createRecord(get_txn_id(),L_COMMIT,0,0);
 		if(g_repl_cnt > 0) {
 			msg_queue.enqueue(get_thd_id(), Message::create_message(record, LOG_MSG),
@@ -548,7 +555,7 @@ RC TxnManager::abort() {
 	if (IS_LOCAL(get_txn_id()) && warmup_done) {
 		INC_STATS_ARR(get_thd_id(),start_abort_commit_latency, timespan);
 	}
-#if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
+#if LOGGING && !CALVIN_FAMILY
 		LogRecord * record = logger.createRecord(get_txn_id(),L_ABORT,0,0);
 		if(g_repl_cnt > 0) {
 			msg_queue.enqueue(get_thd_id(), Message::create_message(record, LOG_MSG),
@@ -660,7 +667,7 @@ RC TxnManager::start_commit() {
 	RC rc = RCOK;
 	DEBUG("%ld start_commit RO?%d\n",get_txn_id(),query->readonly());
 	if(is_multi_part()) {
-#if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
+#if LOGGING && !CALVIN_FAMILY
 		LogRecord * record = logger.createRecord(get_txn_id(),L_FLUSH,0,0);
 		if(g_repl_cnt > 0) {
 			msg_queue.enqueue(get_thd_id(), Message::create_message(record, LOG_MSG),
@@ -740,7 +747,7 @@ void TxnManager::send_finish_messages() {
 int TxnManager::received_response(RC rc) {
 	assert(txn->rc == RCOK || txn->rc == Abort || txn->rc == RETRY );
 	if (txn->rc == RCOK) set_rc(rc);
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
 	++rsp_cnt;
 #else
   if (rsp_cnt > 0)
@@ -791,7 +798,7 @@ void TxnManager::commit_stats() {
 		INC_STATS(get_thd_id(),cflt_cnt_txn,1);
 	}*/
 	txn_stats.commit_stats(get_thd_id(),get_txn_id(),get_batch_id(),timespan_long, timespan_short);
-	#if CC_ALG == CALVIN || CC_ALG == SDPCC
+	#if CALVIN_FAMILY
 	return;
 	#endif
 
@@ -938,6 +945,10 @@ void TxnManager::cleanup(RC rc) {
 	occ_man.finish(rc,this);
 #endif
 	ts_t starttime = get_sys_clock();
+
+#if CC_ALG == SDMVCC
+	finish_sdmvcc(rc);
+#endif
 	uint64_t row_cnt = txn->accesses.get_count();
 	assert(txn->accesses.get_count() == txn->row_cnt);
 	// assert((WORKLOAD == YCSB && row_cnt <= g_req_per_query) || (WORKLOAD == TPCC && row_cnt <=
@@ -967,6 +978,9 @@ void TxnManager::cleanup(RC rc) {
 }
 
 RC TxnManager::get_lock(row_t * row, access_t type) {
+#if CC_ALG == SDMVCC
+	return row->get_lock(type, this);
+#else
 	if (calvin_locked_rows.contains(row)) {
 		return RCOK;
 	}
@@ -976,6 +990,7 @@ RC TxnManager::get_lock(row_t * row, access_t type) {
 		INC_STATS(get_thd_id(), txn_wait_cnt, 1);
 	}
 	return rc;
+#endif
 }
 
 RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
@@ -1046,7 +1061,7 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 	}
 #endif
 
-#if LOGGING && CC_ALG != CALVIN && CC_ALG != SDPCC
+#if LOGGING && !CALVIN_FAMILY
 	if (type == WR) {
 			LogRecord *record = logger.createRecord(
 					get_txn_id(), L_UPDATE, row->get_table()->get_table_id(), row->get_primary_key());
@@ -1068,7 +1083,7 @@ RC TxnManager::get_row(row_t * row, access_t type, row_t *& row_rtn) {
 	INC_STATS(get_thd_id(), txn_manager_time, timespan);
 	row_rtn  = access->data;
 
-	if (CC_ALG == CALVIN || CC_ALG == SDPCC) assert(rc == RCOK);
+	if (CALVIN_FAMILY || CC_ALG == SDMVCC) assert(rc == RCOK);
 	assert(rc == RCOK);
 	return rc;
 }
@@ -1153,7 +1168,7 @@ void TxnManager::insert_row(row_t * row, table_t * table) {
 #endif
 
 RC TxnManager::delete_row(row_t * row, index_btree * index) {
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
 	index->index_remove(row->get_primary_key(), row->get_part_id());
 #else
 	txn->delete_rows.add(std::pair<row_t*, index_btree*>(row, index));
@@ -1241,7 +1256,7 @@ RC TxnManager::validate() {
 }
 
 RC TxnManager::send_remote_reads() {
-	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
+	assert(CALVIN_FAMILY);
 #if !YCSB_ABORT_MODE && !OPEN_YCSB_DEPENDENCY && WORKLOAD == YCSB
 	return RCOK;
 #endif
@@ -1264,6 +1279,71 @@ bool TxnManager::calvin_exec_phase_done() {
 	}
 	return ready;
 }
+
+#if CC_ALG == SDMVCC
+uint64_t TxnManager::sdmvcc_snapshot() const {
+	return get_batch_key(txn->batch_id, return_id, txn->txn_id);
+}
+
+int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
+	for (auto &entry : sdmvcc_accesses) {
+		if (entry.row != row) continue;
+		entry.remaining_uses++;
+		if (entry.type == WR || type != WR) return 0;
+		entry.type = WR;
+		return 2;
+	}
+	SDMVCCAccessRegistration entry = {row, type, false, 1, false};
+	sdmvcc_accesses.push_back(entry);
+	return 1;
+}
+
+void TxnManager::consume_sdmvcc_access(row_t *row) {
+	for (auto &entry : sdmvcc_accesses) {
+		if (entry.row != row) continue;
+		assert(entry.remaining_uses > 0);
+		if (--entry.remaining_uses == 0) {
+			entry.row->manager->release_intent(sdmvcc_snapshot(), minSid);
+			entry.intent_released = true;
+		}
+		return;
+	}
+	assert(false);
+}
+
+void TxnManager::arm_sdmvcc_intents() {
+	for (auto &entry : sdmvcc_accesses) {
+		if (entry.armed) continue;
+		entry.row->manager->arm_read(this, sdmvcc_snapshot());
+		entry.armed = true;
+	}
+}
+
+void TxnManager::finish_sdmvcc(RC rc) {
+	const uint64_t sid = sdmvcc_snapshot();
+	if (rc == RCOK) {
+		// Copy all local writes into their private versions first. Publishing is
+		// a second pass so no reader observes a partially installed local txn.
+		for (uint64_t i = 0; i < txn->accesses.size(); ++i) {
+			Access *access = txn->accesses[i];
+			if (access->type == WR) {
+				access->orig_row->manager->stage_write(sid, access->data);
+			}
+		}
+		for (auto &entry : sdmvcc_accesses) {
+			if (entry.type == WR) entry.row->manager->publish_write(sid, get_thd_id());
+		}
+	} else {
+		for (auto &entry : sdmvcc_accesses) {
+			if (entry.type == WR) entry.row->manager->abort_write(sid, get_thd_id());
+		}
+	}
+	for (auto &entry : sdmvcc_accesses) {
+		if (!entry.intent_released) entry.row->manager->release_intent(sid, minSid);
+	}
+	sdmvcc_accesses.clear();
+}
+#endif
 
 bool TxnManager::calvin_collect_phase_done() {
 	bool ready =  (phase == CALVIN_COLLECT_RD) && (get_rsp_cnt() == calvin_expected_rsp_cnt);

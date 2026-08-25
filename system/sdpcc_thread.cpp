@@ -35,8 +35,9 @@
 #include "work_queue.h"
 #include <vector>
 #include "water_mark.h"
+#include "sdpcc_long_hole.h"
 
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 void SDPCCLockThread::setup() {}
 
 RC SDPCCLockThread::run() {
@@ -57,6 +58,10 @@ RC SDPCCLockThread::run() {
 		Message * msg = work_queue.sdpcc_sched_dequeue(_thd_id);
 
 		if(!msg) {
+			#if CC_ALG == SDMVCC
+			uint64_t current_minSid = minSid;
+			if (current_minSid != old_minSid) handle_tmp_txn(current_minSid, old_minSid);
+			#endif
 			if (idle_starttime == 0) idle_starttime = get_sys_clock();
 			continue;
 		}
@@ -92,29 +97,57 @@ RC SDPCCLockThread::run() {
 			ATOM_CAS(txn_man->lock_ready, true, false);
 			txn_man->incr_lr();
 		}
+		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
+		bool long_hole = false;
+		#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+		long_hole = sdpcc_long_hole_man->should_publish(id, txn_man);
+		if (long_hole) sdpcc_long_hole_man->publish(id, key, txn_man);
+		#endif
 		if (!txn_man->isRecon()) {
 			rc = txn_man->acquire_locks();
 		}
-
-		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
-		#if OPEN_DISTRIBUTED_WATERMARK
+		#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+		if (long_hole) {
+			// All local lock requests are registered; row queues now enforce conflicts.
+			sdpcc_long_hole_man->clear(id, key);
+		}
+		#endif
+		#if CC_ALG == SDPCC && OPEN_DISTRIBUTED_WATERMARK
 		check_water_mark->mark_completed(key, get_thd_id());
 		DEBUG_SCH("[SDPCCThread] %ld mark %ld,%ld key %ld complete\n", _thd_id, txn_man->get_batch_id(),txn_man->get_txn_id(), key);
 		uint64_t current_minSid = check_water_mark->get_global_watermark();
-		#else
+		#elif CC_ALG == SDPCC
 		// 更新水印minSid
 		uint64_t old_sid = sids[id];
-		assert(key > minSid);
-		assert(key > sids[id]);
-		sids[id] = key;
+		assert(long_hole ? key >= minSid : key > minSid);
+		if (!long_hole) sdpcc_long_hole_man->advance_normal(id, key);
 		uint64_t current_minSid = minSid;
 		DEBUG_SCH("[SDPCCThread] %ld set sid from %ld to %ld, now minSid %ld\n", _thd_id, old_sid, sids[id], minSid);
+		#else
+		uint64_t old_sid = sids[id];
+		assert(key > old_sid);
+		sids[id] = key;
+		uint64_t current_minSid = minSid;
 		#endif
 		txn_man->last_msg = msg;
 
-		tmp_txn_list.push_back(txn_man);
-		DEBUG_SCH("[SDPCCThread] %ld txn %ld,%ld enter tmp_txn_list\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id());
-		if (current_minSid != old_minSid) {
+		bool bypass = false;
+		#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+		if (!long_hole && current_minSid < key && sdpcc_long_hole_man->enabled() &&
+				sdpcc_long_hole_man->should_check(id, key)) {
+			bypass = sdpcc_long_hole_man->can_bypass(id, txn_man, key);
+		}
+		#endif
+		if (bypass) {
+			if (txn_man->decr_lr() == 0 && ATOM_CAS(txn_man->lock_ready, false, true)) {
+				work_queue.enqueue(_thd_id, txn_man->last_msg, false);
+			}
+		} else {
+			PendingTxn pending = {txn_man, get_sys_clock()};
+			tmp_txn_list.push_back(pending);
+			DEBUG_SCH("[SDPCCThread] %ld txn %ld,%ld enter tmp_txn_list\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id());
+		}
+		if (!bypass && current_minSid != old_minSid) {
 			// !检查是否要塞入队列的逻辑
 			handle_tmp_txn(current_minSid, old_minSid);
 		}
@@ -134,10 +167,18 @@ void SDPCCLockThread::handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minS
 	uint64_t idx = 0;
 	for(idx = 0; idx < tmp_txn_list.size(); idx++) {
 	// for (auto txn_man:tmp_txn_list){
-		TxnManager *txn_man = tmp_txn_list[idx];
+		TxnManager *txn_man = tmp_txn_list[idx].txn;
 		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
 		DEBUG_SCH("[SDPCCThread] %ld handle txn %ld,%ld, lock_ready_cnt %d, key %ld, current_minSid %ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id(), txn_man->lock_ready_cnt ,key, current_minSid);
 		if (key > current_minSid) break;
+		#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+		sdpcc_long_hole_man->record_watermark_wait(
+				_thd_id % g_scheduler_thread_cnt,
+				get_sys_clock() - tmp_txn_list[idx].wait_start);
+		#endif
+		#if CC_ALG == SDMVCC
+		txn_man->arm_sdmvcc_intents();
+		#endif
 		if (txn_man->decr_lr() == 0) {
 			// 塞到队列里
 			if(ATOM_CAS(txn_man->lock_ready,false,true)) {

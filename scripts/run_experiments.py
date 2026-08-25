@@ -40,8 +40,25 @@ perfTime = 60
 fromtimelist=[]
 totimelist=[]
 
-keywords = ['tput', 'seq_idle_time', 'sched_idle_time', 'worker_idle_time', 'fscl50', 'fscl99','sdocc_avg_retry_time','sdocc_avg_retry_time_for_watermark','sdocc_avg_retry_time_for_conflict']
-keywords_cal_type = ['sum', 'sum', 'sum', 'sum', 'sum', 'sum']
+keywords = ['tput', 'seq_idle_time', 'sched_idle_time', 'worker_idle_time', 'fscl50', 'fscl99',
+            'sdocc_avg_retry_time', 'sdocc_avg_retry_time_for_watermark', 'sdocc_avg_retry_time_for_conflict',
+            'sdpcc_long_hole_published', 'sdpcc_long_hole_bypass_checks', 'sdpcc_long_hole_bypassed',
+            'sdpcc_long_hole_reject_non_hole', 'sdpcc_long_hole_reject_conflict',
+            'sdpcc_long_hole_adaptive_skipped_no_hole',
+            'sdpcc_long_hole_adaptive_skipped_infeasible', 'sdpcc_long_hole_adaptive_eligible',
+            'sdpcc_long_hole_adaptive_enable_transitions',
+            'sdpcc_long_hole_adaptive_disable_transitions',
+            'sdpcc_long_hole_adaptive_enabled_schedulers',
+            'sdpcc_long_hole_match_probes', 'sdpcc_long_hole_avg_build_ns',
+            'sdpcc_long_hole_avg_match_ns', 'sdpcc_watermark_wait_count',
+            'sdpcc_watermark_avg_wait_ns', 'sdpcc_long_hole_peak_active',
+            'sdpcc_long_hole_peak_metadata_est_bytes']
+keywords += ['sdmvcc_intents_registered', 'sdmvcc_intents_released',
+             'sdmvcc_intent_waits', 'sdmvcc_notifications',
+             'sdmvcc_versions_created', 'sdmvcc_versions_reclaimed',
+             'sdmvcc_version_bytes']
+keywords_cal_type = (['sum'] * 6 + ['avg'] * 3 + ['sum'] * 12 +
+                     ['avg'] * 2 + ['sum', 'avg', 'sum', 'sum'] + ['sum'] * 7)
 draw_keywords = ['tput']
 
 if len(sys.argv) < 2:

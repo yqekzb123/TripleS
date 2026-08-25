@@ -1,4 +1,5 @@
 import itertools
+import os
 # Experiments to run and analyze
 # Go to end of file to fill in experiments
 SHORTNAMES = {
@@ -29,6 +30,9 @@ SHORTNAMES = {
     "MPR":"MPR",
     "PRORATE_RATIO":"PRORATE",
     "REQ_PER_QUERY": "RPQ",
+    "REQ_PER_SHORT_QUERY": "SRPQ",
+    "LONG_QUERY_PERC": "LP",
+    "SDPCC_LONG_HOLE_MODE": "HOLE",
     "MODE":"",
     "PRIORITY":"",
     "ABORT_PENALTY":"PENALTY",
@@ -50,9 +54,10 @@ fmt_title=["NODE_CNT","CC_ALG","ACCESS_PERC","TXN_WRITE_PERC","PERC_PAYMENT","MP
 ##############################
 def ycsb_scaling_PCC():
     wl = 'YCSB'
-    nnodes = [2,4,6,8,10,12]
-    algos=['CALVIN','SDPCC']
-    # algos=['ARIA']
+    # nnodes = [2,4,6,8,10,12]
+    nnodes = [2,4]
+    # algos=['CALVIN','SDPCC']
+    algos=['SDPCC']
     base_table_size=1048576*8
     txn_write_perc = [1]
     tup_write_perc = [0.2]
@@ -112,13 +117,13 @@ def ycsb_skew():
     nnodes = [2]
     # algos=['CALVIN','ARIA','SDPCC','SDOCC']
     # algos=['ARIA','SDPCC','SDOCC']
-    algos=['SDPCC']
+    algos=['SDOCC']
     base_table_size=1048576*8
     txn_write_perc = [1.0]
     tup_write_perc = [0.2]
     load = [10000]
-    total_cnt=[15]
-    # total_cnt=[16]
+    # total_cnt=[15]
+    total_cnt=[16]
     # scnt = [1]
     scnt = [3]
     # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
@@ -134,8 +139,8 @@ def ycsb_skew_PCC():
     nnodes = [2]
     # algos=['CALVIN','ARIA','SDPCC','SDOCC']
     # algos=['ARIA','SDPCC','SDOCC']
-    # algos=['CALVIN']
-    algos=['CALVIN','SDPCC']
+    algos=['SDMVCC']
+    # algos=['CALVIN','SDPCC']
     base_table_size=1048576*8
     txn_write_perc = [1]
     tup_write_perc = [0.2]
@@ -144,8 +149,8 @@ def ycsb_skew_PCC():
     # total_cnt=[16]
     # scnt = [1]
     scnt = [3]
-    skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    # skew = [0.3]
+    # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
+    skew = [0.7]
     # skew = [0.1]
     # skew = [1.5]
     fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
@@ -559,6 +564,65 @@ def tpcc_aria_batch2():
     exp = [[wl,bs,m,algo] for algo,m,bs in itertools.product(algos,mpr,aria_batch_size)]
     return fmt,exp
 
+def ycsb_sdpcc_long_hole():
+    """Compare pure watermark, exact sets, and Bloom filters on YCSB long txns."""
+    modes = ["SDPCC_LONG_HOLE_DISABLED", "SDPCC_LONG_HOLE_BLOOM"]
+    # modes = ["SDPCC_LONG_HOLE_DISABLED", "SDPCC_LONG_HOLE_EXACT", "SDPCC_LONG_HOLE_BLOOM"]
+    long_percs = [0.01, 0.05, 0.10]
+    fmt = ["WORKLOAD", "SDPCC_LONG_HOLE_MODE", "LONG_QUERY_PERC", "CC_ALG",
+           "NODE_CNT", "LONG_TXN_WORKLOAD", "REQ_PER_QUERY", "REQ_PER_SHORT_QUERY",
+           "OPEN_DISTRIBUTED_WATERMARK", "THREAD_CNT", "SCHEDULER_CNT"]
+    exp = [["YCSB", mode, perc, "SDPCC", 2, "true", 50, 10, "false", 16, 3]
+           for perc, mode in itertools.product(long_percs, modes)]
+    return fmt, exp
+
+def ycsb_sdpcc_long_hole_adaptive():
+    """Legacy entry point: compare pure watermark and fixed Bloom only."""
+    variants = [
+        ("SDPCC_LONG_HOLE_DISABLED", "false"),
+        ("SDPCC_LONG_HOLE_BLOOM", "false"),
+    ]
+    rotation = int(os.environ.get("SDPCC_ADAPTIVE_ORDER", "0")) % len(variants)
+    variants = variants[rotation:] + variants[:rotation]
+    long_percs = [0.01, 0.05, 0.10]
+    fmt = ["WORKLOAD", "SDPCC_LONG_HOLE_MODE", "SDPCC_LONG_HOLE_ADAPTIVE",
+           "LONG_QUERY_PERC", "CC_ALG", "NODE_CNT", "LONG_TXN_WORKLOAD",
+           "REQ_PER_QUERY", "REQ_PER_SHORT_QUERY", "OPEN_DISTRIBUTED_WATERMARK",
+           "THREAD_CNT", "SCHEDULER_CNT"]
+    exp = [["YCSB", mode, adaptive, perc, "SDPCC", 2, "true", 50, 10,
+            "false", 16, 3]
+           for perc, (mode, adaptive) in itertools.product(long_percs, variants)]
+    return fmt, exp
+
+def ycsb_sdpcc_long_hole_size():
+    """Compare pure watermark and fixed Bloom for 100/500-op long txns."""
+    modes = ["SDPCC_LONG_HOLE_DISABLED", "SDPCC_LONG_HOLE_BLOOM"]
+    long_percs = [0.05, 0.10]
+    long_sizes = [(100, 128), (500, 512)]
+    fmt = ["WORKLOAD", "SDPCC_LONG_HOLE_MODE", "LONG_QUERY_PERC", "CC_ALG",
+           "NODE_CNT", "LONG_TXN_WORKLOAD", "REQ_PER_QUERY", "REQ_PER_SHORT_QUERY",
+           "MAX_ROW_PER_TXN", "MSG_SIZE_MAX", "SDPCC_LONG_HOLE_ADAPTIVE",
+           "SDPCC_LONG_BLOOM_BITS", "SDPCC_LONG_BLOOM_HASHES",
+           "OPEN_DISTRIBUTED_WATERMARK", "THREAD_CNT", "SCHEDULER_CNT"]
+    exp = [["YCSB", mode, perc, "SDPCC", 2, "true", long_size, 10,
+            max_rows, 16384, "false", 8192, 4, "false", 16, 3]
+           for long_size, max_rows in long_sizes
+           for perc, mode in itertools.product(long_percs, modes)]
+    return fmt, exp
+
+def ycsb_sdmvcc_long():
+    """Compare original SDPCC and SDMVCC with 100-op YCSB long txns."""
+    algos = ["SDPCC", "SDMVCC"]
+    long_percs = [0.01, 0.05, 0.10]
+    fmt = ["WORKLOAD", "CC_ALG", "LONG_QUERY_PERC", "NODE_CNT",
+           "LONG_TXN_WORKLOAD", "REQ_PER_QUERY", "REQ_PER_SHORT_QUERY",
+           "MAX_ROW_PER_TXN", "MSG_SIZE_MAX", "OPEN_DISTRIBUTED_WATERMARK",
+           "SDPCC_LONG_HOLE_MODE", "THREAD_CNT", "SCHEDULER_CNT"]
+    exp = [["YCSB", algo, perc, 2, "true", 100, 10, 128, 16384, "false",
+            "SDPCC_LONG_HOLE_DISABLED", 16, 3]
+           for perc, algo in itertools.product(long_percs, algos)]
+    return fmt, exp
+
 ##############################
 # END PLOTS
 ##############################
@@ -600,6 +664,10 @@ experiment_map = {
     'ycsb_rwset_variable_ratio': ycsb_rwset_variable_ratio,
     # SDPCC的优化测试
     'ycsb_sch_cnt': ycsb_sch_cnt,
+    'ycsb_sdpcc_long_hole': ycsb_sdpcc_long_hole,
+    'ycsb_sdpcc_long_hole_adaptive': ycsb_sdpcc_long_hole_adaptive,
+    'ycsb_sdpcc_long_hole_size': ycsb_sdpcc_long_hole_size,
+    'ycsb_sdmvcc_long': ycsb_sdmvcc_long,
 
     # Scaling
     'ycsb_scaling_PCC': ycsb_scaling_PCC, # calvin sdpcc
@@ -655,6 +723,8 @@ configs = {
     "TWOPL_LITE":"false",
     "LONG_TXN_WORKLOAD":'false',
     "LONG_QUERY_PERC":0.0,
+    "OPEN_DISTRIBUTED_WATERMARK":'false',
+    "SDPCC_LONG_HOLE_MODE":"SDPCC_LONG_HOLE_DISABLED",
     "OPEN_RANDOM_WAIT":'false',
 #YCSB
     "INIT_PARALLELISM" : 8,
@@ -663,6 +733,7 @@ configs = {
     "ACCESS_PERC":0.03,
     "DATA_PERC": 100,
     "REQ_PER_QUERY": 10,
+    "REQ_PER_SHORT_QUERY": 10,
     "SYNTH_TABLE_SIZE":"1048576*8",
     "RWSET_KNOWN_RATIO":1.0,
     "RWSET_KNOWN":"false",
@@ -691,4 +762,3 @@ configs = {
     "LOAD_METHOD": "LOAD_MAX",
     "ISOLATION_LEVEL":"SERIALIZABLE"
 }
-

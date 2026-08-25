@@ -49,7 +49,7 @@ void InputThread::setup() {
 			} else {
 				assert(ISSERVER || ISREPLICA);
 				//printf("Received Msg %d from node %ld\n",msg->rtype,msg->return_node_id);
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
 			if(msg->rtype == CALVIN_ACK ||(msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id()))) {
 				work_queue.sequencer_enqueue(get_thd_id(),msg);
 				msgs->erase(msgs->begin());
@@ -186,7 +186,7 @@ RC InputThread::server_recv_loop() {
 				msgs->erase(msgs->begin());
 				continue;
 			}
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
 			if(msg->rtype == CALVIN_ACK ||(msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id()))) {
 				work_queue.sequencer_enqueue(get_thd_id(),msg);
 				msgs->erase(msgs->begin());

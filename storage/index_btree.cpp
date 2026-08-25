@@ -482,7 +482,7 @@ RC index_btree::find_leaf(glob_param params, idx_key_t key, idx_acc_t access_typ
       		if (key < c->keys[i]) break;
 		}
 		child = (bt_node *)c->pointers[i];
-#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC
+#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == ARIA || CC_ALG == SDOCC || SDPCC_FAMILY
 		if (simulation->is_setup_done() && child->is_leaf) {
 			leaf = child;
 			RC rc = RCOK;
@@ -533,7 +533,7 @@ RC index_btree::find_leaf(glob_param params, idx_key_t key, idx_acc_t access_typ
 			} else {
 				release_latch(c); // release the LATCH_SH on c
 			}
-#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == ARIA || CC_ALG == SDOCC || CC_ALG == SDPCC
+#if CC_ALG == CALVIN || CC_ALG == SILO || CC_ALG == ARIA || CC_ALG == SDOCC || SDPCC_FAMILY
 		}
 #endif
 		

@@ -34,6 +34,9 @@
 #if CC_ALG == SDPCC
 #include "row_sdpcc.h"
 #endif
+#if CC_ALG == SDMVCC
+#include "row_sdmvcc.h"
+#endif
 #include "sdocc.h"
 
 void TPCCTxnManager::init(uint64_t thd_id, Workload * h_wl) {
@@ -88,7 +91,7 @@ RC TPCCTxnManager::run_txn() {
 	RC rc = RCOK;
 	uint64_t starttime = get_sys_clock();
 
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
 	rc = run_calvin_txn();
 	return rc;
 #endif
@@ -164,7 +167,7 @@ bool TPCCTxnManager::is_done() {
 
 RC TPCCTxnManager::acquire_locks() {
 	uint64_t starttime = get_sys_clock();
-	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
+	assert(CALVIN_FAMILY);
 	locking_done = false;
 	RC rc = RCOK;
 	RC rc2;
@@ -311,7 +314,7 @@ RC TPCCTxnManager::acquire_locks() {
 			index = _wl->i_order_cust;
 			item = index_read(index, key, wh_to_part(w_id));
 			row = (row_t *) item->location;
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
 			while (item->next != nullptr && row->manager->has_write_lock()) {
 				item = item->next;
 				row = (row_t *)item->location;
@@ -1211,7 +1214,7 @@ inline RC TPCCTxnManager::new_order_5_1(uint64_t w_id, uint64_t d_id, uint64_t c
 	r_order->set_value(O_ALL_LOCAL, all_local);
 	RC rc = RCOK;
 #if TXN_TYPE == TPCC_ALL
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
 	rc = get_lock(r_order, WR);
 #endif
 	row_t * temp;
@@ -1252,7 +1255,7 @@ inline RC TPCCTxnManager::new_order_5_2(uint64_t w_id, uint64_t d_id, uint64_t c
 	r_no->set_value(NO_W_ID, w_id);
 	RC rc = RCOK;
 #if TXN_TYPE == TPCC_ALL
-#if CC_ALG == CALVIN || CC_ALG == SDPCC
+#if CALVIN_FAMILY
 	rc = get_lock(r_no, WR);
 #endif
 	row_t * temp;
@@ -1468,7 +1471,7 @@ inline RC TPCCTxnManager::run_order_status_1(uint64_t w_id, uint64_t d_id, uint6
 
 inline RC TPCCTxnManager::run_order_status_2(uint64_t w_id, uint64_t d_id, uint64_t o_id, itemid_t * items, row_t*& l_order_local) {
 	uint64_t starttime = get_sys_clock();
-#if CC_ALG != CALVIN && CC_ALG != SDPCC
+#if !CALVIN_FAMILY
 	l_order_local->get_value(O_ID, o_id);
 #endif
 	uint64_t key = orderlineKey(w_id, d_id, o_id);
@@ -1513,7 +1516,7 @@ inline RC TPCCTxnManager::run_delivery_1(uint64_t &no_o_id, row_t *&r_new_order_
 
 inline RC TPCCTxnManager::run_delivery_2(uint64_t &no_o_id, row_t *&r_new_order_local) {
 	uint64_t starttime = get_sys_clock();
-#if CC_ALG != CALVIN && CC_ALG != SDPCC
+#if !CALVIN_FAMILY
 	r_new_order_local->get_value(NO_O_ID, no_o_id);
 #endif
 #if TXN_TYPE == TPCC_ALL
@@ -2107,7 +2110,7 @@ RC TPCCTxnManager::process_aria_remote(ARIA_PHASE aria_phase) {
 RC TPCCTxnManager::run_tpcc_phase2() {
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
 	RC rc = RCOK;
-	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
+	assert(CALVIN_FAMILY);
 
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;
@@ -2206,7 +2209,7 @@ RC TPCCTxnManager::run_tpcc_phase2() {
 RC TPCCTxnManager::run_tpcc_phase5() {
 	TPCCQuery* tpcc_query = (TPCCQuery*) query;
 	RC rc = RCOK;
-	assert(CC_ALG == CALVIN || CC_ALG == SDPCC);
+	assert(CALVIN_FAMILY);
 
 	uint64_t w_id = tpcc_query->w_id;
 	uint64_t d_id = tpcc_query->d_id;
@@ -2506,4 +2509,3 @@ RC TPCCTxnManager::send_remote_subtxn() {
 	// return rc;
 }
 #endif
-

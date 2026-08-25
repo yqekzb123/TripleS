@@ -51,6 +51,7 @@ class Row_silo;
 class Row_aria;
 class Row_sdocc;
 class Row_sdpcc;
+class Row_sdmvcc;
 
 class row_t {
 public:
@@ -119,6 +120,8 @@ public:
 	#elif CC_ALG == SDPCC
 		Row_sdpcc * manager;
 		// Row_lock * manager;
+	#elif CC_ALG == SDMVCC
+		Row_sdmvcc * manager;
 	#endif
 	char * data;
 	int tuple_size;
