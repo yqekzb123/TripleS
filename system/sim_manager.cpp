@@ -154,5 +154,5 @@ void SimManager::next_aria_phase() {
 		// aria_barrier[0].init_batch(current_batch_id + 1);
 	} 
 	aria_phase = (ARIA_PHASE)((aria_phase + 1) % 5);
-	printf("Aria enter next phase: %d, batch_id: %ld\n", aria_phase, current_batch_id);
+	fprintf(stderr, "PHASE-NEXT phase=%d batch=%ld\n", aria_phase, current_batch_id);
 }

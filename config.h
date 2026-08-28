@@ -14,14 +14,14 @@
 // Simulation + Hardware
 /***********************************************/
 #define NODE_CNT 2
-#define THREAD_CNT 15
+#define THREAD_CNT 8
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
 #define LOGGER_THREAD_CNT 3
 #define CORE_CNT 2
 // PART_CNT should be at least NODE_CNT
 #define PART_CNT NODE_CNT
-#define CLIENT_NODE_CNT NODE_CNT
+#define CLIENT_NODE_CNT 2
 #define CLIENT_THREAD_CNT 4
 #define CLIENT_REM_THREAD_CNT 2
 #define CLIENT_SEND_THREAD_CNT 2
@@ -47,15 +47,15 @@
 
 // # of transactions to run for warmup
 #define WARMUP            0
-// YCSB or TPCC or PPS
-#define WORKLOAD YCSB
+// YCSB, TPCC, CHBENCHMARK, PPS, or BOMB
+#define WORKLOAD BOMB
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
 #define TIME_ENABLE         true //STATS_ENABLE
 
 #define FIN_BY_TIME true
-#define MAX_TXN_IN_FLIGHT 10000
+#define MAX_TXN_IN_FLIGHT 64
 
 /***********************************************/
 // Memory System
@@ -97,7 +97,7 @@
 
 #define PRIORITY_WORK_QUEUE false
 #define PRIORITY PRIORITY_ACTIVE
-#define MSG_SIZE_MAX 4096
+#define MSG_SIZE_MAX 1048576
 #define MSG_TIME_LIMIT 0
 
 /***********************************************/
@@ -106,7 +106,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG SDMVCC
+#define CC_ALG ARIA
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -153,7 +153,7 @@
 #define DETERMINISTIC_ABORT_MODE false
 #define DETERMINISTIC_ABORT_RATIO 0.2
 // [ARIA]
-#define ARIA_BATCH_SIZE 3000
+#define ARIA_BATCH_SIZE 16
 // [TICTOC]
 #define MAX_NUM_WAITS 4
 #define PRE_ABORT true
@@ -231,9 +231,9 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 16777216
+#define SYNTH_TABLE_SIZE 1048576*8
 #define ZIPF_THETA 0.7
-#define TXN_WRITE_PERC 1
+#define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
 #define SCAN_LEN          20
@@ -408,6 +408,50 @@ enum PPSTxnType {
 #define TPCC            2
 #define PPS             3
 #define TEST            4
+#define CHBENCHMARK     5
+#define BOMB            6
+
+// CH-benCHmark mixes the standard five TPC-C transactions with all 22
+// analytical queries adapted to the shared TPC-C schema.
+#define CH_OLAP_PERC 0.1
+#define CH_QUERY_MIN 1
+#define CH_QUERY_MAX 22
+// Percentage of warehouses covered by analytical queries. 100 is the
+// standard full-database setting; smaller values are an experimental knob
+// for conflict/Bloom-filter studies.
+#define CH_QUERY_WAREHOUSE_PCT 100
+#define CH_SUPPLIER_COUNT 10000
+
+// ==== [BoMB] ====
+// 0 = static BoM (L1/S1/S2), 1 = dynamic BoM (adds S3/S4/S5 and
+// topology-plan validation).  The first Calvin milestone uses static mode.
+#define BOMB_DYNAMIC_MODE true
+#define BOMB_LONG_TX_GLOBAL 0
+#define BOMB_LONG_TX_PER_CLIENT 1
+#define BOMB_LONG_TX_MODE BOMB_LONG_TX_GLOBAL
+#define BOMB_LONG_TX_SOURCES 1
+#define BOMB_SHORT_WORKERS 3
+#define BOMB_QUERY_CACHE_SIZE 2048
+#define BOMB_FORCE_SHORT_TYPE -1
+#define BOMB_INJECT_STALE_PRESET false
+
+// Paper defaults.  Smoke-test experiments override these with small values.
+#define BOMB_FACTORY_COUNT 2
+#define BOMB_PRODUCT_TYPES 64
+#define BOMB_MATERIAL_TYPES 160
+#define BOMB_RAW_MATERIAL_TYPES 64
+#define BOMB_TREES_PER_PRODUCT 5
+#define BOMB_TREE_SIZE 10
+#define BOMB_RAW_MATERIALS_PER_LEAF 3
+#define BOMB_TARGET_PRODUCTS 4
+#define BOMB_TARGET_MATERIALS 1
+
+// Static short mix: S1/S2 = 50/50. Dynamic: S1..S5 = 45/45/1/1/8.
+#define BOMB_S1_PCT (BOMB_DYNAMIC_MODE ? 45 : 50)
+#define BOMB_S2_PCT (BOMB_DYNAMIC_MODE ? 45 : 50)
+#define BOMB_S3_PCT (BOMB_DYNAMIC_MODE ? 1 : 0)
+#define BOMB_S4_PCT (BOMB_DYNAMIC_MODE ? 1 : 0)
+#define BOMB_S5_PCT (BOMB_DYNAMIC_MODE ? 8 : 0)
 // Concurrency Control Algorithm
 #define NO_WAIT           1
 #define WAIT_DIE          2
@@ -471,8 +515,8 @@ enum PPSTxnType {
 #define PROG_TIMER 10 * BILLION // in s
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
-#define DONE_TIMER 1 * 20 * BILLION // ~1 minutes
-#define WARMUP_TIMER 1 * 20 * BILLION // ~1 minutes
+#define DONE_TIMER 5*BILLION
+#define WARMUP_TIMER 2*BILLION
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define ONE_MILLISECOND 1 * MILLION

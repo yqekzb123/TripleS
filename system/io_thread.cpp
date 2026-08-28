@@ -28,6 +28,7 @@
 #include "msg_thread.h"
 #include "msg_queue.h"
 #include "message.h"
+#include "bomb_query.h"
 #include "client_txn.h"
 #include "work_queue.h"
 #include "txn.h"
@@ -50,7 +51,8 @@ void InputThread::setup() {
 				assert(ISSERVER || ISREPLICA);
 				//printf("Received Msg %d from node %ld\n",msg->rtype,msg->return_node_id);
 #if CALVIN_FAMILY
-			if(msg->rtype == CALVIN_ACK ||(msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id()))) {
+			if(msg->rtype == CALVIN_ACK || msg->rtype == CALVIN_ABORT ||
+			   (msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id()))) {
 				work_queue.sequencer_enqueue(get_thd_id(),msg);
 				msgs->erase(msgs->begin());
 				continue;
@@ -145,6 +147,10 @@ RC InputThread::client_recv_loop() {
 			}
 			//INC_STATS_ARR(get_thd_id(),all_lat,timespan);
 			inf = client_man.dec_inflight(return_node_offset);
+#if WORKLOAD == BOMB
+			BombQueryGenerator::complete_long(
+				((ClientResponseMessage*)msg)->source_id);
+#endif
 			DEBUG("Recv %ld from %ld, %ld -- %f\n", ((ClientResponseMessage *)msg)->txn_id,
 						msg->return_node_id, inf, float(timespan) / BILLION);
 			assert(inf >=0);
@@ -187,7 +193,8 @@ RC InputThread::server_recv_loop() {
 				continue;
 			}
 #if CALVIN_FAMILY
-			if(msg->rtype == CALVIN_ACK ||(msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id()))) {
+			if(msg->rtype == CALVIN_ACK || msg->rtype == CALVIN_ABORT ||
+			   (msg->rtype == CL_QRY && ISCLIENTN(msg->get_return_id()))) {
 				work_queue.sequencer_enqueue(get_thd_id(),msg);
 				msgs->erase(msgs->begin());
 				continue;
@@ -254,5 +261,3 @@ RC OutputThread::run() {
 	fflush(stdout);
 	return FINISH;
 }
-
-

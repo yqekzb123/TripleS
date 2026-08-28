@@ -21,6 +21,8 @@
 #include "sdpcc_sequencer.h"
 #include "ycsb_query.h"
 #include "tpcc_query.h"
+#include "chbenchmark_query.h"
+#include "bomb_query.h"
 #include "pps_query.h"
 #include "mem_alloc.h"
 #include "transport.h"
@@ -91,6 +93,18 @@ void SDPCCSequencer::process_ack(Message * msg, uint64_t thd_id) {
 			}
 		}
 #endif
+#elif WORKLOAD == CHBENCHMARK
+		CHBenchmarkClientQueryMessage* cl_msg = (CHBenchmarkClientQueryMessage*)wait_list[id].msg;
+#if CALVIN_FAMILY
+		if(cl_msg->txn_type == TPCC_NEW_ORDER) {
+			for(uint64_t i = 0; i < cl_msg->items.size(); i++) {
+					DEBUG_M("SDPCCSequencer::process_ack() items free\n");
+					mem_allocator.free(cl_msg->items[i],sizeof(Item_no));
+			}
+		}
+#endif
+#elif WORKLOAD == BOMB
+		BombClientQueryMessage* cl_msg = (BombClientQueryMessage*)wait_list[id].msg;
 #endif
 			uint64_t curr_clock = get_sys_clock();
 			uint64_t timespan = curr_clock - wait_list[id].seq_first_startts;
@@ -235,6 +249,10 @@ void SDPCCSequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_s
 	std::set<uint64_t> participants = YCSBQuery::participants(msg,_wl);
 #elif WORKLOAD == TPCC
 	std::set<uint64_t> participants = TPCCQuery::participants(msg,_wl);
+#elif WORKLOAD == CHBENCHMARK
+	std::set<uint64_t> participants = CHBenchmarkQuery::participants(msg,_wl);
+#elif WORKLOAD == BOMB
+	std::set<uint64_t> participants = BombQuery::participants(msg,_wl);
 #elif WORKLOAD == PPS
 	std::set<uint64_t> participants = PPSQuery::participants(msg,_wl);
 #endif

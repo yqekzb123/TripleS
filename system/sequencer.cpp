@@ -21,6 +21,9 @@
 #include "sequencer.h"
 #include "ycsb_query.h"
 #include "tpcc_query.h"
+#include "chbenchmark_query.h"
+#include "bomb_query.h"
+#include "bomb.h"
 #include "pps_query.h"
 #include "mem_alloc.h"
 #include "transport.h"
@@ -89,6 +92,19 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 			}
 		}
 #endif
+#elif WORKLOAD == CHBENCHMARK
+		CHBenchmarkClientQueryMessage* cl_msg = (CHBenchmarkClientQueryMessage*)wait_list[id].msg;
+#if CALVIN_FAMILY
+		if(cl_msg->txn_type == TPCC_NEW_ORDER) {
+			for(uint64_t i = 0; i < cl_msg->items.size(); i++) {
+					DEBUG_M("Sequencer::process_ack() items free\n");
+					mem_allocator.free(cl_msg->items[i],sizeof(Item_no));
+			}
+		}
+#endif
+#elif WORKLOAD == BOMB
+		BombClientQueryMessage* cl_msg = (BombClientQueryMessage*)wait_list[id].msg;
+		(void)cl_msg;
 #elif WORKLOAD == PPS
 		PPSClientQueryMessage* cl_msg = (PPSClientQueryMessage*)wait_list[id].msg;
 #endif
@@ -160,10 +176,15 @@ void Sequencer::process_ack(Message * msg, uint64_t thd_id) {
 										(double)skew_timespan / BILLION,
 										(double)wait_list[id].total_batch_time / BILLION);
 
-			cl_msg->release();
-
 			ClientResponseMessage *rsp_msg = (ClientResponseMessage *)Message::create_message(msg->get_txn_id(), CL_RSP);
 			rsp_msg->client_startts = wait_list[id].client_startts;
+#if WORKLOAD == BOMB
+			BombStats::record_complete(cl_msg, timespan,
+				static_cast<AckMessage *>(msg)->rc == Abort);
+			rsp_msg->source_id = cl_msg->source_id;
+			rsp_msg->txn_type = cl_msg->txn_type;
+#endif
+			cl_msg->release();
 			msg_queue.enqueue(thd_id,rsp_msg,wait_list[id].client_id);
 #if WORKLOAD == PPS
 		}
@@ -197,8 +218,38 @@ void Sequencer::process_abort(Message *msg, uint64_t thd_id) {
 	assert(en->txns_left > 0);
 
 	uint64_t id = msg->get_txn_id() / g_node_cnt;
+	uint64_t early_start = wait_list[id].seq_first_startts;
+	uint64_t last_start = wait_list[id].seq_startts;
+	uint64_t wait_time = wait_list[id].total_batch_time;
+	uint32_t abort_cnt = wait_list[id].abort_cnt + 1;
 	// recover "return node id"
 	msg->return_node_id = wait_list[id].client_id;
+	Message *retry_msg = msg;
+
+#if WORKLOAD == BOMB
+	BombClientQueryMessage *old_msg =
+		static_cast<BombClientQueryMessage *>(wait_list[id].msg);
+	BombClientQueryMessage *abort_msg =
+		static_cast<BombClientQueryMessage *>(msg);
+	BombStats::record_abort_attempt(old_msg);
+	// The sequencer-owned preset is the canonical complete read/write set.
+	// A participant's abort message only contributes refreshed topology
+	// versions. Reusing the complete preset also makes retry robust if the
+	// participant serialized only its local validation metadata.
+	for (uint64_t i = 0; i < abort_msg->requests.size(); ++i) {
+		BombRequest *update = abort_msg->requests[i];
+		for (uint64_t j = 0; j < old_msg->requests.size(); ++j) {
+			BombRequest *preset = old_msg->requests[j];
+			if (preset->table == update->table && preset->key == update->key)
+				preset->expected_version = update->expected_version;
+		}
+	}
+	old_msg->plan_epoch++;
+	old_msg->return_node_id = wait_list[id].client_id;
+	retry_msg = old_msg;
+	abort_msg->release();
+	delete abort_msg;
+#endif
 
 
 	uint64_t prof_stat = get_sys_clock();
@@ -214,16 +265,19 @@ void Sequencer::process_abort(Message *msg, uint64_t thd_id) {
 	INC_STATS(thd_id, seq_ack_time, get_sys_clock() - prof_stat);
 	
 	// set it to a new client query
-	msg->rtype = CL_QRY;
-	process_txn(msg, thd_id, 0, 0, 0, 0);
+	retry_msg->rtype = CL_QRY;
+	process_txn(retry_msg, thd_id, early_start, last_start, wait_time, abort_cnt);
 }
 
 // Assumes 1 thread does sequencer work
 void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
-														uint64_t last_start, uint64_t wait_time, uint32_t abort_cnt) {
+												 uint64_t last_start, uint64_t wait_time, uint32_t abort_cnt) {
 
 	uint64_t starttime = get_sys_clock();
 	DEBUG("SEQ Processing msg\n");
+#if WORKLOAD == BOMB
+	static_cast<BombClientQueryMessage *>(msg)->materialize_requests();
+#endif
 	qlite_ll * en = wl_tail;
 
 	// LL is potentially a bottleneck here
@@ -262,11 +316,19 @@ void Sequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_start,
 	std::set<uint64_t> participants = YCSBQuery::participants(msg,_wl);
 #elif WORKLOAD == TPCC
 	std::set<uint64_t> participants = TPCCQuery::participants(msg,_wl);
+#elif WORKLOAD == CHBENCHMARK
+	std::set<uint64_t> participants = CHBenchmarkQuery::participants(msg,_wl);
+#elif WORKLOAD == BOMB
+	std::set<uint64_t> participants = BombQuery::participants(msg,_wl);
 #elif WORKLOAD == PPS
 	std::set<uint64_t> participants = PPSQuery::participants(msg,_wl);
 #endif
 
 	uint32_t server_ack_cnt = participants.size();
+#if WORKLOAD == BOMB
+	BombStats::record_submit(static_cast<BombClientQueryMessage *>(msg),
+	                        static_cast<BombWorkload *>(_wl), participants.size());
+#endif
 	assert(server_ack_cnt > 0);
 	assert(ISCLIENTN(msg->get_return_id()));
 

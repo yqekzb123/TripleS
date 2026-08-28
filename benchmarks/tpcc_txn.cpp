@@ -22,6 +22,9 @@
 #include "thread.h"
 #include "table.h"
 #include "row.h"
+#if CC_ALG == SDMVCC
+#include "row_sdmvcc.h"
+#endif
 #include "index_hash.h"
 #include "index_btree.h"
 #include "tpcc_const.h"
@@ -2304,6 +2307,9 @@ RC TPCCTxnManager::do_insert() {
 	RC rc = RCOK;
 	for (uint64_t i = 0; i < txn->insert_rows.size(); i++) {
 		row_t * row = txn->insert_rows[i].first;
+#if CC_ALG == SDMVCC
+		row->manager->set_creation_sid(sdmvcc_snapshot());
+#endif
 		itemid_t * m_item = (itemid_t *) mem_allocator.alloc(sizeof(itemid_t));
 		m_item->init();
 		m_item->type = DT_row;
@@ -2322,6 +2328,9 @@ RC TPCCTxnManager::do_insert() {
 	if (txn->insert_items != NULL) {
 		itemid_t * m_item = txn->insert_items;
 		row_t * row = (row_t *)m_item->location;
+#if CC_ALG == SDMVCC
+		row->manager->set_creation_sid(sdmvcc_snapshot());
+#endif
 		rc = _wl->i_orderline->index_insert(row->get_primary_key(), m_item, row->get_part_id(), this);
 		if (rc == Abort) {
 			return Abort;

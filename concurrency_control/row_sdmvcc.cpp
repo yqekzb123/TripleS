@@ -19,6 +19,8 @@ std::atomic<uint64_t> g_intent_notifications(0);
 std::atomic<uint64_t> g_versions_created(0);
 std::atomic<uint64_t> g_versions_reclaimed(0);
 std::atomic<uint64_t> g_version_bytes(0);
+pthread_mutex_t g_snapshot_pin_latch = PTHREAD_MUTEX_INITIALIZER;
+std::multiset<uint64_t> g_snapshot_pins;
 }
 
 Row_sdmvcc::Row_sdmvcc() : _row(NULL), _initial_copied(false) {
@@ -53,7 +55,6 @@ Row_sdmvcc::predecessor_locked(uint64_t snapshot) {
         if (it->sid >= snapshot) break;
         result = it;
     }
-    assert(result != _versions.end());
     return result;
 }
 
@@ -84,6 +85,10 @@ RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
 bool Row_sdmvcc::arm_read(TxnManager *txn, uint64_t snapshot) {
     pthread_mutex_lock(&_latch);
     auto version = predecessor_locked(snapshot);
+    if (version == _versions.end()) {
+        pthread_mutex_unlock(&_latch);
+        return true;
+    }
     if (version->ready) {
         pthread_mutex_unlock(&_latch);
         return true;
@@ -98,6 +103,10 @@ bool Row_sdmvcc::arm_read(TxnManager *txn, uint64_t snapshot) {
 RC Row_sdmvcc::read(uint64_t snapshot, row_t *local_row) {
     pthread_mutex_lock(&_latch);
     auto version = predecessor_locked(snapshot);
+    if (version == _versions.end()) {
+        pthread_mutex_unlock(&_latch);
+        return Abort;
+    }
     assert(version->ready);
     if (version->base_backed) {
         memcpy(local_row->get_data(), _row->get_data(), _row->get_tuple_size());
@@ -107,6 +116,22 @@ RC Row_sdmvcc::read(uint64_t snapshot, row_t *local_row) {
     }
     pthread_mutex_unlock(&_latch);
     return RCOK;
+}
+
+bool Row_sdmvcc::visible(uint64_t snapshot) {
+    pthread_mutex_lock(&_latch);
+    const bool result = predecessor_locked(snapshot) != _versions.end();
+    pthread_mutex_unlock(&_latch);
+    return result;
+}
+
+void Row_sdmvcc::set_creation_sid(uint64_t sid) {
+    pthread_mutex_lock(&_latch);
+    assert(_versions.size() == 1);
+    Version &initial = _versions.front();
+    assert(initial.sid == 0 && initial.ready && initial.base_backed);
+    initial.sid = sid;
+    pthread_mutex_unlock(&_latch);
 }
 
 void Row_sdmvcc::stage_write(uint64_t sid, row_t *local_row) {
@@ -164,12 +189,14 @@ void Row_sdmvcc::abort_write(uint64_t sid, uint64_t thd_id) {
 }
 
 void Row_sdmvcc::gc_locked(uint64_t watermark) {
+    const uint64_t pinned = oldest_pinned_snapshot();
+    if (pinned < watermark) watermark = pinned;
     if (_versions.size() < 2) return;
     auto current = _versions.begin();
     while (current != _versions.end()) {
         auto next = std::next(current);
         if (next == _versions.end()) break; // Always retain the newest version.
-        if (!current->ready || !next->ready || watermark < next->sid) {
+        if (!current->ready || !next->ready || watermark <= next->sid) {
             current = next;
             continue;
         }
@@ -196,6 +223,27 @@ void Row_sdmvcc::gc_locked(uint64_t watermark) {
             latest.base_backed = true;
         }
     }
+}
+
+void Row_sdmvcc::pin_snapshot(uint64_t snapshot) {
+    pthread_mutex_lock(&g_snapshot_pin_latch);
+    g_snapshot_pins.insert(snapshot);
+    pthread_mutex_unlock(&g_snapshot_pin_latch);
+}
+
+void Row_sdmvcc::unpin_snapshot(uint64_t snapshot) {
+    pthread_mutex_lock(&g_snapshot_pin_latch);
+    auto it = g_snapshot_pins.find(snapshot);
+    assert(it != g_snapshot_pins.end());
+    g_snapshot_pins.erase(it);
+    pthread_mutex_unlock(&g_snapshot_pin_latch);
+}
+
+uint64_t Row_sdmvcc::oldest_pinned_snapshot() {
+    pthread_mutex_lock(&g_snapshot_pin_latch);
+    const uint64_t result = g_snapshot_pins.empty() ? UINT64_MAX : *g_snapshot_pins.begin();
+    pthread_mutex_unlock(&g_snapshot_pin_latch);
+    return result;
 }
 
 void Row_sdmvcc::release_intent(uint64_t snapshot, uint64_t watermark) {

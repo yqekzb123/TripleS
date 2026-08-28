@@ -4,6 +4,7 @@
 #include "global.h"
 #include <list>
 #include <map>
+#include <set>
 #include <vector>
 
 class row_t;
@@ -20,6 +21,8 @@ public:
     RC register_access(access_t type, TxnManager *txn);
     bool arm_read(TxnManager *txn, uint64_t snapshot);
     RC read(uint64_t snapshot, row_t *local_row);
+    bool visible(uint64_t snapshot);
+    void set_creation_sid(uint64_t sid);
     void stage_write(uint64_t sid, row_t *local_row);
     void publish_write(uint64_t sid, uint64_t thd_id);
     void abort_write(uint64_t sid, uint64_t thd_id);
@@ -27,6 +30,8 @@ public:
     bool has_write_lock() const { return false; }
 
     static void print_stats(FILE *outf);
+    static void pin_snapshot(uint64_t snapshot);
+    static void unpin_snapshot(uint64_t snapshot);
 
 private:
     struct Version {
@@ -50,6 +55,7 @@ private:
     std::list<Version>::iterator predecessor_locked(uint64_t snapshot);
     void gc_locked(uint64_t watermark);
     static void notify_ready(TxnManager *txn, uint64_t thd_id);
+    static uint64_t oldest_pinned_snapshot();
 };
 
 #endif

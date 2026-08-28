@@ -37,6 +37,8 @@
 #include "message.h"
 #include "ycsb_query.h"
 #include "tpcc_query.h"
+#include "chbenchmark_query.h"
+#include "bomb_query.h"
 #include "pps_query.h"
 #include "array.h"
 #include "manager.h"
@@ -364,6 +366,8 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 #endif
 #if CC_ALG == SDMVCC
 	sdmvcc_accesses.clear();
+	sdmvcc_access_index.clear();
+	sdmvcc_snapshot_pinned = false;
 #endif
 #if CC_ALG == SILO
 	_pre_abort = (g_params["pre_abort"] == "true");
@@ -437,6 +441,8 @@ void TxnManager::reset() {
 #endif
 #if CC_ALG == SDMVCC
 	sdmvcc_accesses.clear();
+	sdmvcc_access_index.clear();
+	assert(!sdmvcc_snapshot_pinned);
 #endif
 #if CC_ALG == ARIA
 	for (uint64_t i = 0; i < g_node_cnt; i++) {
@@ -508,6 +514,10 @@ void TxnManager::reset_query() {
 	((YCSBQuery*)query)->reset();
 #elif WORKLOAD == TPCC
 	((TPCCQuery*)query)->reset();
+#elif WORKLOAD == CHBENCHMARK
+	((CHBenchmarkQuery*)query)->reset();
+#elif WORKLOAD == BOMB
+	((BombQuery*)query)->reset();
 #elif WORKLOAD == PPS
 	((PPSQuery*)query)->reset();
 #endif
@@ -541,6 +551,9 @@ RC TxnManager::abort() {
 	txn->rc = Abort;
 	INC_STATS(get_thd_id(),total_txn_abort_cnt,1);
 	txn_stats.abort_cnt++;
+	fprintf(stderr, "TM-ABORT txn=%ld batch=%ld stats_abort=%lu phase=%d\n",
+	        get_txn_id(), get_batch_id(), txn_stats.abort_cnt,
+	        (int)simulation->aria_phase);
 	if(IS_LOCAL(get_txn_id())) {
 	INC_STATS(get_thd_id(), local_txn_abort_cnt, 1);
 	} else {
@@ -806,6 +819,15 @@ void TxnManager::commit_stats() {
 	INC_STATS_ARR(get_thd_id(),last_start_commit_latency, timespan_short);
 	INC_STATS_ARR(get_thd_id(),first_start_commit_latency, timespan_long);
 
+#if WORKLOAD == BOMB
+	if (query->partitions_touched.size() == 0) {
+		BombQuery *bq = static_cast<BombQuery *>(query);
+		printf("FATAL-EMPTY-COMMIT batch=%ld txn=%ld type=%d factory=%lu ordinal=%lu src=%lu epoch=%lu reqs=%lu\n",
+		       get_batch_id(), get_txn_id(), (int)bq->txn_type, bq->factory_id,
+		       bq->ordinal, bq->source_id, bq->plan_epoch, bq->requests.size());
+		fflush(stdout);
+	}
+#endif
 	assert(query->partitions_touched.size() > 0);
 	INC_STATS(get_thd_id(),parts_touched,query->partitions_touched.size());
 	INC_STATS(get_thd_id(),part_cnt[query->partitions_touched.size()-1],1);
@@ -1286,8 +1308,9 @@ uint64_t TxnManager::sdmvcc_snapshot() const {
 }
 
 int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
-	for (auto &entry : sdmvcc_accesses) {
-		if (entry.row != row) continue;
+	auto existing = sdmvcc_access_index.find(row);
+	if (existing != sdmvcc_access_index.end()) {
+		auto &entry = sdmvcc_accesses[existing->second];
 		entry.remaining_uses++;
 		if (entry.type == WR || type != WR) return 0;
 		entry.type = WR;
@@ -1295,20 +1318,19 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 	}
 	SDMVCCAccessRegistration entry = {row, type, false, 1, false};
 	sdmvcc_accesses.push_back(entry);
+	sdmvcc_access_index[row] = sdmvcc_accesses.size() - 1;
 	return 1;
 }
 
 void TxnManager::consume_sdmvcc_access(row_t *row) {
-	for (auto &entry : sdmvcc_accesses) {
-		if (entry.row != row) continue;
-		assert(entry.remaining_uses > 0);
-		if (--entry.remaining_uses == 0) {
-			entry.row->manager->release_intent(sdmvcc_snapshot(), minSid);
-			entry.intent_released = true;
-		}
-		return;
+	auto existing = sdmvcc_access_index.find(row);
+	assert(existing != sdmvcc_access_index.end());
+	auto &entry = sdmvcc_accesses[existing->second];
+	assert(entry.remaining_uses > 0);
+	if (--entry.remaining_uses == 0) {
+		entry.row->manager->release_intent(sdmvcc_snapshot(), minSid);
+		entry.intent_released = true;
 	}
-	assert(false);
 }
 
 void TxnManager::arm_sdmvcc_intents() {
@@ -1342,6 +1364,17 @@ void TxnManager::finish_sdmvcc(RC rc) {
 		if (!entry.intent_released) entry.row->manager->release_intent(sid, minSid);
 	}
 	sdmvcc_accesses.clear();
+	sdmvcc_access_index.clear();
+	if (sdmvcc_snapshot_pinned) {
+		Row_sdmvcc::unpin_snapshot(sid);
+		sdmvcc_snapshot_pinned = false;
+	}
+}
+
+void TxnManager::pin_sdmvcc_snapshot() {
+	if (sdmvcc_snapshot_pinned) return;
+	Row_sdmvcc::pin_snapshot(sdmvcc_snapshot());
+	sdmvcc_snapshot_pinned = true;
 }
 #endif
 

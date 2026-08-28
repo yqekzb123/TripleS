@@ -92,7 +92,7 @@ RC Workload::init_schema(const char * schema_file) {
         int field_cnt = items.size() - 1;
         uint64_t * fields = new uint64_t [field_cnt];
         for (int i = 0; i < field_cnt; i++) fields[i] = atoi(items[i + 1].c_str());
-#if WORKLOAD == TPCC && TXN_TYPE == TPCC_ALL
+#if (WORKLOAD == TPCC || WORKLOAD == CHBENCHMARK) && TXN_TYPE == TPCC_ALL
         if (!iname.compare(0, 9, "ORDER_IDX")) {
           index_btree * index = new index_btree;
           int part_cnt = (CENTRAL_INDEX)? 1 : g_num_wh * g_dist_per_wh;
@@ -124,7 +124,7 @@ RC Workload::init_schema(const char * schema_file) {
         part_cnt = (CENTRAL_INDEX)? 1 : g_part_cnt;
 
         uint64_t table_size __attribute__ ((unused)) = g_synth_table_size;
-#if WORKLOAD == TPCC
+#if WORKLOAD == TPCC || WORKLOAD == CHBENCHMARK
         if ( !tname.compare(1, 9, "WAREHOUSE") ) {
           table_size = g_num_wh / g_part_cnt;
           printf("WAREHOUSE size %ld\n",table_size);
@@ -216,6 +216,4 @@ void Workload::index_insert_nonunique(INDEX * index, uint64_t key, row_t * row, 
   assert(index);
   assert( index->index_insert_nonunique(key, m_item, pid) == RCOK );
 }
-
-
 

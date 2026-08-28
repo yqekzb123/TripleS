@@ -20,6 +20,7 @@
 #include "global.h"
 #include "helper.h"
 #include "index_base.h"
+#include <vector>
 
 
 typedef struct bt_node {
@@ -62,6 +63,8 @@ public:
 	RC			index_read(idx_key_t key, itemid_t * &item, int part_id=-1, int thd_id=0, TxnManager * txn=NULL);
 	RC 			index_next(uint64_t thd_id, itemid_t * &item, bool samekey = false);
 	RC			leaf_row_access(idx_key_t key, idxf_acc_t access_type, int part_id, TxnManager * txn, bt_node *& leaf, row_t *& row);
+	void snapshot_rows(int part_id, std::vector<row_t *> &rows,
+	                   std::vector<row_t *> *leaf_guards = NULL);
 	RC			index_remove(idx_key_t key, int part_id);
 
 private:
@@ -100,6 +103,7 @@ private:
 
 	// the leaf and the idx within the leaf that the thread last accessed.
 	bt_node *** cur_leaf_per_thd;
+	pthread_rwlock_t structure_latch;
 	UInt32 ** 		cur_idx_per_thd;
 };
 

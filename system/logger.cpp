@@ -126,7 +126,7 @@ void Logger::writeToBuffer(uint64_t thd_id, LogRecord * record, uint64_t id) {
   WRITE_VAL(log_file,record->rcd.type);
   WRITE_VAL(log_file,record->rcd.txn_id);
   //WRITE_VAL(log_file,record->rcd.partid);
-#if WORKLOAD == TPCC
+#if WORKLOAD == TPCC || WORKLOAD == CHBENCHMARK
   WRITE_VAL(log_file,record->rcd.txntype);
 #endif
   WRITE_VAL_SIZE(log_file,record->rcd.params,record->rcd.params_size);

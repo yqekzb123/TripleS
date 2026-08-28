@@ -23,6 +23,7 @@
 #include "array.h"
 #include "transport/message.h"
 #include "index_btree.h"
+#include <unordered_map>
 
 class Workload;
 class Thread;
@@ -153,6 +154,7 @@ public:
 	 */
 class TxnManager {
 public:
+	TxnManager() : h_thd(nullptr), h_wl(nullptr), txn(nullptr), query(nullptr) {}
 	virtual ~TxnManager() {}
 	virtual void init(uint64_t thd_id,Workload * h_wl);
 	virtual void reset();
@@ -234,12 +236,15 @@ public:
 		bool intent_released;
 	};
 	std::vector<SDMVCCAccessRegistration> sdmvcc_accesses;
+	std::unordered_map<row_t *, size_t> sdmvcc_access_index;
+	bool sdmvcc_snapshot_pinned;
 	uint64_t sdmvcc_snapshot() const;
 	// 0: duplicate, 1: new per-key intent, 2: RD-to-WR upgrade.
 	int register_sdmvcc_access(row_t *row, access_t type);
 	void arm_sdmvcc_intents();
 	void consume_sdmvcc_access(row_t *row);
 	void finish_sdmvcc(RC rc);
+	void pin_sdmvcc_snapshot();
 #endif
 
 #if CC_ALG == ARIA

@@ -30,6 +30,7 @@
 class ycsb_request;
 class LogRecord;
 struct Item_no;
+struct BombRequest;
 struct watermark_node_entry;
 
 class Message {
@@ -172,10 +173,13 @@ public:
   void copy_to_txn(TxnManager * txn);
   uint64_t get_size();
   void init() {}
-  void release() {}
+  void release();
 
   RC rc;
   uint64_t pid;
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  Array<uint64_t> bomb_version_hints;
+#endif
 };
 
 class AckMessage : public Message {
@@ -206,6 +210,9 @@ public:
 
   // For Calvin PPS: part keys from secondary lookup for sequencer response
   Array<uint64_t> part_keys;
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  Array<uint64_t> bomb_version_hints;
+#endif
 };
 
 class PrepareMessage : public Message {
@@ -237,7 +244,7 @@ public:
   void release() {}
 
   RC rc;
-#if WORKLOAD == TPCC
+#if WORKLOAD == TPCC || WORKLOAD == CHBENCHMARK
 	uint64_t o_id;
 #endif
 };
@@ -266,6 +273,10 @@ public:
 
   RC rc;
   uint64_t client_startts;
+#if WORKLOAD == BOMB
+  uint64_t source_id;
+  uint64_t txn_type;
+#endif
 };
 
 class ClientQueryMessage : public Message {
@@ -353,6 +364,43 @@ public:
   uint64_t o_carrier_id;
   uint64_t ol_delivery_d;
   uint64_t threshold;
+};
+
+class CHBenchmarkClientQueryMessage : public TPCCClientQueryMessage {
+public:
+  void copy_from_buf(char *buf);
+  void copy_to_buf(char *buf);
+  void copy_from_query(BaseQuery *query);
+  void copy_from_txn(TxnManager *txn);
+  void copy_to_txn(TxnManager *txn);
+  uint64_t get_size();
+  void init();
+  void release();
+
+  uint64_t ch_txn_type;
+  uint64_t ch_wh_start;
+  uint64_t ch_wh_count;
+};
+
+class BombClientQueryMessage : public ClientQueryMessage {
+public:
+  void copy_from_buf(char *buf);
+  void copy_to_buf(char *buf);
+  void copy_from_query(BaseQuery *query);
+  void copy_from_txn(TxnManager *txn);
+  void copy_to_txn(TxnManager *txn);
+  uint64_t get_size();
+  void init();
+  void release();
+  // Expand the compact client-side logical plan at the sequencer.
+  void materialize_requests();
+
+  uint64_t txn_type;
+  uint64_t factory_id;
+  uint64_t ordinal;
+  uint64_t source_id;
+  uint64_t plan_epoch;
+  Array<BombRequest *> requests;
 };
 
 class PPSClientQueryMessage : public ClientQueryMessage {
@@ -455,6 +503,39 @@ public:
   uint64_t ol_cnt;
   uint64_t o_entry_d;
 
+};
+
+class CHBenchmarkQueryMessage : public TPCCQueryMessage {
+public:
+  void copy_from_buf(char *buf);
+  void copy_to_buf(char *buf);
+  void copy_from_txn(TxnManager *txn);
+  void copy_to_txn(TxnManager *txn);
+  uint64_t get_size();
+  void init();
+  void release();
+
+  uint64_t ch_txn_type;
+  uint64_t ch_wh_start;
+  uint64_t ch_wh_count;
+};
+
+class BombQueryMessage : public QueryMessage {
+public:
+  void copy_from_buf(char *buf);
+  void copy_to_buf(char *buf);
+  void copy_from_txn(TxnManager *txn);
+  void copy_to_txn(TxnManager *txn);
+  uint64_t get_size();
+  void init();
+  void release();
+
+  uint64_t txn_type;
+  uint64_t factory_id;
+  uint64_t ordinal;
+  uint64_t source_id;
+  uint64_t plan_epoch;
+  Array<BombRequest *> requests;
 };
 
 class PPSQueryMessage : public QueryMessage {

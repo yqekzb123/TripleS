@@ -27,6 +27,10 @@ RC AriaSequencerThread::run() {
         }
 
         if (simulation->aria_phase == ARIA_COLLECT) {
+            // Free messages retired by completed txns at least one batch
+            // ago (see AriaSequencer::retire_stale_messages): any re-sent
+            // copy still referencing them has already been processed.
+            aria_seq.retire_stale_messages(simulation->current_batch_id);
             aria_seq.fill_batch(_thd_id);
             aria_seq.send_next_batch(_thd_id);
             simulation->current_batch_id = aria_seq.get_batch_id();

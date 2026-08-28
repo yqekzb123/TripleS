@@ -20,6 +20,8 @@
 #include "table.h"
 #include "ycsb_query.h"
 #include "tpcc_query.h"
+#include "chbenchmark_query.h"
+#include "bomb_query.h"
 #include "pps_query.h"
 #include <boost/algorithm/string.hpp>
 
@@ -36,6 +38,9 @@ typedef struct
 void
 Client_query_queue::init(Workload * h_wl) {
 	_wl = h_wl;
+#if WORKLOAD == BOMB
+	BombQueryGenerator::init_source_state(g_client_thread_cnt);
+#endif
 
 
 #if SERVER_GENERATE_QUERIES
@@ -70,7 +75,11 @@ Client_query_queue::init(Workload * h_wl) {
 #else
 	query_cnt = new uint64_t * [size];
 	for ( UInt32 id = 0; id < size; id ++) {
+#if WORKLOAD == BOMB
+		std::vector<BaseQuery*> new_queries(BOMB_QUERY_CACHE_SIZE,NULL);
+#else
 		std::vector<BaseQuery*> new_queries(g_max_txn_per_part+4,NULL);
+#endif
 		queries.push_back(new_queries);
 		query_cnt[id] = (uint64_t*)mem_allocator.align_alloc(sizeof(uint64_t));
 	}
@@ -107,7 +116,11 @@ void
 Client_query_queue::initQueriesParallel(uint64_t thd_id) {
 	UInt32 tid = ATOM_FETCH_ADD(next_tid, 1);
   	uint64_t request_cnt;
+#if WORKLOAD == BOMB
+	request_cnt = BOMB_QUERY_CACHE_SIZE;
+#else
 	request_cnt = g_max_txn_per_part + 4;
+#endif
 
 	uint32_t final_request;
 
@@ -123,6 +136,11 @@ Client_query_queue::initQueriesParallel(uint64_t thd_id) {
 #elif WORKLOAD == TPCC
 	TPCCQueryGenerator * gen = new TPCCQueryGenerator;
 	gen->init();
+#elif WORKLOAD == CHBENCHMARK
+	CHBenchmarkQueryGenerator * gen = new CHBenchmarkQueryGenerator;
+	gen->init();
+#elif WORKLOAD == BOMB
+	BombQueryGenerator * gen = new BombQueryGenerator;
 #elif WORKLOAD == PPS
 	PPSQueryGenerator * gen = new PPSQueryGenerator;
 #endif
@@ -174,12 +192,25 @@ Client_query_queue::get_next_query(uint64_t server_id,uint64_t thread_id) {
 	#else
 	assert(server_id < size);
 	uint64_t query_id = __sync_fetch_and_add(query_cnt[server_id], 1);//return query_cnt[server_id]，then query_cnt[server_id]++
+	#if WORKLOAD == BOMB
+	if(query_id >= BOMB_QUERY_CACHE_SIZE) {
+		__sync_bool_compare_and_swap(query_cnt[server_id],query_id+1,0);
+		query_id = __sync_fetch_and_add(query_cnt[server_id], 1);
+	}
+	BombQuery *query = static_cast<BombQuery *>(queries[server_id][query_id]);
+	if (!BombQueryGenerator::is_enabled_client(thread_id)) return NULL;
+	if (!BombQueryGenerator::try_begin_long(thread_id)) return NULL;
+	BombQueryGenerator::prepare_next(query, server_id + g_server_start_node,
+	                                thread_id);
+	return query;
+	#else
 	if(query_id > g_max_txn_per_part) {
 		__sync_bool_compare_and_swap(query_cnt[server_id],query_id+1,0);//if query_cnt[server_id]==query_id+1, then set query_cnt[server_id] to 0
 		query_id = __sync_fetch_and_add(query_cnt[server_id], 1);
 	}
 	BaseQuery * query = queries[server_id][query_id];
 	return query;
+	#endif
 	#endif
 
 }

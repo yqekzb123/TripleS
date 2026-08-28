@@ -51,6 +51,8 @@ class SDPCCSequencer {
 	YCSBQuery* node_queries;
 #elif WORKLOAD == TPCC
 	TPCCQuery* node_queries;
+#elif WORKLOAD == CHBENCHMARK
+	CHBenchmarkQuery* node_queries;
 #elif WORKLOAD == PPS
 	PPSQuery* node_queries;
 #endif

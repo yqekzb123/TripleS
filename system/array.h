@@ -62,7 +62,7 @@ public:
   void release() {
     //DEBUG("Array release: %ld * %ld = %ld\n",sizeof(T),capacity,sizeof(T)*capacity);
     DEBUG_M("Array::release %ld*%ld\n",sizeof(T),capacity);
-    mem_allocator.free(items,sizeof(T)*capacity);
+    if (items) mem_allocator.free(items,sizeof(T)*capacity);
     items = NULL;
     count = 0;
     capacity = 0;
@@ -76,7 +76,15 @@ public:
   }
 
   void add(T item){
-    assert(count < capacity);
+    if (count == capacity) {
+      uint64_t new_capacity = capacity == 0 ? 8 : capacity * 2;
+      T *new_items = (T*) mem_allocator.alloc(sizeof(T) * new_capacity);
+      assert(new_items);
+      for (uint64_t i = 0; i < count; ++i) new_items[i] = items[i];
+      if (items) mem_allocator.free(items, sizeof(T) * capacity);
+      items = new_items;
+      capacity = new_capacity;
+    }
     items[count] = item;
     ++count;
   }
@@ -126,6 +134,7 @@ public:
   }
   uint64_t get_count() {return count;}
   uint64_t size() {return count;}
+  bool initialized() const { return items != NULL; }
   bool is_full() { return count == capacity;}
   bool is_empty() { return count == 0;}
 private:

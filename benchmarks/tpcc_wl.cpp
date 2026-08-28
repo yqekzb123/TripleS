@@ -564,6 +564,7 @@ void TPCCWorkload::init_permutation() {
 }
 
 
+
 /*==================================================================+
 | ROUTINE NAME
 | GetPermutation
@@ -644,6 +645,4 @@ void * TPCCWorkload::threadInitOrder(void * This) {
 	printf("ORDER Done\n");
 	return NULL;
 }
-
-
 

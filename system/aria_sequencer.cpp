@@ -4,6 +4,11 @@
 #include "ycsb_query.h"
 #include "tpcc_query.h"
 #include "msg_queue.h"
+#include <set>
+#if WORKLOAD == BOMB
+#include "bomb.h"
+#include "bomb_query.h"
+#endif
 
 #if CC_ALG == ARIA
 
@@ -16,11 +21,36 @@ void AriaSequencer::init(Workload *wl) {
     assert((uint32_t)g_inflight_max > g_aria_batch_size);
 }
 
+void AriaSequencer::retire_stale_messages(uint64_t current_batch) {
+    for (uint64_t i = 0; i < retired_msgs.size(); ) {
+        // The message was retired while batch `retired_batches[i]` was in
+        // flight; its last worker reference came from a send no later than
+        // that batch, and per-phase batch_process_count barriers guarantee
+        // those references are all drained before the next-next COLLECT.
+        if (current_batch >= retired_batches[i] + 1) {
+            fprintf(stderr, "SEQ-RELEASE txn=%ld retired_batch=%ld current=%ld\n",
+                    retired_msgs[i]->get_txn_id(), retired_batches[i], current_batch);
+            retired_msgs[i]->release();
+            retired_msgs.erase(retired_msgs.begin() + i);
+            retired_batches.erase(retired_batches.begin() + i);
+        } else {
+            ++i;
+        }
+    }
+}
+
 void AriaSequencer::send_next_batch(uint64_t thd_id) {
     uint64_t prof_stat = get_sys_clock();
     assert(aria_batch.size() != 0);
     DEBUG("SEND NEXT BATCH %ld %ld %ld\n", thd_id, batch_id, aria_batch.size());
+    fprintf(stderr, "SEQ-SEND batch=%ld size=%ld:", batch_id, aria_batch.size());
     for (uint64_t i = 0; i < aria_batch.size(); i++) {
+        BombClientQueryMessage *bm = (BombClientQueryMessage *)aria_batch[i]->msg;
+        fprintf(stderr, " (txn%ld,b%ld,ord%lu,ep%lu)", bm->txn_id, bm->batch_id,
+                bm->ordinal, bm->plan_epoch);
+        // The (re)sent txn starts a fresh batch: it must be able to consume
+        // exactly one ACK of this batch.
+        aria_batch[i]->acked = false;
         work_queue.work_enqueue(thd_id, aria_batch[i]->msg, false, ARIA_READ);
         // printf("thd_id: %ld add txn: %ld to queue in phase %d\n", thd_id, aria_batch[i]->msg->txn_id, simulation->aria_phase);
     }
@@ -39,7 +69,9 @@ void AriaSequencer::send_next_batch(uint64_t thd_id) {
 void AriaSequencer::fill_batch(uint64_t _thd_id) {
     Message * msg;
     uint64_t idle_starttime = 0;
-    while (aria_batch.size() < g_aria_batch_size) {
+    // F5: escape hatch so the sequencer thread can exit at shutdown when
+    // clients stop sending and the batch can never fill up.
+    while (aria_batch.size() < g_aria_batch_size && !simulation->is_done()) {
         msg = work_queue.txn_dequeue(_thd_id);
 
         if (!msg) {
@@ -60,6 +92,20 @@ void AriaSequencer::fill_batch(uint64_t _thd_id) {
 
 void AriaSequencer::process_txn(Message* msg, uint64_t thd_id) {
     uint64_t starttime = get_sys_clock();
+#if WORKLOAD == BOMB
+    BombClientQueryMessage *bomb_msg =
+        static_cast<BombClientQueryMessage *>(msg);
+    bomb_msg->materialize_requests();
+    if (bomb_msg->requests.size() == 0) {
+      printf("SEQ-MAT-EMPTY txn_type=%d factory=%lu ordinal=%lu src=%lu epoch=%lu\n",
+             (int)bomb_msg->txn_type, bomb_msg->factory_id, bomb_msg->ordinal,
+             bomb_msg->source_id, bomb_msg->plan_epoch);
+      fflush(stdout);
+    }
+    std::set<uint64_t> participants = BombQuery::participants(msg, _wl);
+    BombStats::record_submit(bomb_msg, static_cast<BombWorkload *>(_wl),
+                             participants.size());
+#endif
     aria_txn * en = (aria_txn *) mem_allocator.alloc(sizeof(aria_txn));
     msg->batch_id = batch_id;
     msg->txn_id = g_node_id + g_node_cnt * next_txn_id;
@@ -80,6 +126,7 @@ void AriaSequencer::process_txn(Message* msg, uint64_t thd_id) {
     en->client_startts = ((ClientQueryMessage *)msg)->client_startts;
     en->total_batch_time = 0;
     en->abort_cnt = 0;
+    en->acked = false;
     // en->skew_startts = 0;
     msg->return_node_id = g_node_id;
     msg->lat_network_time = 0;
@@ -103,6 +150,19 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
         DEBUG_SCH("process ack txn_id: %ld,%ld, rc: %d txns_left %ld, aria phase %d\n", batch_id, txn_id, ((AckMessage *)msg)->rc, txns_left, simulation->aria_phase);
     for (uint64_t i = 0; i < aria_batch.size(); i++) {
         if (aria_batch[i]->msg->txn_id == txn_id && aria_batch[i]->msg->batch_id == batch_id) {
+            if (aria_batch[i]->acked) {
+                // Duplicate ACK for the same txn in the same batch (distributed
+                // completion path racing an in-batch retry). Ignore it so
+                // txns_left stays aligned with the number of outstanding txns.
+                fprintf(stderr, "SEQ-ACK-DUP txn=%ld batch=%ld rc=%d ignored txns_left=%ld\n",
+                        txn_id, batch_id, ((AckMessage *)msg)->rc, txns_left);
+                break;
+            }
+            aria_batch[i]->acked = true;
+            fprintf(stderr, "SEQ-ACK txn=%ld batch=%ld rc=%d plan_epoch=%lu abort_cnt=%u txns_left=%ld\n",
+                    txn_id, batch_id, ((AckMessage *)msg)->rc,
+                    ((BombClientQueryMessage *)aria_batch[i]->msg)->plan_epoch,
+                    aria_batch[i]->abort_cnt, txns_left);
             if (((AckMessage *)msg)->rc == RCOK) {
                 INC_STATS(thd_id, seq_txn_cnt, 1);
 
@@ -120,6 +180,9 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
 				// 			mem_allocator.free(cl_msg->items[i],sizeof(Item_no));
 				// 	}
 			    // }
+#elif WORKLOAD == BOMB
+                BombClientQueryMessage *cl_msg =
+                    static_cast<BombClientQueryMessage *>(aria_batch[i]->msg);
             #endif
 
                 uint64_t curr_clock = get_sys_clock();
@@ -145,10 +208,24 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
                 if (msg->return_node_id != g_node_id) {
                     INC_STATS(0, lat_short_network_time, msg->lat_network_time);
                 }
-                cl_msg->release();
-
                 ClientResponseMessage * rsp_msg = (ClientResponseMessage *)Message::create_message(msg->get_txn_id(), CL_RSP);
                 rsp_msg->client_startts = aria_batch[i]->client_startts;
+#if WORKLOAD == BOMB
+                BombStats::record_complete(cl_msg, long_timespan, false);
+                rsp_msg->source_id = cl_msg->source_id;
+                rsp_msg->txn_type = cl_msg->txn_type;
+#endif
+                // F4: deferred release. The txn may have finished in an
+                // earlier batch while send_next_batch already re-sent this
+                // message into the current batch (the ACK only reached us
+                // now). Releasing the requests array immediately would race
+                // with a worker cloning the re-sent copy -> empty plan ->
+                // COMMIT assert. Retire instead; freed two batches later.
+                retired_msgs.push_back(cl_msg);
+                retired_batches.push_back(simulation->current_batch_id);
+                fprintf(stderr, "SEQ-RETIRE txn=%ld batch=%ld retire_at=%ld pending=%lu\n",
+                        txn_id, batch_id, simulation->current_batch_id,
+                        (unsigned long)retired_msgs.size());
                 msg_queue.enqueue(thd_id, rsp_msg, aria_batch[i]->client_id);
 
                 // Remove the aria_txn from the pool
@@ -164,6 +241,24 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
                     process_txn(msg, thd_id);
                 }
             } else {
+#if WORKLOAD == BOMB
+                BombClientQueryMessage *cl_msg =
+                    static_cast<BombClientQueryMessage *>(aria_batch[i]->msg);
+                AckMessage *ack = static_cast<AckMessage *>(msg);
+                assert(ack->bomb_version_hints.size() % 3 == 0);
+                for (uint64_t h = 0; h < ack->bomb_version_hints.size(); h += 3) {
+                    const uint64_t table = ack->bomb_version_hints[h];
+                    const uint64_t key = ack->bomb_version_hints[h + 1];
+                    const uint64_t version = ack->bomb_version_hints[h + 2];
+                    for (uint64_t r = 0; r < cl_msg->requests.size(); ++r) {
+                        BombRequest *request = cl_msg->requests[r];
+                        if (request->table == table && request->key == key)
+                            request->expected_version = version;
+                    }
+                }
+                ++cl_msg->plan_epoch;
+                BombStats::record_abort_attempt(cl_msg);
+#endif
                 aria_batch[i]->abort_cnt++;
                 aria_batch[i]->seq_startts = get_sys_clock();
             }

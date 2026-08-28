@@ -35,6 +35,9 @@
 #include "water_mark.h"
 #include "ordered_list.h"
 #include "sdocc.h"
+#if WORKLOAD == BOMB
+#include "bomb.h"
+#endif
 
 void WorkerThread::setup() {
 	if( get_thd_id() == 0) {
@@ -176,6 +179,14 @@ void WorkerThread::calvin_abort() {
   if (txn_man->return_id == g_node_id) {
     work_queue.sequencer_enqueue(_thd_id, Message::create_message(txn_man, CALVIN_ABORT));
     // INC_STATS(get_thd_id(), deterministic_abort_cnt_calvin, 1);
+#if WORKLOAD == BOMB
+  } else {
+    // Dynamic BoMB transactions have a single data participant (S3's stable
+    // product and root slots are co-partitioned). Forward its validation
+    // failure to the origin sequencer so it can retry the updated preset.
+    msg_queue.enqueue(_thd_id, Message::create_message(txn_man, CALVIN_ABORT),
+                      txn_man->return_id);
+#endif
   }
   release_txn_man();
 }
@@ -264,6 +275,9 @@ void WorkerThread::abort() {
   // TODO: TPCC Rollback here
 
   ++txn_man->abort_cnt;
+  fprintf(stderr, "WRK-ABORT txn=%ld batch=%ld man_abort=%lu stats_abort=%lu phase=%d\n",
+          txn_man->get_txn_id(), txn_man->get_batch_id(), txn_man->abort_cnt,
+          txn_man->txn_stats.abort_cnt, (int)simulation->aria_phase);
   txn_man->reset();
 
   uint64_t end_time = get_sys_clock();
@@ -517,6 +531,18 @@ RC WorkerThread::run() {
       txn_man = get_transaction_manager(msg);
       if (txn_man->aria_phase != simulation->aria_phase) {
         // printf("thd: %ld, txn: %ld runs twice\n", get_thd_id(), txn_man->get_txn_id());
+        if ((int)txn_man->aria_phase > (int)ARIA_COMMIT) {
+          // Stale txn_man left over from a previous round: either a distributed
+          // txn whose RACK_FIN never arrived (peer died / message dropped) or an
+          // aborted txn re-submitted by the sequencer. Reset it so the retried
+          // CL_QRY restarts from ARIA_READ; reset() keeps the query payload.
+          printf("ENQ-A-RESET thd=%ld txn=%ld,%ld stale_phase=%d sim_phase=%d abort_cnt=%ld parts=%ld rc=%d\n",
+                 get_thd_id(), msg->batch_id, msg->txn_id, (int)txn_man->aria_phase,
+                 (int)simulation->aria_phase, txn_man->abort_cnt, txn_man->participants_cnt,
+                 (int)txn_man->get_rc());
+          fflush(stdout);
+          txn_man->reset();
+        }
         work_queue.work_enqueue(get_thd_id(), msg, false, txn_man->aria_phase);
         continue;
       }
@@ -573,11 +599,19 @@ RC WorkerThread::run() {
     }
     #endif
 
+#if CC_ALG == ARIA
+    const ARIA_PHASE processed_aria_phase =
+        (msg->rtype == CL_QRY && txn_man != NULL) ? txn_man->aria_phase :
+                                                   simulation->aria_phase;
+#endif
     RC rc = process(msg);
 
 #if CC_ALG == ARIA  
     if (msg->rtype == CL_QRY) {// && txn_man) {
-      if (simulation->aria_phase != ARIA_COMMIT) {
+      // Another worker may advance the global phase immediately after this
+      // transaction finishes. Decide whether to enqueue the next phase from
+      // the phase actually processed, not from that racy global value.
+      if (processed_aria_phase != ARIA_COMMIT) {
          work_queue.work_enqueue(get_thd_id(), msg, false, txn_man->aria_phase);
       }
 
@@ -670,7 +704,8 @@ RC WorkerThread::run() {
               work_queue.sdocc_enqueue(get_thd_id(), txn_man->last_msg, false);
               DEBUG_WAIT("Thd %ld txn %ld,%ld, re-enqueue to list, retry_cnt: %ld\n", get_thd_id(), txn_man->get_batch_id(), txn_man->get_txn_id(), ((ClientQueryMessage*)txn_man->last_msg)->retry_cnt);
           } else {
-            assert(RWSET_VARIABLE_RATIO > 0.0 || WORKLOAD == TPCC);
+            assert(RWSET_VARIABLE_RATIO > 0.0 || WORKLOAD == TPCC ||
+                   WORKLOAD == CHBENCHMARK);
             // 否则，什么也不用做，重试会交给前驱事务来处理
             // tmp_txn_list.insert(txn_man);
             // tmp_txn_list_size++;
@@ -723,6 +758,9 @@ RC WorkerThread::process_rfin(Message * msg) {
 #endif
 
   if(((FinishMessage*)msg)->rc == Abort) {
+    fprintf(stderr, "RFIN-ABORT txn=%ld batch=%ld stats_abort_before=%lu\n",
+            txn_man->get_txn_id(), txn_man->get_batch_id(),
+            txn_man->txn_stats.abort_cnt);
     txn_man->abort();
     txn_man->reset();
     txn_man->reset_query();
@@ -973,6 +1011,10 @@ RC WorkerThread::process_rqry_rsp(Message * msg) {
   txn_man->txn_stats.remote_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
 
   QueryResponseMessage * resp = (QueryResponseMessage *)msg;
+#if WORKLOAD == BOMB
+  static_cast<BombTxnManager *>(txn_man)->merge_version_hints(
+      resp->bomb_version_hints);
+#endif
   if (resp->rc == Abort) {
     txn_man->txn->rc = Abort;
     rc = Abort;
@@ -1306,6 +1348,10 @@ RC WorkerThread::process_calvin_rtxn(Message * msg) {
   txn_man->txn_stats.local_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
   // Execute
   RC rc = txn_man->run_calvin_txn();
+  if (rc == Abort) {
+    calvin_abort();
+    return Abort;
+  }
   // if((txn_man->phase==6 && rc == RCOK) || txn_man->active_cnt == 0 || txn_man->participant_cnt ==
   // 1) {
   if(rc == RCOK && txn_man->calvin_exec_phase_done()) {
@@ -1326,9 +1372,15 @@ RC WorkerThread::process_aria_rtxn(Message * msg) {
   DEBUG("START %ld %f %lu\n", txn_man->get_txn_id(),
         simulation->seconds_from_start(get_sys_clock()), txn_man->txn_stats.starttime);
   if (simulation->aria_phase == ARIA_READ && txn_man->txn_stats.abort_cnt == 0) {
-    // printf("txn: %ld copy msg to txn\n", txn_man->get_txn_id());
+    fprintf(stderr, "ARIA-READ-EXEC txn=%ld batch=%ld stats_abort=%lu man_abort=%lu\n",
+            txn_man->get_txn_id(), txn_man->get_batch_id(),
+            txn_man->txn_stats.abort_cnt, txn_man->abort_cnt);
     msg->copy_to_txn(txn_man);
     assert(ISSERVERN(txn_man->return_id));
+  } else if (simulation->aria_phase == ARIA_READ) {
+    fprintf(stderr, "ARIA-READ-SKIP txn=%ld batch=%ld stats_abort=%lu man_abort=%lu\n",
+            txn_man->get_txn_id(), txn_man->get_batch_id(),
+            txn_man->txn_stats.abort_cnt, txn_man->abort_cnt);
   }
   txn_man->txn_stats.local_wait_time += get_sys_clock() - txn_man->txn_stats.wait_starttime;
   // Execute

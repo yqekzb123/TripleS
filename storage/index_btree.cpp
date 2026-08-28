@@ -22,6 +22,7 @@
 
 RC index_btree::init(uint64_t part_cnt) {
 	this->part_cnt = part_cnt;
+	pthread_rwlock_init(&structure_latch, NULL);
 	order = BTREE_ORDER;
 	// these pointers can be mapped anywhere. They won't be changed
 	roots = (bt_node **) malloc(part_cnt * sizeof(bt_node *));
@@ -174,6 +175,7 @@ RC index_btree::leaf_row_access(idx_key_t key, idxf_acc_t access_type, int part_
 }
 
 RC index_btree::index_remove(idx_key_t key, int part_id) {
+	pthread_rwlock_wrlock(&structure_latch);
 	glob_param params;
 	assert(part_id != -1);
 	params.part_id = part_id;
@@ -193,10 +195,12 @@ RC index_btree::index_remove(idx_key_t key, int part_id) {
 			}
 		}
 	}
+	pthread_rwlock_unlock(&structure_latch);
 	return RCOK;
 }
 
 RC index_btree::index_insert(idx_key_t key, itemid_t * item, int part_id, TxnManager * txn) {
+	pthread_rwlock_wrlock(&structure_latch);
 	glob_param params;
 	if (WORKLOAD == TPCC) assert(part_id != -1);
 	assert(part_id != -1);
@@ -254,7 +258,24 @@ RC index_btree::index_insert(idx_key_t key, itemid_t * item, int part_id, TxnMan
 	}
 	INC_STATS(params.txn->get_thd_id(), btree_insert_time, get_sys_clock() - starttime);
 //	assert(leaf->latch_type == LATCH_NONE);
+	pthread_rwlock_unlock(&structure_latch);
 	return rc;
+}
+
+void index_btree::snapshot_rows(int part_id, std::vector<row_t *> &rows,
+                                std::vector<row_t *> *leaf_guards) {
+	assert(part_id >= 0 && static_cast<uint64_t>(part_id) < part_cnt);
+	pthread_rwlock_rdlock(&structure_latch);
+	for (bt_node *leaf = heads[part_id]; leaf != NULL; leaf = leaf->next) {
+		if (leaf_guards != NULL) leaf_guards->push_back(leaf->row);
+		for (uint32_t i = 0; i < leaf->num_keys; ++i) {
+			for (itemid_t *item = static_cast<itemid_t *>(leaf->pointers[i]);
+			     item != NULL; item = item->next) {
+				if (item->valid) rows.push_back(static_cast<row_t *>(item->location));
+			}
+		}
+	}
+	pthread_rwlock_unlock(&structure_latch);
 }
 
 RC index_btree::index_insert(idx_key_t key, itemid_t * item, int part_id) {
@@ -269,6 +290,7 @@ RC index_btree::make_lf(uint64_t part_id, bt_node *& node) {
 	node->row = (row_t *) mem_allocator.alloc(sizeof(row_t));
 	node->row->init(table, part_id);
 	node->row->init_manager(node->row);
+	node->row->set_primary_key(0);
 #endif
 	return RCOK;
 }

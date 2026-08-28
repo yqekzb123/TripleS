@@ -1,4 +1,5 @@
 import os,re
+import hashlib
 from experiments import configs
 from collections import OrderedDict
 import glob
@@ -85,6 +86,17 @@ SHORTNAMES = {
     "SDPCC_LONG_HOLE_ADAPTIVE" : "ADP",
     "SDPCC_LONG_BLOOM_BITS" : "BB",
     "SDPCC_LONG_BLOOM_HASHES" : "BH",
+    "MAX_ITEMS_NORM" : "ITEMS",
+    "CUST_PER_DIST_NORM" : "CUST",
+    "CH_OLAP_PERC" : "OLAP",
+    "CH_QUERY_MIN" : "QMIN",
+    "CH_QUERY_MAX" : "QMAX",
+    "CH_QUERY_WAREHOUSE_PCT" : "QWH",
+    "CH_SUPPLIER_COUNT" : "SUPP",
+    "BOMB_TARGET_PRODUCTS" : "BTP",
+    "BOMB_LONG_TX_MODE" : "BLM",
+    "BOMB_LONG_TX_SOURCES" : "BLS",
+    "BOMB_SHORT_WORKERS" : "BSW",
     "DATA_PERC":"D",
     "ACCESS_PERC":"A",
     "PRIORITY":"",
@@ -1067,6 +1079,11 @@ def get_outfile_name(cfgs,fmt,network_hosts=[]):
 #                    output_f += "{}-{}_".format(nkey,str(cfgs[key]).replace('/','-d-'))
                 else:
                     output_f += "{}-{}_".format(nkey,cfgs[key])
+    # Explicit workload matrices can exceed the filesystem's 255-byte name
+    # limit. Retain a readable prefix plus a stable identity for the full name.
+    if len(output_f.encode("utf-8")) > 220:
+        digest = hashlib.sha1(output_f.encode("utf-8")).hexdigest()[:16]
+        output_f = output_f[:180] + "_H-" + digest + "_"
     return output_f
 
 def get_cfgs(fmt,e):

@@ -45,6 +45,17 @@ SHORTNAMES = {
     "ISOLATION_LEVEL":"LVL",
     "YCSB_ABORT_MODE":"ABRTMODE",
     "NUM_WH":"WH",
+    "MAX_ITEMS_NORM":"ITEMS",
+    "CUST_PER_DIST_NORM":"CUST",
+    "CH_OLAP_PERC":"OLAP",
+    "CH_QUERY_MIN":"QMIN",
+    "CH_QUERY_MAX":"QMAX",
+    "CH_QUERY_WAREHOUSE_PCT":"QWH",
+    "CH_SUPPLIER_COUNT":"SUPP",
+    "BOMB_TARGET_PRODUCTS":"BTP",
+    "BOMB_LONG_TX_MODE":"BLM",
+    "BOMB_LONG_TX_SOURCES":"BLS",
+    "BOMB_SHORT_WORKERS":"BSW",
 }
 
 fmt_title=["NODE_CNT","CC_ALG","ACCESS_PERC","TXN_WRITE_PERC","PERC_PAYMENT","MPR","MODE","MAX_TXN_IN_FLIGHT","SEND_THREAD_CNT","REM_THREAD_CNT","THREAD_CNT","SCHEDULER_CNT","TXN_WRITE_PERC","TUP_WRITE_PERC","ZIPF_THETA","LONG_QUERY_PERC","NUM_WH"]
@@ -623,9 +634,105 @@ def ycsb_sdmvcc_long():
            for perc, algo in itertools.product(long_percs, algos)]
     return fmt, exp
 
+def chbenchmark_sdmvcc_test():
+    """Small two-node CH-benCHmark correctness/performance smoke test.
+
+    The analytical stream cycles deterministically through Q1..Q22.  Change
+    olap_percs or warehouse_pcts below to sweep the HTAP mix or query range.
+    """
+    olap_percs = [0.10]
+    warehouse_pcts = [100]
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "NUM_WH",
+           "MAX_ITEMS_NORM", "CUST_PER_DIST_NORM", "CH_SUPPLIER_COUNT",
+           "CH_OLAP_PERC", "CH_QUERY_MIN", "CH_QUERY_MAX",
+           "CH_QUERY_WAREHOUSE_PCT", "MAX_TXN_IN_FLIGHT",
+           "MAX_TXN_PER_PART", "THREAD_CNT", "SCHEDULER_CNT",
+           "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["CHBENCHMARK", "SDMVCC", 2, 2, 1000, 1000, 1000,
+            olap, 1, 22, warehouse_pct, 100, 10000, 16, 3,
+            "0*BILLION", "30*BILLION"]
+           for olap, warehouse_pct in itertools.product(
+               olap_percs, warehouse_pcts)]
+    return fmt, exp
+
 ##############################
 # END PLOTS
 ##############################
+
+def bomb_calvin_smoke():
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
+           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
+           "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "CALVIN", 2, 2, 8, 3, 32,
+            2, 64, 160, 64, 4,
+            "BOMB_LONG_TX_GLOBAL", 1, 2,
+            1048576, "2*BILLION", "5*BILLION"]]
+    return fmt, exp
+
+
+def bomb_calvin_baseline():
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_TARGET_PRODUCTS", "BOMB_LONG_TX_MODE",
+           "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX"]
+    exp = [["BOMB", "CALVIN", 2, 2, 16, 5, 256, target,
+            "BOMB_LONG_TX_GLOBAL", 1, 4, 4194304]
+           for target in [10, 50, 100]]
+    return fmt, exp
+
+
+def bomb_calvin_dynamic_smoke():
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
+           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
+           "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "CALVIN", 2, 2, 8, 4, 32,
+            2, 64, 160, 64, 4, "true",
+            "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
+            "2*BILLION", "5*BILLION"]]
+    return fmt, exp
+
+
+def bomb_aria_smoke():
+    """Two-node Aria + BoMB static-mode (L1/S1/S2) correctness/performance
+    smoke test.  Every Aria server owns a sequencer that must fill a
+    same-sized batch, so each client node provisions BOMB_SHORT_WORKERS local
+    short sources plus the globally unique long source."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "ARIA_BATCH_SIZE",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
+           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
+           "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "ARIA", 2, 2, 8, 4, 64, 16,
+            2, 64, 160, 64, 4,
+            "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
+            "2*BILLION", "5*BILLION"]]
+    return fmt, exp
+
+
+def bomb_aria_dynamic_smoke():
+    """Two-node Aria + BoMB dynamic-mode (adds S3/S4/S5 with topology-version
+    guards and replan-retry)."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "ARIA_BATCH_SIZE",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
+           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
+           "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "ARIA", 2, 2, 8, 4, 64, 16,
+            2, 64, 160, 64, 4, "true",
+            "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
+            "2*BILLION", "5*BILLION"]]
+    return fmt, exp
+
 
 experiment_map = {
     # for test
@@ -668,6 +775,12 @@ experiment_map = {
     'ycsb_sdpcc_long_hole_adaptive': ycsb_sdpcc_long_hole_adaptive,
     'ycsb_sdpcc_long_hole_size': ycsb_sdpcc_long_hole_size,
     'ycsb_sdmvcc_long': ycsb_sdmvcc_long,
+    'chbenchmark_sdmvcc_test': chbenchmark_sdmvcc_test,
+    'bomb_calvin_smoke': bomb_calvin_smoke,
+    'bomb_calvin_baseline': bomb_calvin_baseline,
+    'bomb_calvin_dynamic_smoke': bomb_calvin_dynamic_smoke,
+    'bomb_aria_smoke': bomb_aria_smoke,
+    'bomb_aria_dynamic_smoke': bomb_aria_dynamic_smoke,
 
     # Scaling
     'ycsb_scaling_PCC': ycsb_scaling_PCC, # calvin sdpcc
@@ -742,6 +855,28 @@ configs = {
     "NUM_WH":32,
     "PERC_PAYMENT":0.489,
     "MPR_NEWORDER":"MPR",
+    "MAX_ITEMS_NORM":100000,
+    "CUST_PER_DIST_NORM":3000,
+#CH-benCHmark
+    "CH_OLAP_PERC":0.10,
+    "CH_QUERY_MIN":1,
+    "CH_QUERY_MAX":22,
+    "CH_QUERY_WAREHOUSE_PCT":100,
+    "CH_SUPPLIER_COUNT":10000,
+#BoMB
+    "BOMB_DYNAMIC_MODE":"false",
+    "BOMB_LONG_TX_MODE":"BOMB_LONG_TX_GLOBAL",
+    "BOMB_LONG_TX_SOURCES":1,
+    "BOMB_SHORT_WORKERS":4,
+    "BOMB_FACTORY_COUNT":8,
+    "BOMB_PRODUCT_TYPES":72000,
+    "BOMB_MATERIAL_TYPES":198000,
+    "BOMB_RAW_MATERIAL_TYPES":75000,
+    "BOMB_TREES_PER_PRODUCT":5,
+    "BOMB_TREE_SIZE":10,
+    "BOMB_RAW_MATERIALS_PER_LEAF":3,
+    "BOMB_TARGET_PRODUCTS":100,
+    "BOMB_TARGET_MATERIALS":1,
 #TXN
     "PRORATE_RATIO":0,
     "ARIA_BATCH_SIZE":3000,

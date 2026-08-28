@@ -10,7 +10,8 @@ import time
 import signal
 
 import os
-os.environ['LD_LIBRARY_PATH'] = '/home/zhy/.local/lib:' + os.environ.get('LD_LIBRARY_PATH', '')
+remote_library_path = '/home/{}/.local/lib'.format(username)
+os.environ['LD_LIBRARY_PATH'] = remote_library_path + ':' + os.environ.get('LD_LIBRARY_PATH', '')
 
 def custom_signal_handler(signum, frame):
     print('Signal handler called with signal', signum)
@@ -149,6 +150,10 @@ for exp in exps:
 
             if cfgs["WORKLOAD"] == "TPCC":
                 files = ["rundb", "runcl", "ifconfig.txt", "./benchmarks/TPCC_short_schema.txt", "./benchmarks/TPCC_full_schema.txt"]
+            elif cfgs["WORKLOAD"] == "CHBENCHMARK":
+                files = ["rundb", "runcl", "ifconfig.txt", "./benchmarks/CHBENCHMARK_schema.txt"]
+            elif cfgs["WORKLOAD"] == "BOMB":
+                files = ["rundb", "runcl", "ifconfig.txt", "./benchmarks/BOMB_schema.txt"]
             elif cfgs["WORKLOAD"] == "YCSB":
                 files = ["rundb", "runcl", "ifconfig.txt", "benchmarks/YCSB_schema.txt"]
             for m in machines[:cfgs["NODE_CNT"]]:
@@ -172,7 +177,9 @@ for exp in exps:
 
             print("Deploying: {}".format(output_f))
             os.chdir('./scripts')
-            cmd = './vcloud_deploy.sh \'{}\' /{}/ {} {} {} {} /home/zhy/.local/lib'.format(' '.join(machines), location, cfgs["NODE_CNT"], uname, perfTime, deploy_location)
+            cmd = './vcloud_deploy.sh \'{}\' /{}/ {} {} {} {} {}'.format(
+                ' '.join(machines), location, cfgs["NODE_CNT"], uname,
+                perfTime, deploy_location, remote_library_path)
             print(cmd)
             fromtimelist.append(str(int(time.time())) + "000")
             os.system(cmd)

@@ -195,6 +195,8 @@ void QWorkQueue::work_enqueue(uint64_t thd_id, Message* msg, bool not_ready, ARI
 		while (!aria_commit_queue->push(entry) && !simulation->is_done()) {}
 		break;
 	default:
+		printf("FATAL work_enqueue bad phase=%d txn=%ld,%ld not_ready=%d rtype=%d\n", (int)phase, msg->batch_id, msg->txn_id, (int)not_ready, (int)msg->rtype);
+		fflush(stdout);
 		assert(false);
 		break;
 	}

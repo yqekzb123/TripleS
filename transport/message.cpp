@@ -20,6 +20,8 @@
 #include "ycsb.h"
 #include "tpcc_query.h"
 #include "tpcc.h"
+#include "chbenchmark.h"
+#include "bomb.h"
 #include "pps_query.h"
 #include "pps.h"
 #include "global.h"
@@ -97,6 +99,11 @@ Message * Message::create_message(BaseQuery * query, RemReqType rtype) {
  ((YCSBClientQueryMessage*)msg)->copy_from_query(query);
 #elif WORKLOAD == TPCC
  ((TPCCClientQueryMessage*)msg)->copy_from_query(query);
+#elif WORKLOAD == CHBENCHMARK
+ ((CHBenchmarkClientQueryMessage*)msg)->copy_from_query(query);
+#elif WORKLOAD == BOMB
+ ((BombClientQueryMessage*)msg)->copy_from_query(query);
+ BombQueryGenerator::release_plan(static_cast<BombQuery *>(query));
 #elif WORKLOAD == PPS
  ((PPSClientQueryMessage*)msg)->copy_from_query(query);
 #endif
@@ -128,6 +135,10 @@ Message * Message::create_message(RemReqType rtype) {
       msg = new YCSBQueryMessage;
 #elif WORKLOAD == TPCC
       msg = new TPCCQueryMessage;
+#elif WORKLOAD == CHBENCHMARK
+      msg = new CHBenchmarkQueryMessage;
+#elif WORKLOAD == BOMB
+      msg = new BombQueryMessage;
 #elif WORKLOAD == PPS
       msg = new PPSQueryMessage;
 #endif
@@ -164,6 +175,10 @@ Message * Message::create_message(RemReqType rtype) {
       msg = new YCSBClientQueryMessage;
 #elif WORKLOAD == TPCC
       msg = new TPCCClientQueryMessage;
+#elif WORKLOAD == CHBENCHMARK
+      msg = new CHBenchmarkClientQueryMessage;
+#elif WORKLOAD == BOMB
+      msg = new BombClientQueryMessage;
 #elif WORKLOAD == PPS
       msg = new PPSClientQueryMessage;
 #endif
@@ -326,6 +341,10 @@ void Message::release_message(Message * msg) {
       YCSBQueryMessage * m_msg = (YCSBQueryMessage*)msg;
 #elif WORKLOAD == TPCC
       TPCCQueryMessage * m_msg = (TPCCQueryMessage*)msg;
+#elif WORKLOAD == CHBENCHMARK
+      CHBenchmarkQueryMessage * m_msg = (CHBenchmarkQueryMessage*)msg;
+#elif WORKLOAD == BOMB
+      BombQueryMessage * m_msg = (BombQueryMessage*)msg;
 #elif WORKLOAD == PPS
       PPSQueryMessage * m_msg = (PPSQueryMessage*)msg;
 #endif
@@ -381,6 +400,10 @@ void Message::release_message(Message * msg) {
       YCSBClientQueryMessage * m_msg = (YCSBClientQueryMessage*)msg;
 #elif WORKLOAD == TPCC
       TPCCClientQueryMessage * m_msg = (TPCCClientQueryMessage*)msg;
+#elif WORKLOAD == CHBENCHMARK
+      CHBenchmarkClientQueryMessage * m_msg = (CHBenchmarkClientQueryMessage*)msg;
+#elif WORKLOAD == BOMB
+      BombClientQueryMessage * m_msg = (BombClientQueryMessage*)msg;
 #elif WORKLOAD == PPS
       PPSClientQueryMessage * m_msg = (PPSClientQueryMessage*)msg;
 #endif
@@ -751,7 +774,7 @@ void TPCCClientQueryMessage::copy_from_buf(char * buf) {
   COPY_VAL(ol_delivery_d,buf,ptr);
   COPY_VAL(threshold,buf,ptr);
 
- assert(ptr == get_size());
+ assert(ptr == TPCCClientQueryMessage::get_size());
 }
 
 void TPCCClientQueryMessage::copy_to_buf(char * buf) {
@@ -789,7 +812,7 @@ void TPCCClientQueryMessage::copy_to_buf(char * buf) {
   COPY_BUF(buf,ol_delivery_d,ptr);
   COPY_BUF(buf,threshold,ptr);
 
-  assert(ptr == get_size());
+  assert(ptr == TPCCClientQueryMessage::get_size());
 }
 
 /************************/
@@ -1057,12 +1080,20 @@ void ClientQueryMessage::copy_to_buf(char * buf) {
 uint64_t ClientResponseMessage::get_size() {
   uint64_t size = Message::mget_size();
   size += sizeof(uint64_t);
+#if WORKLOAD == BOMB
+  size += sizeof(uint64_t) * 2;
+#endif
   return size;
 }
 
 void ClientResponseMessage::copy_from_txn(TxnManager * txn) {
   Message::mcopy_from_txn(txn);
   client_startts = txn->client_startts;
+#if WORKLOAD == BOMB
+  BombQuery *query = static_cast<BombQuery *>(txn->query);
+  source_id = query->source_id;
+  txn_type = query->txn_type;
+#endif
 }
 
 void ClientResponseMessage::copy_to_txn(TxnManager * txn) {
@@ -1074,6 +1105,10 @@ void ClientResponseMessage::copy_from_buf(char * buf) {
   Message::mcopy_from_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_VAL(client_startts,buf,ptr);
+#if WORKLOAD == BOMB
+  COPY_VAL(source_id,buf,ptr);
+  COPY_VAL(txn_type,buf,ptr);
+#endif
  assert(ptr == get_size());
 }
 
@@ -1081,6 +1116,10 @@ void ClientResponseMessage::copy_to_buf(char * buf) {
   Message::mcopy_to_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_BUF(buf,client_startts,ptr);
+#if WORKLOAD == BOMB
+  COPY_BUF(buf,source_id,ptr);
+  COPY_BUF(buf,txn_type,ptr);
+#endif
  assert(ptr == get_size());
 }
 
@@ -1113,7 +1152,7 @@ void DoneMessage::copy_to_buf(char * buf) {
 uint64_t ForwardMessage::get_size() {
   uint64_t size = Message::mget_size();
   size += sizeof(RC);
-#if WORKLOAD == TPCC
+#if WORKLOAD == TPCC || WORKLOAD == CHBENCHMARK
 	size += sizeof(uint64_t);
 #endif
   return size;
@@ -1122,7 +1161,7 @@ uint64_t ForwardMessage::get_size() {
 void ForwardMessage::copy_from_txn(TxnManager * txn) {
   Message::mcopy_from_txn(txn);
   rc = txn->get_rc();
-#if WORKLOAD == TPCC
+#if WORKLOAD == TPCC || WORKLOAD == CHBENCHMARK
   o_id = ((TPCCQuery*)txn->query)->o_id;
 #endif
 }
@@ -1130,7 +1169,7 @@ void ForwardMessage::copy_from_txn(TxnManager * txn) {
 void ForwardMessage::copy_to_txn(TxnManager * txn) {
   // Don't copy return ID
   //Message::mcopy_to_txn(txn);
-#if WORKLOAD == TPCC
+#if WORKLOAD == TPCC || WORKLOAD == CHBENCHMARK
   ((TPCCQuery*)txn->query)->o_id = o_id;
 #endif
 }
@@ -1139,7 +1178,7 @@ void ForwardMessage::copy_from_buf(char * buf) {
   Message::mcopy_from_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_VAL(rc,buf,ptr);
-#if WORKLOAD == TPCC
+#if WORKLOAD == TPCC || WORKLOAD == CHBENCHMARK
   COPY_VAL(o_id,buf,ptr);
 #endif
  assert(ptr == get_size());
@@ -1149,7 +1188,7 @@ void ForwardMessage::copy_to_buf(char * buf) {
   Message::mcopy_to_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_BUF(buf,rc,ptr);
-#if WORKLOAD == TPCC
+#if WORKLOAD == TPCC || WORKLOAD == CHBENCHMARK
   COPY_BUF(buf,o_id,ptr);
 #endif
  assert(ptr == get_size());
@@ -1216,10 +1255,17 @@ uint64_t AckMessage::get_size() {
   size += sizeof(uint64_t);
   size += sizeof(bool);
 #endif
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  size += sizeof(uint64_t);
+  size += sizeof(uint64_t) * bomb_version_hints.size();
+#endif
   return size;
 }
 
 void AckMessage::release(){
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  bomb_version_hints.release();
+#endif
 }
 
 void AckMessage::copy_from_txn(TxnManager * txn) {
@@ -1240,6 +1286,18 @@ void AckMessage::copy_from_txn(TxnManager * txn) {
 #if WORKLOAD == PPS && CC_ALG == CALVIN
   PPSQuery* pps_query = (PPSQuery*)(txn->query);
   part_keys.copy(pps_query->part_keys);
+#endif
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  BombQuery *bomb_query = static_cast<BombQuery *>(txn->query);
+  bomb_version_hints.init(1);
+  for (uint64_t i = 0; i < bomb_query->requests.size(); ++i) {
+    BombRequest *request = bomb_query->requests[i];
+    if (request->role != BOMB_ROLE_PRODUCT_REPLACE &&
+        request->role != BOMB_ROLE_BOM_REPLACE) continue;
+    bomb_version_hints.add(request->table);
+    bomb_version_hints.add(request->key);
+    bomb_version_hints.add(request->expected_version);
+  }
 #endif
 }
 
@@ -1282,6 +1340,16 @@ void AckMessage::copy_from_buf(char * buf) {
     part_keys.add(item);
   }
 #endif
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  uint64_t hint_count = 0;
+  COPY_VAL(hint_count, buf, ptr);
+  bomb_version_hints.init(hint_count == 0 ? 1 : hint_count);
+  for (uint64_t i = 0; i < hint_count; ++i) {
+    uint64_t value = 0;
+    COPY_VAL(value, buf, ptr);
+    bomb_version_hints.add(value);
+  }
+#endif
  assert(ptr == get_size());
 }
 
@@ -1312,6 +1380,14 @@ void AckMessage::copy_to_buf(char * buf) {
     COPY_BUF(buf,item,ptr);
   }
 #endif
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  uint64_t hint_count = bomb_version_hints.size();
+  COPY_BUF(buf, hint_count, ptr);
+  for (uint64_t i = 0; i < hint_count; ++i) {
+    uint64_t value = bomb_version_hints[i];
+    COPY_BUF(buf, value, ptr);
+  }
+#endif
  assert(ptr == get_size());
 }
 /************************/
@@ -1319,13 +1395,35 @@ void AckMessage::copy_to_buf(char * buf) {
 uint64_t QueryResponseMessage::get_size() {
   uint64_t size = Message::mget_size();
   size += sizeof(RC);
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  size += sizeof(uint64_t);
+  size += sizeof(uint64_t) * bomb_version_hints.size();
+#endif
   //size += sizeof(uint64_t);
   return size;
+}
+
+void QueryResponseMessage::release() {
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  bomb_version_hints.release();
+#endif
 }
 
 void QueryResponseMessage::copy_from_txn(TxnManager * txn) {
   Message::mcopy_from_txn(txn);
   rc = txn->get_rc();
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  BombQuery *bomb_query = static_cast<BombQuery *>(txn->query);
+  bomb_version_hints.init(1);
+  for (uint64_t i = 0; i < bomb_query->requests.size(); ++i) {
+    BombRequest *request = bomb_query->requests[i];
+    if (request->role != BOMB_ROLE_PRODUCT_REPLACE &&
+        request->role != BOMB_ROLE_BOM_REPLACE) continue;
+    bomb_version_hints.add(request->table);
+    bomb_version_hints.add(request->key);
+    bomb_version_hints.add(request->expected_version);
+  }
+#endif
 }
 
 void QueryResponseMessage::copy_to_txn(TxnManager * txn) {
@@ -1337,6 +1435,16 @@ void QueryResponseMessage::copy_from_buf(char * buf) {
   Message::mcopy_from_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_VAL(rc,buf,ptr);
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  uint64_t hint_count = 0;
+  COPY_VAL(hint_count, buf, ptr);
+  bomb_version_hints.init(hint_count == 0 ? 1 : hint_count);
+  for (uint64_t i = 0; i < hint_count; ++i) {
+    uint64_t value = 0;
+    COPY_VAL(value, buf, ptr);
+    bomb_version_hints.add(value);
+  }
+#endif
   assert(ptr == get_size());
 }
 
@@ -1344,6 +1452,14 @@ void QueryResponseMessage::copy_to_buf(char * buf) {
   Message::mcopy_to_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_BUF(buf,rc,ptr);
+#if WORKLOAD == BOMB && CC_ALG == ARIA
+  uint64_t hint_count = bomb_version_hints.size();
+  COPY_BUF(buf, hint_count, ptr);
+  for (uint64_t i = 0; i < hint_count; ++i) {
+    uint64_t value = bomb_version_hints[i];
+    COPY_BUF(buf, value, ptr);
+  }
+#endif
   assert(ptr == get_size());
 }
 
@@ -1662,7 +1778,7 @@ void TPCCQueryMessage::copy_from_buf(char * buf) {
   uint64_t ptr = QueryMessage::get_size();
 
   COPY_VAL(txn_type,buf,ptr);
-  assert(txn_type == TPCC_PAYMENT || txn_type == TPCC_NEW_ORDER);
+  assert(txn_type >= TPCC_PAYMENT && txn_type <= TPCC_STOCK_LEVEL);
   COPY_VAL(state,buf,ptr);
 	// common txn input for both payment & new-order
   COPY_VAL(w_id,buf,ptr);
@@ -1697,7 +1813,7 @@ void TPCCQueryMessage::copy_from_buf(char * buf) {
     COPY_VAL(o_entry_d,buf,ptr);
   }
 
- assert(ptr == get_size());
+ assert(ptr == TPCCQueryMessage::get_size());
 
 }
 
@@ -1735,7 +1851,7 @@ void TPCCQueryMessage::copy_to_buf(char * buf) {
     COPY_BUF(buf,ol_cnt,ptr);
     COPY_BUF(buf,o_entry_d,ptr);
   }
- assert(ptr == get_size());
+ assert(ptr == TPCCQueryMessage::get_size());
 }
 /************************/
 

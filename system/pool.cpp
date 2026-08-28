@@ -23,6 +23,8 @@
 #include "ycsb_query.h"
 #include "ycsb.h"
 #include "tpcc_query.h"
+#include "chbenchmark_query.h"
+#include "bomb_query.h"
 #include "pps_query.h"
 #include "query.h"
 #include "msg_queue.h"
@@ -171,6 +173,10 @@ void QryPool::init(Workload * wl, uint64_t size) {
     //put(items[i]);
 #if WORKLOAD==TPCC
     TPCCQuery * m_qry = new TPCCQuery();
+#elif WORKLOAD==CHBENCHMARK
+    CHBenchmarkQuery * m_qry = new CHBenchmarkQuery();
+#elif WORKLOAD==BOMB
+    BombQuery * m_qry = new BombQuery();
 #elif WORKLOAD==PPS
     PPSQuery * m_qry = (PPSQuery *) mem_allocator.alloc(sizeof(PPSQuery));
     m_qry = new PPSQuery();
@@ -194,6 +200,10 @@ void QryPool::get(uint64_t thd_id, BaseQuery *& item) {
     DEBUG_M("query_pool alloc\n");
 #if WORKLOAD==TPCC
     TPCCQuery* qry = new TPCCQuery();
+#elif WORKLOAD==CHBENCHMARK
+    CHBenchmarkQuery* qry = new CHBenchmarkQuery();
+#elif WORKLOAD==BOMB
+    BombQuery* qry = new BombQuery();
 #elif WORKLOAD==PPS
     PPSQuery * qry = (PPSQuery *) mem_allocator.alloc(sizeof(PPSQuery));
     qry = new PPSQuery();
@@ -213,6 +223,10 @@ void QryPool::put(uint64_t thd_id, BaseQuery * item) {
   ((YCSBQuery*)item)->reset();
 #elif WORKLOAD == TPCC
   ((TPCCQuery*)item)->reset();
+#elif WORKLOAD == CHBENCHMARK
+  ((CHBenchmarkQuery*)item)->reset();
+#elif WORKLOAD == BOMB
+  ((BombQuery*)item)->reset();
 #elif WORKLOAD == PPS
   ((PPSQuery*)item)->reset();
 #endif
@@ -232,6 +246,10 @@ void QryPool::put(uint64_t thd_id, BaseQuery * item) {
   ((YCSBQuery*)item)->release();
 #elif WORKLOAD == TPCC
   ((TPCCQuery*)item)->release();
+#elif WORKLOAD == CHBENCHMARK
+  ((CHBenchmarkQuery*)item)->release();
+#elif WORKLOAD == BOMB
+  ((BombQuery*)item)->release();
 #elif WORKLOAD == PPS
   ((PPSQuery*)item)->release();
 #endif
@@ -422,4 +440,3 @@ void RowPool::free_all() {
   }
   }
 }
-

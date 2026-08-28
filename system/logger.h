@@ -33,7 +33,7 @@ struct CmdLogRecord {
   LogRecType type;
   uint64_t txn_id; // transaction id
   //uint32_t partid; // partition id
-#if WORKLOAD==TPCC
+#if WORKLOAD==TPCC || WORKLOAD==CHBENCHMARK
   TPCCTxnType txntype;
 #elif WORKLOAD==YCSB
   //YCSBTxnType txntype;

@@ -15,6 +15,7 @@
 */
 
 #include "stats.h"
+#include "bomb.h"
 
 #include <sys/times.h>
 #include <time.h>
@@ -1822,6 +1823,9 @@ void Stats::print(bool prog) {
 #endif
 #if CC_ALG == SDMVCC
   Row_sdmvcc::print_stats(outf);
+#endif
+#if WORKLOAD == BOMB
+  BombStats::print(outf);
 #endif
   mem_util(outf);
   cpu_util(outf);
