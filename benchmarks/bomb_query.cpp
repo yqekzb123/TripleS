@@ -191,8 +191,8 @@ bool BombQueryGenerator::is_enabled_client(uint64_t client_thread) {
       (g_node_id - g_node_cnt) * g_client_thread_cnt + client_thread;
   const uint64_t long_count = BOMB_LONG_TX_MODE == BOMB_LONG_TX_GLOBAL
       ? (BOMB_LONG_TX_SOURCES == 0 ? 0 : 1) : BOMB_LONG_TX_SOURCES;
-#if CC_ALG == ARIA
-  // Every Aria server owns a sequencer that must fill a same-sized batch.
+#if CC_ALG == ARIA || CC_ALG == SDMVCC
+  // Every Aria/SDMVCC server owns a sequencer that must fill a same-sized batch.
   // Keep long sources globally unique, but provision BOMB_SHORT_WORKERS local
   // short sources for every paired client/server so no sequencer starves.
   if (client_id < long_count) return true;

@@ -673,6 +673,23 @@ def bomb_calvin_smoke():
     return fmt, exp
 
 
+
+def bomb_sdmvcc_smoke():
+    """Two-node SDMVCC + BoMB static-mode smoke test.  SDMVCC shares the
+    SDPCC scheduler plumbing with CALVIN, so the plan mirrors
+    bomb_calvin_smoke with CC_ALG switched to SDMVCC."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
+           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
+           "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", 2, 2, 8, 4, 64,
+            2, 64, 160, 64, 4,
+            "BOMB_LONG_TX_GLOBAL", 1, 3,
+            1048576, "2*BILLION", "5*BILLION"]]
+    return fmt, exp
+
 def bomb_calvin_baseline():
     fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
            "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
@@ -781,6 +798,7 @@ experiment_map = {
     'bomb_calvin_dynamic_smoke': bomb_calvin_dynamic_smoke,
     'bomb_aria_smoke': bomb_aria_smoke,
     'bomb_aria_dynamic_smoke': bomb_aria_dynamic_smoke,
+    'bomb_sdmvcc_smoke': bomb_sdmvcc_smoke,
 
     # Scaling
     'ycsb_scaling_PCC': ycsb_scaling_PCC, # calvin sdpcc

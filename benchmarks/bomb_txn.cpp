@@ -17,14 +17,14 @@ void BombTxnManager::reset() {
 }
 
 RC BombTxnManager::run_txn() {
-  assert(CC_ALG == CALVIN);
+  assert(CALVIN_FAMILY);
   return run_calvin_txn();
 }
 
 RC BombTxnManager::run_txn_post_wait() { return RCOK; }
 
 RC BombTxnManager::acquire_locks() {
-  assert(CC_ALG == CALVIN);
+  assert(CALVIN_FAMILY);
   BombQuery *bomb_query = static_cast<BombQuery *>(query);
   locking_done = false;
   RC rc = RCOK;

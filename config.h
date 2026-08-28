@@ -106,7 +106,7 @@
 
 // WAIT_DIE, NO_WAIT, TIMESTAMP, MVCC, CALVIN, MAAT, WOOKONG, TICTOC, SI
 #define ISOLATION_LEVEL SERIALIZABLE
-#define CC_ALG ARIA
+#define CC_ALG SDMVCC
 #define YCSB_ABORT_MODE false
 #define QUEUE_CAPACITY_NEW 1000000
 // all transactions acquire tuples according to the primary key order.
@@ -153,7 +153,7 @@
 #define DETERMINISTIC_ABORT_MODE false
 #define DETERMINISTIC_ABORT_RATIO 0.2
 // [ARIA]
-#define ARIA_BATCH_SIZE 16
+#define ARIA_BATCH_SIZE 3000
 // [TICTOC]
 #define MAX_NUM_WAITS 4
 #define PRE_ABORT true
@@ -425,7 +425,7 @@ enum PPSTxnType {
 // ==== [BoMB] ====
 // 0 = static BoM (L1/S1/S2), 1 = dynamic BoM (adds S3/S4/S5 and
 // topology-plan validation).  The first Calvin milestone uses static mode.
-#define BOMB_DYNAMIC_MODE true
+#define BOMB_DYNAMIC_MODE false
 #define BOMB_LONG_TX_GLOBAL 0
 #define BOMB_LONG_TX_PER_CLIENT 1
 #define BOMB_LONG_TX_MODE BOMB_LONG_TX_GLOBAL
