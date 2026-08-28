@@ -1,5 +1,6 @@
 #include "row_sdmvcc.h"
 
+#include "catalog.h"
 #include "helper.h"
 #include "row.h"
 #include "txn.h"
@@ -114,6 +115,26 @@ RC Row_sdmvcc::read(uint64_t snapshot, row_t *local_row) {
         assert(version->data.size() == _row->get_tuple_size());
         memcpy(local_row->get_data(), version->data.data(), _row->get_tuple_size());
     }
+    pthread_mutex_unlock(&_latch);
+    return RCOK;
+}
+
+RC Row_sdmvcc::read_value(uint64_t snapshot, uint32_t column, void *value,
+                          uint32_t size) {
+    pthread_mutex_lock(&_latch);
+    auto version = predecessor_locked(snapshot);
+    if (version == _versions.end()) {
+        pthread_mutex_unlock(&_latch);
+        return Abort;
+    }
+    assert(version->ready);
+    assert(size <= _row->get_schema()->get_field_size(column));
+    const uint32_t offset = _row->get_schema()->get_field_index(column);
+    const char *data = version->base_backed ? _row->get_data()
+                                            : version->data.data();
+    assert(version->base_backed ||
+           version->data.size() == _row->get_tuple_size());
+    memcpy(value, data + offset, size);
     pthread_mutex_unlock(&_latch);
     return RCOK;
 }

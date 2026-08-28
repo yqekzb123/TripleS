@@ -4,6 +4,9 @@
 #include "message.h"
 #include "msg_queue.h"
 #include "row.h"
+#if CC_ALG == SDMVCC
+#include "row_sdmvcc.h"
+#endif
 
 void BombTxnManager::init(uint64_t thd_id, Workload *wl) {
   TxnManager::init(thd_id, wl);
@@ -126,13 +129,27 @@ RC BombTxnManager::validate_plan() {
                                 request->key, part);
     assert(item != NULL && item->location != NULL);
     uint64_t version = 0;
-    static_cast<row_t *>(item->location)->get_value(4, version);
+    row_t *row = static_cast<row_t *>(item->location);
+#if CC_ALG == SDMVCC
+    // The base row can lag the version chain until GC promotes the newest
+    // committed version. Validate against this transaction's snapshot.
+    RC read_rc = row->manager->read_value(
+        sdmvcc_snapshot(), 4, &version, sizeof(version));
+    assert(read_rc == RCOK);
+#else
+    row->get_value(4, version);
+#endif
     if (version != request->expected_version) {
-      // The CALVIN_ABORT message is rebuilt from this query. Updating the
-      // expected version here makes the retry a deterministic replan while
-      // retaining exactly the same stable logical slots.
       request->expected_version = version;
+#if CC_ALG == SDMVCC
+      // The current dynamic prototype plans stable logical slots for S3/S4.
+      // A newer predecessor version changes the guard, not the read/write
+      // set, so refresh it at this deterministic snapshot and execute in the
+      // original SID. Retrying at the tail would chase a moving hot version.
+#else
+      // Other deterministic engines retain their existing abort/retry path.
       mismatch = true;
+#endif
     }
   }
   return mismatch ? Abort : RCOK;

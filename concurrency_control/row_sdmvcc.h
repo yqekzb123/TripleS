@@ -21,6 +21,8 @@ public:
     RC register_access(access_t type, TxnManager *txn);
     bool arm_read(TxnManager *txn, uint64_t snapshot);
     RC read(uint64_t snapshot, row_t *local_row);
+    RC read_value(uint64_t snapshot, uint32_t column, void *value,
+                  uint32_t size);
     bool visible(uint64_t snapshot);
     void set_creation_sid(uint64_t sid);
     void stage_write(uint64_t sid, row_t *local_row);
