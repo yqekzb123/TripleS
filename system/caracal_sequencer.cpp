@@ -3,6 +3,7 @@
 #include "message.h"
 #include "ycsb_query.h"
 #include "tpcc_query.h"
+#include "bomb.h"
 #include "msg_queue.h"
 #include "global.h"
 #include "mem_alloc.h"
@@ -59,7 +60,7 @@ void CaracalSequencer::send_next_batch(uint64_t thd_id) {
     last_batch_time = prof_stat;
 }
 
-void CaracalSequencer::fill_batch(uint64_t _thd_id) {
+bool CaracalSequencer::fill_batch(uint64_t _thd_id) {
     Message * msg;
     uint64_t idle_starttime = 0;
     total_ack_count = 0;
@@ -67,6 +68,28 @@ void CaracalSequencer::fill_batch(uint64_t _thd_id) {
         msg = work_queue.txn_dequeue(_thd_id);
 
         if (!msg) {
+            // The timer can expire after the outer sequencer loop entered
+            // fill_batch().  No worker can execute a final partial batch once
+            // the simulation is done, so discard only these unpublished
+            // transactions instead of spinning forever.
+            if (simulation->is_done()) {
+                Message *queued = NULL;
+                for (uint64_t node = 0; node < g_node_cnt; ++node) {
+                    while (fill_queue[node].pop(queued)) {}
+                }
+                for (uint64_t i = 0; i < caracal_batch.size(); ++i) {
+                    caracal_batch[i]->msg->release();
+                    delete caracal_batch[i]->msg;
+                    mem_allocator.free(caracal_batch[i], sizeof(caracal_txn));
+                }
+                caracal_batch.clear();
+                total_ack_count = 0;
+                txns_left = 0;
+                if (idle_starttime > 0)
+                    INC_STATS(_thd_id, seq_idle_time,
+                              get_sys_clock() - idle_starttime);
+                return false;
+            }
             if (idle_starttime == 0) idle_starttime = get_sys_clock();
                 continue;
         }
@@ -82,6 +105,7 @@ void CaracalSequencer::fill_batch(uint64_t _thd_id) {
     txns_left = caracal_batch.size();
     batch_id++;
      // DEBUG_SEQ("FILL BATCH %ld %ld\n", _thd_id, batch_id);
+    return true;
 }
 
 void CaracalSequencer::process_txn(Message* msg, uint64_t thd_id) {
@@ -98,6 +122,11 @@ void CaracalSequencer::process_txn(Message* msg, uint64_t thd_id) {
 		std::set<uint64_t> participants = YCSBQuery::participants(msg,_wl);
     #elif WORKLOAD == TPCC
 		std::set<uint64_t> participants = TPCCQuery::participants(msg,_wl);
+    #elif WORKLOAD == BOMB
+        BombClientQueryMessage *bomb_msg = static_cast<BombClientQueryMessage *>(msg);
+        bomb_msg->materialize_requests();
+        std::set<uint64_t> participants = BombQuery::participants(msg,_wl);
+        BombStats::record_submit(bomb_msg, static_cast<BombWorkload *>(_wl), participants.size());
     #endif
 
     en->server_ack_cnt = participants.size();
@@ -158,6 +187,8 @@ void CaracalSequencer::process_ack(Message * msg, uint64_t thd_id) {
                 YCSBClientQueryMessage * cl_msg = (YCSBClientQueryMessage *)caracal_batch[i]->msg;
             #elif WORKLOAD == TPCC
                 TPCCClientQueryMessage * cl_msg = (TPCCClientQueryMessage*)caracal_batch[i]->msg;
+            #elif WORKLOAD == BOMB
+                BombClientQueryMessage * cl_msg = static_cast<BombClientQueryMessage *>(caracal_batch[i]->msg);
                 // if(cl_msg->txn_type == TPCC_NEW_ORDER) {
 				// 	for(uint64_t i = 0; i < cl_msg->items.size(); i++) {
 				// 			DEBUG_M("Sequencer::process_ack() items free\n");
@@ -169,6 +200,9 @@ void CaracalSequencer::process_ack(Message * msg, uint64_t thd_id) {
                 uint64_t curr_clock = get_sys_clock();
                 uint64_t long_timespan = curr_clock - caracal_batch[i]->seq_first_startts;
                 uint64_t short_timespan = curr_clock - caracal_batch[i]->seq_startts;
+#if WORKLOAD == BOMB
+                BombStats::record_complete(cl_msg, long_timespan, false);
+#endif
                 // uint64_t skew_timespan = get_sys_clock() - caracal_batch[i]->skew_startts;
                 if (warmup_done) {
                     INC_STATS_ARR(0, first_start_commit_latency, long_timespan);
@@ -194,6 +228,10 @@ void CaracalSequencer::process_ack(Message * msg, uint64_t thd_id) {
                 ClientResponseMessage * rsp_msg = (ClientResponseMessage *)Message::create_message(msg->get_txn_id(), CL_RSP);
                 
                 rsp_msg->client_startts = caracal_batch[i]->client_startts;
+#if WORKLOAD == BOMB
+                rsp_msg->source_id = cl_msg->source_id;
+                rsp_msg->txn_type = cl_msg->txn_type;
+#endif
                 msg_queue.enqueue(thd_id, rsp_msg, caracal_batch[i]->client_id);
                 DEBUG_SEQ("Ack processed for %ld,%ld, send response to client_id: %d\n", batch_id, txn_id, caracal_batch[i]->client_id);
 

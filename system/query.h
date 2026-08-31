@@ -24,6 +24,7 @@
 class Workload;
 class YCSBQuery;
 class TPCCQuery;
+class BombQuery;
 class PPSQuery;
 
 class BaseQuery {
@@ -64,6 +65,8 @@ public:
 	YCSBQuery * queries;
 #elif WORKLOAD == TPCC
 	TPCCQuery * queries;
+#elif WORKLOAD == BOMB
+	BombQuery * queries;
 #elif WORKLOAD == PPS
 	PPSQuery * queries;
 #endif

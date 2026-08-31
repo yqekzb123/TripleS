@@ -25,6 +25,7 @@
 #include "mem_alloc.h"
 #include "stats_array.h"
 #include "work_queue.h"
+#include "bomb.h"
 
 void Stats_thd::init(uint64_t thd_id) {
   DEBUG_M("Stats_thd::init part_cnt alloc\n");
@@ -1781,6 +1782,9 @@ void Stats::print(bool prog) {
   else
 	  fprintf(outf, "[summary] ");
   totals->print(outf,prog);
+#if WORKLOAD == BOMB
+  BombStats::print(outf);
+#endif
   mem_util(outf);
   cpu_util(outf);
 

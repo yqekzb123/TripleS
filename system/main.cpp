@@ -38,6 +38,7 @@
 #include "abort_queue.h"
 #include "thread.h"
 #include "tpcc.h"
+#include "bomb.h"
 #include "transport.h"
 #include "work_queue.h"
 #include "worker_thread.h"
@@ -122,6 +123,9 @@ int main(int argc, char *argv[]) {
 			break;
 		case TPCC :
 			m_wl = new TPCCWorkload;
+			break;
+		case BOMB :
+			m_wl = new BombWorkload;
 			break;
 		case PPS :
 			m_wl = new PPSWorkload;

@@ -20,6 +20,7 @@
 #include "query.h"
 #include "ycsb_query.h"
 #include "tpcc_query.h"
+#include "bomb_query.h"
 #include "client_query.h"
 #include "transport.h"
 #include "client_txn.h"
@@ -87,7 +88,10 @@ RC ClientThread::run() {
 #else
 		assert(false);
 #endif
-		assert(m_query);
+		if (!m_query) {
+			client_man.dec_inflight(next_node);
+			continue;
+		}
 
 		DEBUG("Client: thread %lu sending query to node: %u, %d, %f\n",
 				_thd_id, next_node_id,inf_cnt,simulation->seconds_from_start(get_sys_clock()));

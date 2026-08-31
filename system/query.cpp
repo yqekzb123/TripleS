@@ -20,6 +20,7 @@
 #include "table.h"
 #include "ycsb_query.h"
 #include "tpcc_query.h"
+#include "bomb_query.h"
 #include "pps_query.h"
 
 /*************************************************/
@@ -50,6 +51,8 @@ void Query_thd::init(Workload *h_wl, int thread_id) {
   queries = (YCSBQuery *)mem_allocator.alloc(sizeof(YCSBQuery) * request_cnt);
 #elif WORKLOAD == TPCC
   queries = (TPCCQuery *)mem_allocator.alloc(sizeof(TPCCQuery) * request_cnt);
+#elif WORKLOAD == BOMB
+  queries = (BombQuery *)mem_allocator.alloc(sizeof(BombQuery) * request_cnt);
 #elif WORKLOAD == PPS
   queries = (PPSQuery *)mem_allocator.alloc(sizeof(PPSQuery) * request_cnt);
 #endif
@@ -58,6 +61,8 @@ void Query_thd::init(Workload *h_wl, int thread_id) {
 		new(&queries[qid]) YCSBQuery();
 #elif WORKLOAD == TPCC
 		new(&queries[qid]) TPCCQuery();
+#elif WORKLOAD == BOMB
+		new(&queries[qid]) BombQuery();
 #elif WORKLOAD == PPS
 		new(&queries[qid]) PPSQuery();
 #endif

@@ -134,6 +134,8 @@ for exp in exps:
                 files = ["rundb", "runcl", "ifconfig.txt", "./benchmarks/TPCC_short_schema.txt", "./benchmarks/TPCC_full_schema.txt"]
             elif cfgs["WORKLOAD"] == "YCSB":
                 files = ["rundb", "runcl", "ifconfig.txt", "benchmarks/YCSB_schema.txt"]
+            elif cfgs["WORKLOAD"] == "BOMB":
+                files = ["rundb", "runcl", "ifconfig.txt", "benchmarks/BOMB_schema.txt"]
             for m in machines[:cfgs["NODE_CNT"]]:
                 cmd = './scripts/kill.sh {} {}'.format(uname, m)
                 print(cmd)
@@ -173,7 +175,8 @@ for exp in exps:
                 print(cmd)
                 os.system(cmd)
             for m,n in zip(machines[len(machines)//2:], range(cfgs["NODE_CNT"])):
-                cmd = 'scp {}@{}:/{}/clresults{}.out {}/{}_{}.out'.format(uname, m, location, n, experiment_dir, n+cfgs["NODE_CNT"], output_f)
+                client_node = n + cfgs["NODE_CNT"]
+                cmd = 'scp {}@{}:/{}/clresults{}.out {}/{}_{}.out'.format(uname, m, location, client_node, experiment_dir, client_node, output_f)
                 print(cmd)
                 os.system(cmd)
 

@@ -259,6 +259,17 @@ def tpcc_aria_batch2():
     exp = [[wl,bs,m,algo] for algo,m,bs in itertools.product(algos,mpr,aria_batch_size)]
     return fmt,exp
 
+def bomb_caracal_smoke():
+    """Two-node Caracal + BoMB smoke runs for static and dynamic plans."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "ARIA_BATCH_SIZE", "BOMB_DYNAMIC_MODE", "MSG_SIZE_MAX",
+           "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "CARACAL", 2, 2, 8, 4, 10000, 16, dynamic,
+            1048576, "1*BILLION", "3*BILLION"]
+           for dynamic in ["false", "true"]]
+    return fmt, exp
+
 ##############################
 # END PLOTS
 ##############################
@@ -292,6 +303,7 @@ experiment_map = {
     'ycsb_skew_pip': ycsb_skew_pip,
     'ycsb_dist_ratio': ycsb_dist_ratio,
     'tpcc_aria_batch2': tpcc_aria_batch2,
+    'bomb_caracal_smoke': bomb_caracal_smoke,
 }
 
 
@@ -354,6 +366,23 @@ configs = {
     "ARIA_BATCH_SIZE":9000,
     "LOGGING":"false",
     "SCHEDULER_CNT": 3,
+#BoMB
+    "BOMB_DYNAMIC_MODE":"false",
+    "BOMB_LONG_TX_MODE":"BOMB_LONG_TX_GLOBAL",
+    "BOMB_LONG_TX_SOURCES":1,
+    "BOMB_SHORT_WORKERS":3,
+    "BOMB_FACTORY_COUNT":2,
+    "BOMB_PRODUCT_TYPES":64,
+    "BOMB_MATERIAL_TYPES":160,
+    "BOMB_RAW_MATERIAL_TYPES":64,
+    "BOMB_TREES_PER_PRODUCT":5,
+    "BOMB_TREE_SIZE":10,
+    "BOMB_RAW_MATERIALS_PER_LEAF":3,
+    "BOMB_TARGET_PRODUCTS":4,
+    "BOMB_TARGET_MATERIALS":1,
+    "BOMB_QUERY_CACHE_SIZE":2048,
+    "BOMB_FORCE_SHORT_TYPE":-1,
+    "BOMB_INJECT_STALE_PRESET":"false",
 #OTHERS
     # "DEBUG_DISTR":"false",
     # "DEBUG_ALLOC":"false",

@@ -20,6 +20,7 @@
 #include "ycsb.h"
 #include "tpcc_query.h"
 #include "tpcc.h"
+#include "bomb.h"
 #include "pps_query.h"
 #include "pps.h"
 #include "global.h"
@@ -97,6 +98,9 @@ Message * Message::create_message(BaseQuery * query, RemReqType rtype) {
  ((YCSBClientQueryMessage*)msg)->copy_from_query(query);
 #elif WORKLOAD == TPCC
  ((TPCCClientQueryMessage*)msg)->copy_from_query(query);
+#elif WORKLOAD == BOMB
+ ((BombClientQueryMessage*)msg)->copy_from_query(query);
+ BombQueryGenerator::release_plan(static_cast<BombQuery *>(query));
 #elif WORKLOAD == PPS
  ((PPSClientQueryMessage*)msg)->copy_from_query(query);
 #endif
@@ -128,6 +132,8 @@ Message * Message::create_message(RemReqType rtype) {
       msg = new YCSBQueryMessage;
 #elif WORKLOAD == TPCC
       msg = new TPCCQueryMessage;
+#elif WORKLOAD == BOMB
+      msg = new BombQueryMessage;
 #elif WORKLOAD == PPS
       msg = new PPSQueryMessage;
 #endif
@@ -167,6 +173,8 @@ Message * Message::create_message(RemReqType rtype) {
       msg = new YCSBClientQueryMessage;
 #elif WORKLOAD == TPCC
       msg = new TPCCClientQueryMessage;
+#elif WORKLOAD == BOMB
+      msg = new BombClientQueryMessage;
 #elif WORKLOAD == PPS
       msg = new PPSClientQueryMessage;
 #endif
@@ -329,6 +337,8 @@ void Message::release_message(Message * msg) {
       YCSBQueryMessage * m_msg = (YCSBQueryMessage*)msg;
 #elif WORKLOAD == TPCC
       TPCCQueryMessage * m_msg = (TPCCQueryMessage*)msg;
+#elif WORKLOAD == BOMB
+      BombQueryMessage * m_msg = (BombQueryMessage*)msg;
 #elif WORKLOAD == PPS
       PPSQueryMessage * m_msg = (PPSQueryMessage*)msg;
 #endif
@@ -384,6 +394,8 @@ void Message::release_message(Message * msg) {
       YCSBClientQueryMessage * m_msg = (YCSBClientQueryMessage*)msg;
 #elif WORKLOAD == TPCC
       TPCCClientQueryMessage * m_msg = (TPCCClientQueryMessage*)msg;
+#elif WORKLOAD == BOMB
+      BombClientQueryMessage * m_msg = (BombClientQueryMessage*)msg;
 #elif WORKLOAD == PPS
       PPSClientQueryMessage * m_msg = (PPSClientQueryMessage*)msg;
 #endif
@@ -1060,12 +1072,20 @@ void ClientQueryMessage::copy_to_buf(char * buf) {
 uint64_t ClientResponseMessage::get_size() {
   uint64_t size = Message::mget_size();
   size += sizeof(uint64_t);
+#if WORKLOAD == BOMB
+  size += sizeof(uint64_t) * 2;
+#endif
   return size;
 }
 
 void ClientResponseMessage::copy_from_txn(TxnManager * txn) {
   Message::mcopy_from_txn(txn);
   client_startts = txn->client_startts;
+#if WORKLOAD == BOMB
+  BombQuery *query = static_cast<BombQuery *>(txn->query);
+  source_id = query->source_id;
+  txn_type = query->txn_type;
+#endif
 }
 
 void ClientResponseMessage::copy_to_txn(TxnManager * txn) {
@@ -1077,6 +1097,9 @@ void ClientResponseMessage::copy_from_buf(char * buf) {
   Message::mcopy_from_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_VAL(client_startts,buf,ptr);
+#if WORKLOAD == BOMB
+  COPY_VAL(source_id,buf,ptr); COPY_VAL(txn_type,buf,ptr);
+#endif
  assert(ptr == get_size());
 }
 
@@ -1084,6 +1107,9 @@ void ClientResponseMessage::copy_to_buf(char * buf) {
   Message::mcopy_to_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_BUF(buf,client_startts,ptr);
+#if WORKLOAD == BOMB
+  COPY_BUF(buf,source_id,ptr); COPY_BUF(buf,txn_type,ptr);
+#endif
  assert(ptr == get_size());
 }
 

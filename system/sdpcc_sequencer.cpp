@@ -21,6 +21,7 @@
 #include "sdpcc_sequencer.h"
 #include "ycsb_query.h"
 #include "tpcc_query.h"
+#include "bomb.h"
 #include "pps_query.h"
 #include "mem_alloc.h"
 #include "transport.h"
@@ -91,6 +92,8 @@ void SDPCCSequencer::process_ack(Message * msg, uint64_t thd_id) {
 			}
 		}
 #endif
+#elif WORKLOAD == BOMB
+		BombClientQueryMessage* cl_msg = static_cast<BombClientQueryMessage*>(wait_list[id].msg);
 #endif
 			uint64_t curr_clock = get_sys_clock();
 			uint64_t timespan = curr_clock - wait_list[id].seq_first_startts;
@@ -235,6 +238,10 @@ void SDPCCSequencer::process_txn(Message *msg, uint64_t thd_id, uint64_t early_s
 	std::set<uint64_t> participants = YCSBQuery::participants(msg,_wl);
 #elif WORKLOAD == TPCC
 	std::set<uint64_t> participants = TPCCQuery::participants(msg,_wl);
+#elif WORKLOAD == BOMB
+	BombClientQueryMessage *bomb_msg = static_cast<BombClientQueryMessage *>(msg);
+	bomb_msg->materialize_requests();
+	std::set<uint64_t> participants = BombQuery::participants(msg,_wl);
 #elif WORKLOAD == PPS
 	std::set<uint64_t> participants = PPSQuery::participants(msg,_wl);
 #endif

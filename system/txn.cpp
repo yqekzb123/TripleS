@@ -37,6 +37,7 @@
 #include "message.h"
 #include "ycsb_query.h"
 #include "tpcc_query.h"
+#include "bomb_query.h"
 #include "pps_query.h"
 #include "array.h"
 #include "manager.h"
@@ -492,6 +493,8 @@ void TxnManager::reset_query() {
 	((YCSBQuery*)query)->reset();
 #elif WORKLOAD == TPCC
 	((TPCCQuery*)query)->reset();
+#elif WORKLOAD == BOMB
+	((BombQuery*)query)->reset();
 #elif WORKLOAD == PPS
 	((PPSQuery*)query)->reset();
 #endif

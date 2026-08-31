@@ -23,7 +23,7 @@ RC CaracalSequencerThread::run() {
         //TODO: 好像不需要ARIA_INIT
         if (simulation->caracal_phase.load() == CARACAL_COLLECT && 
             !simulation->send_txn_finish.load()) {
-            caracal_seq.fill_batch(_thd_id);
+            if (!caracal_seq.fill_batch(_thd_id)) break;
             simulation->current_batch_id = caracal_seq.get_batch_id()-1;
             caracal_seq.send_next_batch(_thd_id);
 

@@ -32,7 +32,7 @@ public:
     void process_ack(Message * msg, uint64_t thd_id);
     void process_txn(Message* msg, uint64_t thd_id);
     void send_next_batch(uint64_t thd_id);
-    void fill_batch(uint64_t _thd_id);
+    bool fill_batch(uint64_t _thd_id);
     uint64_t get_batch_id() { return batch_id; }
 
     uint64_t get_total_ack_count() { return total_ack_count; }

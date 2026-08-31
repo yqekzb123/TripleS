@@ -22,6 +22,7 @@
 #include "query.h"
 #include "ycsb_query.h"
 #include "tpcc_query.h"
+#include "bomb_query.h"
 #include "mem_alloc.h"
 #include "transport.h"
 #include "math.h"
@@ -135,6 +136,10 @@ RC InputThread::client_recv_loop() {
 			}
 			//INC_STATS_ARR(get_thd_id(),all_lat,timespan);
 			inf = client_man.dec_inflight(return_node_offset);
+#if WORKLOAD == BOMB
+			BombQueryGenerator::complete_long(
+				((ClientResponseMessage*)msg)->source_id);
+#endif
 			DEBUG("Recv %ld from %ld, %ld -- %f\n", ((ClientResponseMessage *)msg)->txn_id,
 						msg->return_node_id, inf, float(timespan) / BILLION);
 			assert(inf >=0);
