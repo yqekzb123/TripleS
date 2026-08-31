@@ -4,12 +4,14 @@
 #include <utility>
 
 #include "global.h"
+#include "bomb.h"
+#include "bomb_query.h"
 #include "helper.h"
 #include "txn.h"
 #include "ycsb.h"
 #include "ycsb_query.h"
 
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY
 
 SDPCCLongHoleManager::SDPCCLongHoleManager()
     : scheduler_cnt_(0), frontiers_(NULL), active_holes_(0), adaptive_enabled_schedulers_(0),
@@ -36,10 +38,13 @@ bool SDPCCLongHoleManager::enabled() const {
     return SDPCC_LONG_HOLE_MODE != SDPCC_LONG_HOLE_DISABLED;
 }
 
-bool SDPCCLongHoleManager::is_long_ycsb(TxnManager *txn) const {
+bool SDPCCLongHoleManager::is_long_txn(TxnManager *txn) const {
 #if WORKLOAD == YCSB && LONG_TXN_WORKLOAD
     YCSBQuery *query = static_cast<YCSBQuery *>(txn->get_query());
     return enabled() && query->requests.size() > g_req_per_short_query;
+#elif WORKLOAD == BOMB
+    BombQuery *query = static_cast<BombQuery *>(txn->get_query());
+    return enabled() && query->txn_type == BOMB_L1;
 #else
     (void)txn;
     return false;
@@ -47,7 +52,7 @@ bool SDPCCLongHoleManager::is_long_ycsb(TxnManager *txn) const {
 }
 
 bool SDPCCLongHoleManager::should_publish(uint64_t scheduler_id, TxnManager *txn) {
-    const bool is_long = is_long_ycsb(txn);
+    const bool is_long = is_long_txn(txn);
     if (!SDPCC_LONG_HOLE_ADAPTIVE) return is_long;
     assert(scheduler_id < scheduler_cnt_);
     uint64_t *counters = &adaptive_counters_[scheduler_id * ADAPTIVE_COUNTER_STRIDE];
@@ -136,6 +141,28 @@ void SDPCCLongHoleManager::build_hole(Hole &hole, TxnManager *txn) const {
             hole.read_bloom.add(req->key);
         }
     }
+#elif WORKLOAD == BOMB
+    BombQuery *query = static_cast<BombQuery *>(txn->get_query());
+    BombWorkload *wl = static_cast<BombWorkload *>(txn->get_wl());
+    if (SDPCC_LONG_HOLE_MODE == SDPCC_LONG_HOLE_BLOOM) {
+        hole.read_bloom.init();
+        hole.write_bloom.init();
+    }
+    for (uint64_t i = 0; i < query->requests.size(); ++i) {
+        BombRequest *req = query->requests[i];
+        if (GET_NODE_ID(wl->request_to_part(*req)) != g_node_id) continue;
+        ++hole.local_key_count;
+        const uint64_t key = mix64(req->key ^
+            (0x9e3779b97f4a7c15ULL * (static_cast<uint64_t>(req->table) + 1)));
+        if (SDPCC_LONG_HOLE_MODE == SDPCC_LONG_HOLE_EXACT) {
+            if (req->acctype == WR) hole.writes.insert(key);
+            else hole.reads.insert(key);
+        } else if (req->acctype == WR) {
+            hole.write_bloom.add(key);
+        } else {
+            hole.read_bloom.add(key);
+        }
+    }
 #else
     (void)hole;
     (void)txn;
@@ -157,6 +184,23 @@ bool SDPCCLongHoleManager::conflicts(const Hole &hole, TxnManager *txn,
         } else {
             if (hole.write_bloom.may_contain(req->key)) return true;
             if (req->acctype == WR && hole.read_bloom.may_contain(req->key)) return true;
+        }
+    }
+#elif WORKLOAD == BOMB
+    BombQuery *query = static_cast<BombQuery *>(txn->get_query());
+    BombWorkload *wl = static_cast<BombWorkload *>(txn->get_wl());
+    for (uint64_t i = 0; i < query->requests.size(); ++i) {
+        BombRequest *req = query->requests[i];
+        if (GET_NODE_ID(wl->request_to_part(*req)) != g_node_id) continue;
+        ++probes;
+        const uint64_t key = mix64(req->key ^
+            (0x9e3779b97f4a7c15ULL * (static_cast<uint64_t>(req->table) + 1)));
+        if (SDPCC_LONG_HOLE_MODE == SDPCC_LONG_HOLE_EXACT) {
+            if (hole.writes.count(key) != 0) return true;
+            if (req->acctype == WR && hole.reads.count(key) != 0) return true;
+        } else {
+            if (hole.write_bloom.may_contain(key)) return true;
+            if (req->acctype == WR && hole.read_bloom.may_contain(key)) return true;
         }
     }
 #else

@@ -99,14 +99,14 @@ RC SDPCCLockThread::run() {
 		}
 		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
 		bool long_hole = false;
-		#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+		#if SDPCC_FAMILY && !OPEN_DISTRIBUTED_WATERMARK
 		long_hole = sdpcc_long_hole_man->should_publish(id, txn_man);
 		if (long_hole) sdpcc_long_hole_man->publish(id, key, txn_man);
 		#endif
 		if (!txn_man->isRecon()) {
 			rc = txn_man->acquire_locks();
 		}
-		#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+		#if SDPCC_FAMILY && !OPEN_DISTRIBUTED_WATERMARK
 		if (long_hole) {
 			// All local lock requests are registered; row queues now enforce conflicts.
 			sdpcc_long_hole_man->clear(id, key);
@@ -116,7 +116,7 @@ RC SDPCCLockThread::run() {
 		check_water_mark->mark_completed(key, get_thd_id());
 		DEBUG_SCH("[SDPCCThread] %ld mark %ld,%ld key %ld complete\n", _thd_id, txn_man->get_batch_id(),txn_man->get_txn_id(), key);
 		uint64_t current_minSid = check_water_mark->get_global_watermark();
-		#elif CC_ALG == SDPCC
+		#elif SDPCC_FAMILY
 		// 更新水印minSid
 		uint64_t old_sid = sids[id];
 		assert(long_hole ? key >= minSid : key > minSid);
@@ -132,13 +132,16 @@ RC SDPCCLockThread::run() {
 		txn_man->last_msg = msg;
 
 		bool bypass = false;
-		#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+		#if SDPCC_FAMILY && !OPEN_DISTRIBUTED_WATERMARK
 		if (!long_hole && current_minSid < key && sdpcc_long_hole_man->enabled() &&
 				sdpcc_long_hole_man->should_check(id, key)) {
 			bypass = sdpcc_long_hole_man->can_bypass(id, txn_man, key);
 		}
 		#endif
 		if (bypass) {
+			#if CC_ALG == SDMVCC
+			txn_man->arm_sdmvcc_intents();
+			#endif
 			if (txn_man->decr_lr() == 0 && ATOM_CAS(txn_man->lock_ready, false, true)) {
 				work_queue.enqueue(_thd_id, txn_man->last_msg, false);
 			}
@@ -171,7 +174,7 @@ void SDPCCLockThread::handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minS
 		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
 		DEBUG_SCH("[SDPCCThread] %ld handle txn %ld,%ld, lock_ready_cnt %d, key %ld, current_minSid %ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id(), txn_man->lock_ready_cnt ,key, current_minSid);
 		if (key > current_minSid) break;
-		#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+		#if SDPCC_FAMILY && !OPEN_DISTRIBUTED_WATERMARK
 		sdpcc_long_hole_man->record_watermark_wait(
 				_thd_id % g_scheduler_thread_cnt,
 				get_sys_clock() - tmp_txn_list[idx].wait_start);

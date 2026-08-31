@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
 	for (uint64_t i = 0; i < g_scheduler_thread_cnt; i++) {
 		sids[i] = 0;
 	}
-	#if CC_ALG == SDPCC
+	#if SDPCC_FAMILY
 	sdpcc_long_hole_man = new SDPCCLongHoleManager();
 	sdpcc_long_hole_man->init(g_scheduler_thread_cnt);
 	#endif

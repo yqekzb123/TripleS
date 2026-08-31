@@ -1818,7 +1818,7 @@ void Stats::print(bool prog) {
   else
 	  fprintf(outf, "[summary] ");
   totals->print(outf,prog);
-#if CC_ALG == SDPCC && !OPEN_DISTRIBUTED_WATERMARK
+#if SDPCC_FAMILY && !OPEN_DISTRIBUTED_WATERMARK
   if (sdpcc_long_hole_man != NULL) sdpcc_long_hole_man->print(outf);
 #endif
 #if CC_ALG == SDMVCC

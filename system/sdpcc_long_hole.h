@@ -17,7 +17,7 @@ public:
 
     void init(uint64_t scheduler_cnt);
     bool enabled() const;
-    bool is_long_ycsb(TxnManager *txn) const;
+    bool is_long_txn(TxnManager *txn) const;
     bool should_publish(uint64_t scheduler_id, TxnManager *txn);
     void publish(uint64_t scheduler_id, uint64_t key, TxnManager *txn);
     void clear(uint64_t scheduler_id, uint64_t key);

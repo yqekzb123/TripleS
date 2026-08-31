@@ -138,9 +138,9 @@ uint64_t the_first_scheduler_id = 0;
 // 调度器的水印 for SDPCC ------------------
 uint64_t * sids;
 uint64_t minSid = 0;
-#if CC_ALG == SDPCC
 SDPCCLongHoleManager * sdpcc_long_hole_man;
 
+#if CC_ALG == SDPCC
 WaterMarkList* check_water_mark;
 #endif
 #else
