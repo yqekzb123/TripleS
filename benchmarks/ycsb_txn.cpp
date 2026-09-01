@@ -390,7 +390,10 @@ RC YCSBTxnManager::run_calvin_txn() {
         rc = run_ycsb();
         //release_read_locks(query);
         
-        this->phase = CALVIN_SERVE_RD;
+        if (rc == RCOK) {
+          next_record_id = 0;
+          this->phase = CALVIN_SERVE_RD;
+        }
         break;
       }
       case CALVIN_SERVE_RD:
@@ -422,7 +425,10 @@ RC YCSBTxnManager::run_calvin_txn() {
         // Phase 5: Execute transaction / perform local writes
         DEBUG("[%ld] (%ld,%ld) execute writes\n",get_thd_id(),txn->batch_id,txn->txn_id);
         rc = run_ycsb();
-        this->phase = CALVIN_DONE;
+        if (rc == RCOK) {
+          next_record_id = 0;
+          this->phase = CALVIN_DONE;
+        }
         break;
       default:
         assert(false);
@@ -441,21 +447,31 @@ RC YCSBTxnManager::run_ycsb() {
   assert(CALVIN_FAMILY);
   YCSBQuery* ycsb_query = (YCSBQuery*) query;
 
-  for (uint64_t i = 0; i < ycsb_query->requests.size(); i++) {
-	  ycsb_request * req = ycsb_query->requests[i];
-    if (this->phase == CALVIN_LOC_RD && req->acctype == WR) continue;
-    if (this->phase == CALVIN_EXEC_WR && req->acctype == RD) continue;
+  while (next_record_id < ycsb_query->requests.size()) {
+	  ycsb_request * req = ycsb_query->requests[next_record_id];
+    if (this->phase == CALVIN_LOC_RD && req->acctype == WR) {
+      ++next_record_id;
+      continue;
+    }
+    if (this->phase == CALVIN_EXEC_WR && req->acctype == RD) {
+      ++next_record_id;
+      continue;
+    }
 
 		uint64_t part_id = _wl->key_to_part( req->key );
     bool loc = GET_NODE_ID(part_id) == g_node_id;
 
-    if (!loc) continue;
+    if (!loc) {
+      ++next_record_id;
+      continue;
+    }
 
     rc = run_ycsb_0(req,row);
-    assert(rc == RCOK);
+    if (rc != RCOK) return rc;
 
     rc = run_ycsb_1(req->acctype,row);
-    assert(rc == RCOK);
+    if (rc != RCOK) return rc;
+    ++next_record_id;
   }
   return rc;
 

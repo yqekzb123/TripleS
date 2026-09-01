@@ -1330,7 +1330,8 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 		entry.type = WR;
 		return 2;
 	}
-	SDMVCCAccessRegistration entry = {row, type, false, 1, false};
+	SDMVCCAccessRegistration entry = {
+		row, type, false, 1, false, !SDMVCC_LAZY_READ_INTENT};
 	sdmvcc_accesses.push_back(entry);
 	sdmvcc_access_index[row] = sdmvcc_accesses.size() - 1;
 	return 1;
@@ -1345,18 +1346,40 @@ void TxnManager::consume_sdmvcc_access(row_t *row) {
 	assert(existing != sdmvcc_access_index.end());
 	auto &entry = sdmvcc_accesses[existing->second];
 	assert(entry.remaining_uses > 0);
-	if (--entry.remaining_uses == 0) {
+	if (--entry.remaining_uses == 0 && entry.intent_registered) {
 		entry.row->manager->release_intent(sdmvcc_snapshot(), minSid);
 		entry.intent_released = true;
 	}
 }
 
 void TxnManager::arm_sdmvcc_intents() {
+#if SDMVCC_LAZY_READ_INTENT
+	return;
+#else
 	for (auto &entry : sdmvcc_accesses) {
 		if (entry.armed) continue;
 		entry.row->manager->arm_read(this, sdmvcc_snapshot());
 		entry.armed = true;
 	}
+#endif
+}
+
+// Called with the corresponding Row_sdmvcc latch held. The transaction is
+// single-threaded while executing, so this per-transaction metadata needs no
+// second latch. false means a waiter was already attached (e.g. a spurious
+// retry); true grants the caller responsibility for attaching exactly once.
+bool TxnManager::arm_sdmvcc_lazy_access(row_t *row, bool &new_intent) {
+	auto existing = sdmvcc_access_index.find(row);
+	assert(existing != sdmvcc_access_index.end());
+	auto &entry = sdmvcc_accesses[existing->second];
+	if (entry.armed) {
+		new_intent = false;
+		return false;
+	}
+	entry.armed = true;
+	new_intent = !entry.intent_registered;
+	entry.intent_registered = true;
+	return true;
 }
 
 // Commit is deliberately two-pass: first materialize all private write data,
@@ -1383,7 +1406,8 @@ void TxnManager::finish_sdmvcc(RC rc) {
 		}
 	}
 	for (auto &entry : sdmvcc_accesses) {
-		if (!entry.intent_released) entry.row->manager->release_intent(sid, minSid);
+		if (entry.intent_registered && !entry.intent_released)
+			entry.row->manager->release_intent(sid, minSid);
 	}
 	sdmvcc_accesses.clear();
 	sdmvcc_access_index.clear();

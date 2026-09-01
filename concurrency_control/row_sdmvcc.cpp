@@ -22,6 +22,9 @@ std::atomic<uint64_t> g_versions_reclaimed(0);
 std::atomic<uint64_t> g_version_bytes(0);
 std::atomic<uint64_t> g_gc_calls(0);
 std::atomic<uint64_t> g_gc_disabled_calls(0);
+std::atomic<uint64_t> g_lazy_registration_skips(0);
+std::atomic<uint64_t> g_lazy_ready_reads(0);
+std::atomic<uint64_t> g_lazy_waits(0);
 pthread_mutex_t g_snapshot_pin_latch = PTHREAD_MUTEX_INITIALIZER;
 std::multiset<uint64_t> g_snapshot_pins;
 }
@@ -71,9 +74,11 @@ RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
     if (registration == 0) return RCOK;
     pthread_mutex_lock(&_latch);
     ensure_initial_locked();
-    if (registration == 1) {
+    if (registration == 1 && !SDMVCC_LAZY_READ_INTENT) {
         _read_intents[sid]++;
         g_intents_registered.fetch_add(1, std::memory_order_relaxed);
+    } else if (registration == 1) {
+        g_lazy_registration_skips.fetch_add(1, std::memory_order_relaxed);
     }
 
     if (type == WR) {
@@ -112,14 +117,47 @@ bool Row_sdmvcc::arm_read(TxnManager *txn, uint64_t snapshot) {
     return false;
 }
 
-RC Row_sdmvcc::read(uint64_t snapshot, row_t *local_row) {
+// Lazy mode installs both pieces of temporary state only after an execution
+// miss: the snapshot intent protects the selected predecessor from GC, while
+// Version::waiters provides completion notification. Holding _latch across
+// the readiness test and waiter insertion prevents a lost wakeup.
+bool Row_sdmvcc::wait_for_predecessor_locked(TxnManager *txn,
+                                             uint64_t snapshot) {
+#if !SDMVCC_LAZY_READ_INTENT
+    return false;
+#else
+    bool new_intent = false;
+    if (!txn->arm_sdmvcc_lazy_access(_row, new_intent)) return true;
+    if (new_intent) {
+        _read_intents[snapshot]++;
+        g_intents_registered.fetch_add(1, std::memory_order_relaxed);
+    }
+    auto version = predecessor_locked(snapshot);
+    assert(version != _versions.end() && !version->ready);
+    ATOM_CAS(txn->lock_ready, true, false);
+    txn->incr_lr();
+    version->waiters.push_back(txn);
+    g_intent_waits.fetch_add(1, std::memory_order_relaxed);
+    g_lazy_waits.fetch_add(1, std::memory_order_relaxed);
+    return true;
+#endif
+}
+
+RC Row_sdmvcc::read(TxnManager *txn, uint64_t snapshot, row_t *local_row) {
     pthread_mutex_lock(&_latch);
     auto version = predecessor_locked(snapshot);
     if (version == _versions.end()) {
         pthread_mutex_unlock(&_latch);
         return Abort;
     }
-    assert(version->ready);
+    if (!version->ready) {
+        wait_for_predecessor_locked(txn, snapshot);
+        pthread_mutex_unlock(&_latch);
+        return WAIT;
+    }
+#if SDMVCC_LAZY_READ_INTENT
+    g_lazy_ready_reads.fetch_add(1, std::memory_order_relaxed);
+#endif
     if (version->base_backed) {
         memcpy(local_row->get_data(), _row->get_data(), _row->get_tuple_size());
     } else {
@@ -130,7 +168,7 @@ RC Row_sdmvcc::read(uint64_t snapshot, row_t *local_row) {
     return RCOK;
 }
 
-RC Row_sdmvcc::read_value(uint64_t snapshot, uint32_t column, void *value,
+RC Row_sdmvcc::read_value(TxnManager *txn, uint64_t snapshot, uint32_t column, void *value,
                           uint32_t size) {
     pthread_mutex_lock(&_latch);
     auto version = predecessor_locked(snapshot);
@@ -138,7 +176,14 @@ RC Row_sdmvcc::read_value(uint64_t snapshot, uint32_t column, void *value,
         pthread_mutex_unlock(&_latch);
         return Abort;
     }
-    assert(version->ready);
+    if (!version->ready) {
+        wait_for_predecessor_locked(txn, snapshot);
+        pthread_mutex_unlock(&_latch);
+        return WAIT;
+    }
+#if SDMVCC_LAZY_READ_INTENT
+    g_lazy_ready_reads.fetch_add(1, std::memory_order_relaxed);
+#endif
     assert(size <= _row->get_schema()->get_field_size(column));
     const uint32_t offset = _row->get_schema()->get_field_index(column);
     const char *data = version->base_backed ? _row->get_data()
@@ -235,7 +280,7 @@ void Row_sdmvcc::abort_write(uint64_t sid, uint64_t thd_id) {
 // conservative safety net for accesses that cannot be enumerated per key.
 void Row_sdmvcc::gc_locked(uint64_t watermark) {
     g_gc_calls.fetch_add(1, std::memory_order_relaxed);
-#if !SDMVCC_INTENT_GC
+#if !SDMVCC_INTENT_GC || SDMVCC_LAZY_READ_INTENT
     // Watermark-only reclamation is not a safe ablation: an admitted long
     // reader may still hold an older snapshot.  Keep every version instead.
     g_gc_disabled_calls.fetch_add(1, std::memory_order_relaxed);
@@ -320,6 +365,12 @@ void Row_sdmvcc::print_stats(FILE *outf) {
             g_versions_created.load(), g_versions_reclaimed.load(),
             g_version_bytes.load(), SDMVCC_INTENT_GC ? 1 : 0,
             g_gc_calls.load(), g_gc_disabled_calls.load());
+    fprintf(outf,
+            ",sdmvcc_lazy_read_intent=%d,sdmvcc_lazy_registration_skips=%lu"
+            ",sdmvcc_lazy_ready_reads=%lu,sdmvcc_lazy_waits=%lu",
+            SDMVCC_LAZY_READ_INTENT ? 1 : 0,
+            g_lazy_registration_skips.load(), g_lazy_ready_reads.load(),
+            g_lazy_waits.load());
 }
 
 #endif

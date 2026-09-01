@@ -16,6 +16,7 @@ void BombTxnManager::init(uint64_t thd_id, Workload *wl) {
 
 void BombTxnManager::reset() {
   checksum = 0;
+  next_request_id = 0;
   TxnManager::reset();
 }
 
@@ -58,7 +59,8 @@ RC BombTxnManager::access_request(BombRequest *request, bool write_phase) {
   assert(item != NULL && item->location != NULL);
   row_t *local = NULL;
   RC rc = get_row(static_cast<row_t *>(item->location), request->acctype, local);
-  assert(rc == RCOK && local != NULL);
+  if (rc != RCOK) return rc;
+  assert(local != NULL);
   if (!write_phase) {
     const char *data = local->get_data();
     for (uint64_t i = 0; i < local->get_tuple_size(); ++i)
@@ -134,8 +136,8 @@ RC BombTxnManager::validate_plan() {
     // The base row can lag the version chain until GC promotes the newest
     // committed version. Validate against this transaction's snapshot.
     RC read_rc = row->manager->read_value(
-        sdmvcc_snapshot(), 4, &version, sizeof(version));
-    assert(read_rc == RCOK);
+        this, sdmvcc_snapshot(), 4, &version, sizeof(version));
+    if (read_rc != RCOK) return read_rc;
 #else
     row->get_value(4, version);
 #endif
@@ -157,9 +159,10 @@ RC BombTxnManager::validate_plan() {
 
 RC BombTxnManager::execute_phase(bool writes) {
   BombQuery *bomb_query = static_cast<BombQuery *>(query);
-  for (uint64_t i = 0; i < bomb_query->requests.size(); ++i) {
-    RC rc = access_request(bomb_query->requests[i], writes);
+  while (next_request_id < bomb_query->requests.size()) {
+    RC rc = access_request(bomb_query->requests[next_request_id], writes);
     if (rc != RCOK) return rc;
+    ++next_request_id;
   }
   return RCOK;
 }
@@ -177,7 +180,10 @@ RC BombTxnManager::run_calvin_txn() {
       case CALVIN_LOC_RD:
         rc = execute_phase(false);
         if (rc == RCOK) rc = validate_plan();
-        phase = CALVIN_SERVE_RD;
+        if (rc == RCOK) {
+          next_request_id = 0;
+          phase = CALVIN_SERVE_RD;
+        }
         break;
       case CALVIN_SERVE_RD:
         // The port intentionally simplifies business arithmetic. Every node
@@ -190,7 +196,10 @@ RC BombTxnManager::run_calvin_txn() {
         break;
       case CALVIN_EXEC_WR:
         rc = execute_phase(true);
-        phase = CALVIN_DONE;
+        if (rc == RCOK) {
+          next_request_id = 0;
+          phase = CALVIN_DONE;
+        }
         break;
       default:
         assert(false);

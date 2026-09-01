@@ -54,8 +54,8 @@ public:
 
     RC register_access(access_t type, TxnManager *txn);
     bool arm_read(TxnManager *txn, uint64_t snapshot);
-    RC read(uint64_t snapshot, row_t *local_row);
-    RC read_value(uint64_t snapshot, uint32_t column, void *value,
+    RC read(TxnManager *txn, uint64_t snapshot, row_t *local_row);
+    RC read_value(TxnManager *txn, uint64_t snapshot, uint32_t column, void *value,
                   uint32_t size);
     bool visible(uint64_t snapshot);
     void set_creation_sid(uint64_t sid);
@@ -89,6 +89,7 @@ private:
     void ensure_initial_locked();
     std::list<Version>::iterator find_version_locked(uint64_t sid);
     std::list<Version>::iterator predecessor_locked(uint64_t snapshot);
+    bool wait_for_predecessor_locked(TxnManager *txn, uint64_t snapshot);
     void gc_locked(uint64_t watermark);
     static void notify_ready(TxnManager *txn, uint64_t thd_id);
     static uint64_t oldest_pinned_snapshot();

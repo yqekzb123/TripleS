@@ -295,7 +295,13 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 	uint64_t init_time = get_sys_clock();
 	txn->cur_row = (row_t *) mem_allocator.alloc(sizeof(row_t));
 	txn->cur_row->init(get_table(), get_part_id());
-	rc = manager->read(txn->sdmvcc_snapshot(), txn->cur_row);
+	rc = manager->read(txn, txn->sdmvcc_snapshot(), txn->cur_row);
+	if (rc != RCOK) {
+		txn->cur_row->free_row();
+		mem_allocator.free(txn->cur_row, sizeof(row_t));
+		txn->cur_row = NULL;
+		goto end;
+	}
 	access->data = txn->cur_row;
 	txn->consume_sdmvcc_access(this);
 	INC_STATS(txn->get_thd_id(), trans_cur_row_init_time, get_sys_clock() - init_time);

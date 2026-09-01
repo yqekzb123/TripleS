@@ -57,9 +57,13 @@ keywords = ['tput', 'seq_idle_time', 'sched_idle_time', 'worker_idle_time', 'fsc
 keywords += ['sdmvcc_intents_registered', 'sdmvcc_intents_released',
              'sdmvcc_intent_waits', 'sdmvcc_notifications',
              'sdmvcc_versions_created', 'sdmvcc_versions_reclaimed',
-             'sdmvcc_version_bytes']
+             'sdmvcc_version_bytes', 'sdmvcc_intent_gc',
+             'sdmvcc_gc_calls', 'sdmvcc_gc_disabled_calls',
+             'sdmvcc_lazy_read_intent', 'sdmvcc_lazy_registration_skips',
+             'sdmvcc_lazy_ready_reads', 'sdmvcc_lazy_waits']
 keywords_cal_type = (['sum'] * 6 + ['avg'] * 3 + ['sum'] * 12 +
-                     ['avg'] * 2 + ['sum', 'avg', 'sum', 'sum'] + ['sum'] * 7)
+                     ['avg'] * 2 + ['sum', 'avg', 'sum', 'sum'] + ['sum'] * 7 +
+                     ['avg', 'sum', 'sum', 'avg', 'sum', 'sum', 'sum'])
 draw_keywords = ['tput']
 
 if len(sys.argv) < 2:
@@ -197,7 +201,8 @@ for exp in exps:
                 print(cmd)
                 os.system(cmd)
             for m,n in zip(machines[len(machines)//2:], range(cfgs["NODE_CNT"])):
-                cmd = 'scp {}@{}:/{}/clresults{}.out {}/{}_{}.out'.format(uname, m, location, n, experiment_dir, n+cfgs["NODE_CNT"], output_f)
+                client_node = n + cfgs["NODE_CNT"]
+                cmd = 'scp {}@{}:/{}/clresults{}.out {}/{}_{}.out'.format(uname, m, location, client_node, experiment_dir, client_node, output_f)
                 print(cmd)
                 os.system(cmd)
 

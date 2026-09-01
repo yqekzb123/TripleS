@@ -97,7 +97,7 @@
 
 #define PRIORITY_WORK_QUEUE false
 #define PRIORITY PRIORITY_ACTIVE
-#define MSG_SIZE_MAX 4194304
+#define MSG_SIZE_MAX 1048576
 #define MSG_TIME_LIMIT 0
 
 /***********************************************/
@@ -191,6 +191,10 @@
 // successor and no per-key read intent (or pinned scan) can still select it.
 // Disable only for short correctness-preserving GC ablation runs.
 #define SDMVCC_INTENT_GC true
+// Experimental execution-time intent mode. When enabled, scheduling only
+// reserves write versions. Reads that encounter an unfinished predecessor
+// attach a temporary intent/waiter and resume after its publish notification.
+#define SDMVCC_LAZY_READ_INTENT false
 /***********************************************/
 // Dynamic write perc and skew
 /***********************************************/
@@ -447,7 +451,7 @@ enum PPSTxnType {
 #define BOMB_TREES_PER_PRODUCT 5
 #define BOMB_TREE_SIZE 10
 #define BOMB_RAW_MATERIALS_PER_LEAF 3
-#define BOMB_TARGET_PRODUCTS 50
+#define BOMB_TARGET_PRODUCTS 4
 #define BOMB_TARGET_MATERIALS 1
 
 // Static short mix: S1/S2 = 50/50. Dynamic: S1..S5 = 45/45/1/1/8.
@@ -519,8 +523,8 @@ enum PPSTxnType {
 #define PROG_TIMER 10 * BILLION // in s
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
-#define DONE_TIMER 5*BILLION
-#define WARMUP_TIMER 2*BILLION
+#define DONE_TIMER 20*BILLION
+#define WARMUP_TIMER 20*BILLION
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define ONE_MILLISECOND 1 * MILLION

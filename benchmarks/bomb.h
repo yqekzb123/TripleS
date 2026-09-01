@@ -85,6 +85,7 @@ private:
 #endif
   BombWorkload *_bomb_wl;
   uint64_t checksum;
+  uint64_t next_request_id;
   RC do_insert() { return RCOK; }
 };
 

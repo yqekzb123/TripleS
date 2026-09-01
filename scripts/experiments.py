@@ -56,6 +56,8 @@ SHORTNAMES = {
     "BOMB_LONG_TX_MODE":"BLM",
     "BOMB_LONG_TX_SOURCES":"BLS",
     "BOMB_SHORT_WORKERS":"BSW",
+    "SDMVCC_LAZY_READ_INTENT":"LRI",
+    "SDMVCC_INTENT_GC":"IGC",
 }
 
 fmt_title=["NODE_CNT","CC_ALG","ACCESS_PERC","TXN_WRITE_PERC","PERC_PAYMENT","MPR","MODE","MAX_TXN_IN_FLIGHT","SEND_THREAD_CNT","REM_THREAD_CNT","THREAD_CNT","SCHEDULER_CNT","TXN_WRITE_PERC","TUP_WRITE_PERC","ZIPF_THETA","LONG_QUERY_PERC","NUM_WH"]
@@ -687,7 +689,25 @@ def bomb_sdmvcc_smoke():
     exp = [["BOMB", "SDMVCC", 2, 2, 8, 4, 10000,
             2, 64, 160, 64, 4,
             "BOMB_LONG_TX_GLOBAL", 1, 3,
-            1048576, "2*BILLION", "5*BILLION"]]
+            1048576, "20*BILLION", "20*BILLION"]]
+    return fmt, exp
+
+def bomb_sdmvcc_lazy_intent_ablation():
+    """Paired 2-node eager-vs-execution-time read-intent comparison."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_LONG_TX_MODE",
+           "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", lazy, "false", 2, 2, 8, 4, 10000,
+            2, 64, 160, 64, 50, "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304,
+            "30*BILLION", "30*BILLION"]
+           for lazy in ["false"]]
+        #    for lazy in ["false", "true"]]
     return fmt, exp
 
 def bomb_sdmvcc_bypass_smoke():
@@ -850,6 +870,7 @@ experiment_map = {
     'bomb_aria_dynamic_smoke': bomb_aria_dynamic_smoke,
     'bomb_aria_dynamic_hif': bomb_aria_dynamic_hif,
     'bomb_sdmvcc_smoke': bomb_sdmvcc_smoke,
+    'bomb_sdmvcc_lazy_intent_ablation': bomb_sdmvcc_lazy_intent_ablation,
     'bomb_sdmvcc_bypass_smoke': bomb_sdmvcc_bypass_smoke,
     'bomb_sdmvcc_dynamic_smoke': bomb_sdmvcc_dynamic_smoke,
 
