@@ -84,6 +84,12 @@
     fflush(stdout); \
   }
 
+#define BOMB_TRACE(...) \
+  if(DEBUG_BOMB_TRACE) { \
+    fprintf(stderr,__VA_ARGS__); \
+    fflush(stderr); \
+  }
+
     //fprintf(stdout,"[alloc] ");
 #define DEBUG_M(...) \
   if(DEBUG_ALLOC && warmup_done) { \

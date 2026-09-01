@@ -391,6 +391,10 @@ enum PPSTxnType {
 #define DEBUG_ALLOC         false
 #define DEBUG_RACE          false
 #define DEBUG_TIMELINE        false
+// Instrumentation traces from BoMB/ARIA/SDMVCC debugging sessions
+// (SEQ-*, WRK-ABORT, TM-ABORT, BQ-RESET, PHASE-NEXT, ARIA-READ-*).
+// Off by default; flip to true to reproduce trace-level debugging.
+#define DEBUG_BOMB_TRACE false
 #define DEBUG_BREAKDOWN       false
 #define DEBUG_LATENCY       false
 

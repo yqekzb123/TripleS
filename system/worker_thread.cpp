@@ -275,7 +275,7 @@ void WorkerThread::abort() {
   // TODO: TPCC Rollback here
 
   ++txn_man->abort_cnt;
-  fprintf(stderr, "WRK-ABORT txn=%ld batch=%ld man_abort=%lu stats_abort=%lu phase=%d\n",
+  BOMB_TRACE("WRK-ABORT txn=%ld batch=%ld man_abort=%lu stats_abort=%lu phase=%d\n",
           txn_man->get_txn_id(), txn_man->get_batch_id(), txn_man->abort_cnt,
           txn_man->txn_stats.abort_cnt, (int)simulation->aria_phase);
   txn_man->reset();
@@ -758,7 +758,7 @@ RC WorkerThread::process_rfin(Message * msg) {
 #endif
 
   if(((FinishMessage*)msg)->rc == Abort) {
-    fprintf(stderr, "RFIN-ABORT txn=%ld batch=%ld stats_abort_before=%lu\n",
+    BOMB_TRACE("RFIN-ABORT txn=%ld batch=%ld stats_abort_before=%lu\n",
             txn_man->get_txn_id(), txn_man->get_batch_id(),
             txn_man->txn_stats.abort_cnt);
     txn_man->abort();
@@ -1372,13 +1372,13 @@ RC WorkerThread::process_aria_rtxn(Message * msg) {
   DEBUG("START %ld %f %lu\n", txn_man->get_txn_id(),
         simulation->seconds_from_start(get_sys_clock()), txn_man->txn_stats.starttime);
   if (simulation->aria_phase == ARIA_READ && txn_man->txn_stats.abort_cnt == 0) {
-    fprintf(stderr, "ARIA-READ-EXEC txn=%ld batch=%ld stats_abort=%lu man_abort=%lu\n",
+    BOMB_TRACE("ARIA-READ-EXEC txn=%ld batch=%ld stats_abort=%lu man_abort=%lu\n",
             txn_man->get_txn_id(), txn_man->get_batch_id(),
             txn_man->txn_stats.abort_cnt, txn_man->abort_cnt);
     msg->copy_to_txn(txn_man);
     assert(ISSERVERN(txn_man->return_id));
   } else if (simulation->aria_phase == ARIA_READ) {
-    fprintf(stderr, "ARIA-READ-SKIP txn=%ld batch=%ld stats_abort=%lu man_abort=%lu\n",
+    BOMB_TRACE("ARIA-READ-SKIP txn=%ld batch=%ld stats_abort=%lu man_abort=%lu\n",
             txn_man->get_txn_id(), txn_man->get_batch_id(),
             txn_man->txn_stats.abort_cnt, txn_man->abort_cnt);
   }

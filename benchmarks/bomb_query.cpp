@@ -1,4 +1,5 @@
 #include "bomb_query.h"
+#include "helper.h"
 
 #include "bomb.h"
 #include "mem_alloc.h"
@@ -22,7 +23,7 @@ void BombQuery::init() {
 void BombQuery::init(uint64_t, Workload *) { init(); }
 
 void BombQuery::reset() {
-  fprintf(stderr, "BQ-RESET ord=%lu src=%lu reqs_old=%lu parts_old=%lu planned=%d\n",
+  BOMB_TRACE("BQ-RESET ord=%lu src=%lu reqs_old=%lu parts_old=%lu planned=%d\n",
           ordinal, source_id, requests.size(), partitions_touched.size(), (int)planned);
   BombQueryGenerator::release_plan(this);
   BaseQuery::clear();

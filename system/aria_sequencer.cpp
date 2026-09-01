@@ -1,4 +1,5 @@
 #include "aria_sequencer.h"
+#include "helper.h"
 #include "work_queue.h"
 #include "message.h"
 #include "ycsb_query.h"
@@ -28,7 +29,7 @@ void AriaSequencer::retire_stale_messages(uint64_t current_batch) {
         // that batch, and per-phase batch_process_count barriers guarantee
         // those references are all drained before the next-next COLLECT.
         if (current_batch >= retired_batches[i] + 1) {
-            fprintf(stderr, "SEQ-RELEASE txn=%ld retired_batch=%ld current=%ld\n",
+            BOMB_TRACE("SEQ-RELEASE txn=%ld retired_batch=%ld current=%ld\n",
                     retired_msgs[i]->get_txn_id(), retired_batches[i], current_batch);
             retired_msgs[i]->release();
             retired_msgs.erase(retired_msgs.begin() + i);
@@ -43,10 +44,10 @@ void AriaSequencer::send_next_batch(uint64_t thd_id) {
     uint64_t prof_stat = get_sys_clock();
     assert(aria_batch.size() != 0);
     DEBUG("SEND NEXT BATCH %ld %ld %ld\n", thd_id, batch_id, aria_batch.size());
-    fprintf(stderr, "SEQ-SEND batch=%ld size=%ld:", batch_id, aria_batch.size());
+    BOMB_TRACE("SEQ-SEND batch=%ld size=%ld:", batch_id, aria_batch.size());
     for (uint64_t i = 0; i < aria_batch.size(); i++) {
         BombClientQueryMessage *bm = (BombClientQueryMessage *)aria_batch[i]->msg;
-        fprintf(stderr, " (txn%ld,b%ld,ord%lu,ep%lu)", bm->txn_id, bm->batch_id,
+        BOMB_TRACE(" (txn%ld,b%ld,ord%lu,ep%lu)", bm->txn_id, bm->batch_id,
                 bm->ordinal, bm->plan_epoch);
         // The (re)sent txn starts a fresh batch: it must be able to consume
         // exactly one ACK of this batch.
@@ -154,12 +155,12 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
                 // Duplicate ACK for the same txn in the same batch (distributed
                 // completion path racing an in-batch retry). Ignore it so
                 // txns_left stays aligned with the number of outstanding txns.
-                fprintf(stderr, "SEQ-ACK-DUP txn=%ld batch=%ld rc=%d ignored txns_left=%ld\n",
+                BOMB_TRACE("SEQ-ACK-DUP txn=%ld batch=%ld rc=%d ignored txns_left=%ld\n",
                         txn_id, batch_id, ((AckMessage *)msg)->rc, txns_left);
                 break;
             }
             aria_batch[i]->acked = true;
-            fprintf(stderr, "SEQ-ACK txn=%ld batch=%ld rc=%d plan_epoch=%lu abort_cnt=%u txns_left=%ld\n",
+            BOMB_TRACE("SEQ-ACK txn=%ld batch=%ld rc=%d plan_epoch=%lu abort_cnt=%u txns_left=%ld\n",
                     txn_id, batch_id, ((AckMessage *)msg)->rc,
                     ((BombClientQueryMessage *)aria_batch[i]->msg)->plan_epoch,
                     aria_batch[i]->abort_cnt, txns_left);
@@ -223,7 +224,7 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
                 // COMMIT assert. Retire instead; freed two batches later.
                 retired_msgs.push_back(cl_msg);
                 retired_batches.push_back(simulation->current_batch_id);
-                fprintf(stderr, "SEQ-RETIRE txn=%ld batch=%ld retire_at=%ld pending=%lu\n",
+                BOMB_TRACE("SEQ-RETIRE txn=%ld batch=%ld retire_at=%ld pending=%lu\n",
                         txn_id, batch_id, simulation->current_batch_id,
                         (unsigned long)retired_msgs.size());
                 msg_queue.enqueue(thd_id, rsp_msg, aria_batch[i]->client_id);

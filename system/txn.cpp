@@ -551,7 +551,7 @@ RC TxnManager::abort() {
 	txn->rc = Abort;
 	INC_STATS(get_thd_id(),total_txn_abort_cnt,1);
 	txn_stats.abort_cnt++;
-	fprintf(stderr, "TM-ABORT txn=%ld batch=%ld stats_abort=%lu phase=%d\n",
+	BOMB_TRACE("TM-ABORT txn=%ld batch=%ld stats_abort=%lu phase=%d\n",
 	        get_txn_id(), get_batch_id(), txn_stats.abort_cnt,
 	        (int)simulation->aria_phase);
 	if(IS_LOCAL(get_txn_id())) {
