@@ -140,6 +140,10 @@ RC SDPCCLockThread::run() {
 		#endif
 		if (bypass) {
 			#if CC_ALG == SDMVCC
+			// Safe bypass skips only the coarse watermark wait. SDMVCC must still
+			// arm per-key intents so an unfinished visible predecessor can delay
+			// execution and later wake the transaction through notify_ready().
+			// Call stack: arm_sdmvcc_intents() -> Row_sdmvcc::arm_read().
 			txn_man->arm_sdmvcc_intents();
 			#endif
 			if (txn_man->decr_lr() == 0 && ATOM_CAS(txn_man->lock_ready, false, true)) {
@@ -180,6 +184,10 @@ void SDPCCLockThread::handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minS
 				get_sys_clock() - tmp_txn_list[idx].wait_start);
 		#endif
 		#if CC_ALG == SDMVCC
+		// Normal admission path after the coarse watermark reaches this txn.
+		// Arming may add extra lock-ready counts for not-yet-ready predecessor
+		// versions; the publishers remove those counts and enqueue the txn.
+		// Call stack: arm_sdmvcc_intents() -> Row_sdmvcc::arm_read().
 		txn_man->arm_sdmvcc_intents();
 		#endif
 		if (txn_man->decr_lr() == 0) {

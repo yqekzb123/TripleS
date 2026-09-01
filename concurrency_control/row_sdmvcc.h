@@ -13,6 +13,40 @@ class TxnManager;
 // Per-key deterministic MVCC state. Read intents are snapshot timestamps,
 // not pointers to versions, so an intent remains valid while older write
 // reservations are still arriving out of scheduler order.
+//
+// SDMVCC lifecycle / call stack:
+//
+// (1) Deterministic scheduling and metadata registration
+//   SDPCCLockThread::run()
+//     -> <workload>TxnManager::acquire_locks()
+//     -> row_t::get_lock()
+//     -> Row_sdmvcc::register_access()
+//   register_access() records one per-key read intent and reserves an
+//   uncommitted version for a local write. It does not block the scheduler.
+//
+// (2) Watermark admission and version readiness
+//   SDPCCLockThread::{run(), handle_tmp_txn()}
+//     -> TxnManager::arm_sdmvcc_intents()
+//     -> Row_sdmvcc::arm_read()
+//   A transaction whose visible predecessor is unfinished becomes a waiter
+//   on that Version. Each unresolved key contributes one lock-ready count.
+//
+// (3) Execution and optional early intent release
+//   TxnManager::get_row() -> row_t::get_row() -> Row_sdmvcc::read()
+//   Workloads that know a key will not be read again may then call
+//     TxnManager::consume_sdmvcc_access()
+//     -> Row_sdmvcc::release_intent()
+//
+// (4) Commit/abort, notification, and GC
+//   TxnManager::cleanup() -> TxnManager::finish_sdmvcc()
+//     -> stage_write() for every local write
+//     -> publish_write() (or abort_write())
+//     -> notify_ready() for transactions waiting on the affected version
+//   publish_write() and release_intent() both call gc_locked().
+//
+// Visibility rule: snapshot S reads the greatest committed version V with
+// V.sid < S. _read_intents protects versions needed by active snapshots;
+// Version::waiters is separate metadata used only for readiness notification.
 class Row_sdmvcc {
 public:
     Row_sdmvcc();

@@ -684,10 +684,60 @@ def bomb_sdmvcc_smoke():
            "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
            "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
            "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", 2, 2, 8, 4, 64,
+    exp = [["BOMB", "SDMVCC", 2, 2, 8, 4, 10000,
             2, 64, 160, 64, 4,
             "BOMB_LONG_TX_GLOBAL", 1, 3,
             1048576, "2*BILLION", "5*BILLION"]]
+    return fmt, exp
+
+def bomb_sdmvcc_bypass_smoke():
+    """Two-node static BoMB comparison for SDMVCC long-transaction bypass."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
+           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
+           "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "SDPCC_LONG_HOLE_MODE",
+           "SDPCC_LONG_HOLE_ADAPTIVE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", 2, 2, 8, 4, 10000,
+            2, 64, 160, 64, 50, "false",
+            "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304, mode, "false",
+            "2*BILLION", "5*BILLION"]
+           for mode in ["SDPCC_LONG_HOLE_DISABLED",
+                        "SDPCC_LONG_HOLE_EXACT",
+                        "SDPCC_LONG_HOLE_BLOOM"]]
+    return fmt, exp
+
+def bomb_sdmvcc_dynamic_smoke():
+    """Two-node SDMVCC + BoMB dynamic-mode (adds S3/S4/S5 with topology-version
+    guards and replan-retry).  Mirrors bomb_aria_dynamic_smoke with CC_ALG
+    switched to SDMVCC and no ARIA_BATCH_SIZE knob."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
+           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
+           "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", 2, 2, 8, 4, 10000,
+            2, 64, 160, 64, 4, "true",
+            "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
+            "2*BILLION", "5*BILLION"]]
+    return fmt, exp
+
+def bomb_aria_dynamic_hif():
+    """Control for bomb_sdmvcc_dynamic_smoke: same dynamic-mode config but
+    ARIA, with MAX_TXN_IN_FLIGHT raised to 10000 to match the SDMVCC run."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "ARIA_BATCH_SIZE",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
+           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
+           "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "ARIA", 2, 2, 8, 4, 10000, 16,
+            2, 64, 160, 64, 4, "true",
+            "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
+            "2*BILLION", "5*BILLION"]]
     return fmt, exp
 
 def bomb_calvin_baseline():
@@ -727,7 +777,7 @@ def bomb_aria_smoke():
            "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
            "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
            "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "ARIA", 2, 2, 8, 4, 64, 16,
+    exp = [["BOMB", "ARIA", 2, 2, 8, 4, 10000, 16,
             2, 64, 160, 64, 4,
             "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
             "2*BILLION", "5*BILLION"]]
@@ -798,7 +848,10 @@ experiment_map = {
     'bomb_calvin_dynamic_smoke': bomb_calvin_dynamic_smoke,
     'bomb_aria_smoke': bomb_aria_smoke,
     'bomb_aria_dynamic_smoke': bomb_aria_dynamic_smoke,
+    'bomb_aria_dynamic_hif': bomb_aria_dynamic_hif,
     'bomb_sdmvcc_smoke': bomb_sdmvcc_smoke,
+    'bomb_sdmvcc_bypass_smoke': bomb_sdmvcc_bypass_smoke,
+    'bomb_sdmvcc_dynamic_smoke': bomb_sdmvcc_dynamic_smoke,
 
     # Scaling
     'ycsb_scaling_PCC': ycsb_scaling_PCC, # calvin sdpcc

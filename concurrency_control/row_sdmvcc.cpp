@@ -20,6 +20,8 @@ std::atomic<uint64_t> g_intent_notifications(0);
 std::atomic<uint64_t> g_versions_created(0);
 std::atomic<uint64_t> g_versions_reclaimed(0);
 std::atomic<uint64_t> g_version_bytes(0);
+std::atomic<uint64_t> g_gc_calls(0);
+std::atomic<uint64_t> g_gc_disabled_calls(0);
 pthread_mutex_t g_snapshot_pin_latch = PTHREAD_MUTEX_INITIALIZER;
 std::multiset<uint64_t> g_snapshot_pins;
 }
@@ -59,6 +61,10 @@ Row_sdmvcc::predecessor_locked(uint64_t snapshot) {
     return result;
 }
 
+// Scheduling path:
+//   workload acquire_locks() -> row_t::get_lock() -> register_access().
+// The transaction-level index deduplicates repeated accesses to this key;
+// remaining_uses still records how many execution-time uses must be consumed.
 RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
     const uint64_t sid = txn->sdmvcc_snapshot();
     const int registration = txn->register_sdmvcc_access(_row, type);
@@ -83,6 +89,11 @@ RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
     return RCOK;
 }
 
+// Admission path:
+//   SDPCCLockThread -> TxnManager::arm_sdmvcc_intents() -> arm_read().
+// The intent already protects visibility. Arming adds notification state only
+// when the predecessor selected by snapshot ordering has not been published.
+// Returning false means notification is pending, not that the txn aborts.
 bool Row_sdmvcc::arm_read(TxnManager *txn, uint64_t snapshot) {
     pthread_mutex_lock(&_latch);
     auto version = predecessor_locked(snapshot);
@@ -168,6 +179,11 @@ void Row_sdmvcc::stage_write(uint64_t sid, row_t *local_row) {
     pthread_mutex_unlock(&_latch);
 }
 
+// Notification path:
+//   publish_write()/abort_write() -> notify_ready() -> txn_table.restart_txn().
+// A transaction can wait on several keys, so only the final decr_lr() queues
+// it for execution. lock_ready prevents duplicate queueing by concurrent
+// publishers.
 void Row_sdmvcc::notify_ready(TxnManager *txn, uint64_t thd_id) {
     g_intent_notifications.fetch_add(1, std::memory_order_relaxed);
     if (txn->decr_lr() == 0 && ATOM_CAS(txn->lock_ready, false, true)) {
@@ -209,7 +225,22 @@ void Row_sdmvcc::abort_write(uint64_t sid, uint64_t thd_id) {
     for (TxnManager *txn : wake) notify_ready(txn, thd_id);
 }
 
+// Reclaim version current when all three conditions hold:
+//   1. current and its successor next are committed (ready);
+//   2. the effective watermark has passed next.sid, so no future transaction
+//      admitted in deterministic order can select current;
+//   3. no registered read-intent snapshot lies in [current.sid, next.sid),
+//      which is exactly the snapshot interval that still selects current.
+// A globally pinned scan snapshot lowers the effective watermark and is a
+// conservative safety net for accesses that cannot be enumerated per key.
 void Row_sdmvcc::gc_locked(uint64_t watermark) {
+    g_gc_calls.fetch_add(1, std::memory_order_relaxed);
+#if !SDMVCC_INTENT_GC
+    // Watermark-only reclamation is not a safe ablation: an admitted long
+    // reader may still hold an older snapshot.  Keep every version instead.
+    g_gc_disabled_calls.fetch_add(1, std::memory_order_relaxed);
+    return;
+#endif
     const uint64_t pinned = oldest_pinned_snapshot();
     if (pinned < watermark) watermark = pinned;
     if (_versions.size() < 2) return;
@@ -282,11 +313,13 @@ void Row_sdmvcc::print_stats(FILE *outf) {
             ",sdmvcc_intents_registered=%lu,sdmvcc_intents_released=%lu"
             ",sdmvcc_intent_waits=%lu,sdmvcc_notifications=%lu"
             ",sdmvcc_versions_created=%lu,sdmvcc_versions_reclaimed=%lu"
-            ",sdmvcc_version_bytes=%lu",
+            ",sdmvcc_version_bytes=%lu,sdmvcc_intent_gc=%d"
+            ",sdmvcc_gc_calls=%lu,sdmvcc_gc_disabled_calls=%lu",
             g_intents_registered.load(), g_intents_released.load(),
             g_intent_waits.load(), g_intent_notifications.load(),
             g_versions_created.load(), g_versions_reclaimed.load(),
-            g_version_bytes.load());
+            g_version_bytes.load(), SDMVCC_INTENT_GC ? 1 : 0,
+            g_gc_calls.load(), g_gc_disabled_calls.load());
 }
 
 #endif

@@ -1307,6 +1307,20 @@ uint64_t TxnManager::sdmvcc_snapshot() const {
 	return get_batch_key(txn->batch_id, return_id, txn->txn_id);
 }
 
+// Transaction-side SDMVCC metadata ties the per-key Row_sdmvcc objects back
+// to one deterministic transaction. The complete lifecycle is:
+//
+//   scheduler acquire_locks()
+//     -> register_sdmvcc_access()       (deduplicate keys/count uses)
+//   watermark admission or safe bypass
+//     -> arm_sdmvcc_intents()           (subscribe to unfinished versions)
+//   workload execution, when supported
+//     -> consume_sdmvcc_access()        (release after the final use)
+//   TxnManager::cleanup()
+//     -> finish_sdmvcc()                (publish/abort writes, release leftovers)
+//
+// A read-to-write upgrade keeps the single intent but also ensures that the
+// row has a private write-version reservation for this transaction's SID.
 int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 	auto existing = sdmvcc_access_index.find(row);
 	if (existing != sdmvcc_access_index.end()) {
@@ -1322,6 +1336,10 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 	return 1;
 }
 
+// Early-release hook. remaining_uses makes duplicate occurrences of a key
+// safe: its intent is released only after the workload has consumed the final
+// occurrence. Workloads that do not call this hook retain all intents until
+// finish_sdmvcc(), which is correct but less aggressive for GC.
 void TxnManager::consume_sdmvcc_access(row_t *row) {
 	auto existing = sdmvcc_access_index.find(row);
 	assert(existing != sdmvcc_access_index.end());
@@ -1341,6 +1359,10 @@ void TxnManager::arm_sdmvcc_intents() {
 	}
 }
 
+// Commit is deliberately two-pass: first materialize all private write data,
+// then make versions ready and wake readers. Thus another transaction cannot
+// observe only a subset of this transaction's local writes merely because
+// publish_write() sends notifications immediately.
 void TxnManager::finish_sdmvcc(RC rc) {
 	const uint64_t sid = sdmvcc_snapshot();
 	if (rc == RCOK) {

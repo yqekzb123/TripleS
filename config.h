@@ -55,7 +55,7 @@
 #define TIME_ENABLE         true //STATS_ENABLE
 
 #define FIN_BY_TIME true
-#define MAX_TXN_IN_FLIGHT 64
+#define MAX_TXN_IN_FLIGHT 10000
 
 /***********************************************/
 // Memory System
@@ -97,7 +97,7 @@
 
 #define PRIORITY_WORK_QUEUE false
 #define PRIORITY PRIORITY_ACTIVE
-#define MSG_SIZE_MAX 1048576
+#define MSG_SIZE_MAX 4194304
 #define MSG_TIME_LIMIT 0
 
 /***********************************************/
@@ -187,6 +187,10 @@
 #define SDPCC_LONG_HOLE_DISABLE_PCT 4
 #define SDPCC_LONG_BLOOM_BITS 8192
 #define SDPCC_LONG_BLOOM_HASHES 4
+// Safe SDMVCC GC: reclaim an old version only after the watermark passes its
+// successor and no per-key read intent (or pinned scan) can still select it.
+// Disable only for short correctness-preserving GC ablation runs.
+#define SDMVCC_INTENT_GC true
 /***********************************************/
 // Dynamic write perc and skew
 /***********************************************/
@@ -443,7 +447,7 @@ enum PPSTxnType {
 #define BOMB_TREES_PER_PRODUCT 5
 #define BOMB_TREE_SIZE 10
 #define BOMB_RAW_MATERIALS_PER_LEAF 3
-#define BOMB_TARGET_PRODUCTS 4
+#define BOMB_TARGET_PRODUCTS 50
 #define BOMB_TARGET_MATERIALS 1
 
 // Static short mix: S1/S2 = 50/50. Dynamic: S1..S5 = 45/45/1/1/8.
