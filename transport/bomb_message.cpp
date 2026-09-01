@@ -1,4 +1,5 @@
 #include "message.h"
+#include "helper.h"
 
 #include "bomb.h"
 #include "mem_alloc.h"
@@ -100,7 +101,7 @@ void BombClientQueryMessage::materialize_requests() {
   query.plan_epoch = plan_epoch;
   BombQueryGenerator::materialize(&query);
   if (ordinal == 2065)
-    fprintf(stderr, "MAT-REQS ord=%lu src=%lu type=%d factory=%lu count=%lu\n",
+    BOMB_TRACE("MAT-REQS ord=%lu src=%lu type=%d factory=%lu count=%lu\n",
             ordinal, source_id, (int)txn_type, factory_id, query.requests.size());
   requests.release();
   clone_requests(requests, query.requests);
@@ -113,12 +114,12 @@ void BombClientQueryMessage::copy_to_txn(TxnManager *txn) {
     // release() this message's requests after it was already re-enqueued for
     // a retry batch. The six logical descriptor fields survive release(), so
     // the deterministic plan can be rebuilt instead of running an empty plan.
-    fprintf(stderr, "CPY2TXN-REMAT txn=%ld ord=%lu src=%lu\n",
+    BOMB_TRACE("CPY2TXN-REMAT txn=%ld ord=%lu src=%lu\n",
             txn->get_txn_id(), ordinal, source_id);
     materialize_requests();
   }
   BombQuery *q_before = static_cast<BombQuery *>(txn->query);
-  fprintf(stderr, "CPY2TXN txn=%ld batch=%ld ord=%lu src=%lu stats_abort=%lu man_abort=%lu msg_reqs=%lu qry_reqs_before=%lu qry_parts_before=%lu epoch_msg=%lu\n",
+  BOMB_TRACE("CPY2TXN txn=%ld batch=%ld ord=%lu src=%lu stats_abort=%lu man_abort=%lu msg_reqs=%lu qry_reqs_before=%lu qry_parts_before=%lu epoch_msg=%lu\n",
           txn->get_txn_id(), txn->get_batch_id(), ordinal, source_id,
           txn->txn_stats.abort_cnt, txn->abort_cnt, requests.size(),
           q_before->requests.size(), q_before->partitions_touched.size(), plan_epoch);

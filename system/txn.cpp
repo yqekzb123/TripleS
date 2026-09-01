@@ -822,10 +822,9 @@ void TxnManager::commit_stats() {
 #if WORKLOAD == BOMB
 	if (query->partitions_touched.size() == 0) {
 		BombQuery *bq = static_cast<BombQuery *>(query);
-		printf("FATAL-EMPTY-COMMIT batch=%ld txn=%ld type=%d factory=%lu ordinal=%lu src=%lu epoch=%lu reqs=%lu\n",
-		       get_batch_id(), get_txn_id(), (int)bq->txn_type, bq->factory_id,
-		       bq->ordinal, bq->source_id, bq->plan_epoch, bq->requests.size());
-		fflush(stdout);
+		BOMB_TRACE("FATAL-EMPTY-COMMIT batch=%ld txn=%ld type=%d factory=%lu ordinal=%lu src=%lu epoch=%lu reqs=%lu\n",
+		           get_batch_id(), get_txn_id(), (int)bq->txn_type, bq->factory_id,
+		           bq->ordinal, bq->source_id, bq->plan_epoch, bq->requests.size());
 	}
 #endif
 	assert(query->partitions_touched.size() > 0);

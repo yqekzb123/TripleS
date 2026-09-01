@@ -536,11 +536,10 @@ RC WorkerThread::run() {
           // txn whose RACK_FIN never arrived (peer died / message dropped) or an
           // aborted txn re-submitted by the sequencer. Reset it so the retried
           // CL_QRY restarts from ARIA_READ; reset() keeps the query payload.
-          printf("ENQ-A-RESET thd=%ld txn=%ld,%ld stale_phase=%d sim_phase=%d abort_cnt=%ld parts=%ld rc=%d\n",
-                 get_thd_id(), msg->batch_id, msg->txn_id, (int)txn_man->aria_phase,
-                 (int)simulation->aria_phase, txn_man->abort_cnt, txn_man->participants_cnt,
-                 (int)txn_man->get_rc());
-          fflush(stdout);
+          BOMB_TRACE("ENQ-A-RESET thd=%ld txn=%ld,%ld stale_phase=%d sim_phase=%d abort_cnt=%ld parts=%ld rc=%d\n",
+                     get_thd_id(), msg->batch_id, msg->txn_id, (int)txn_man->aria_phase,
+                     (int)simulation->aria_phase, txn_man->abort_cnt, txn_man->participants_cnt,
+                     (int)txn_man->get_rc());
           txn_man->reset();
         }
         work_queue.work_enqueue(get_thd_id(), msg, false, txn_man->aria_phase);
