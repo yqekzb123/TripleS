@@ -8,6 +8,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cassert>
+#include <cstdint>
 #include <cstring>
 
 #if CC_ALG == SDMVCC
@@ -25,8 +27,55 @@ std::atomic<uint64_t> g_gc_disabled_calls(0);
 std::atomic<uint64_t> g_lazy_registration_skips(0);
 std::atomic<uint64_t> g_lazy_ready_reads(0);
 std::atomic<uint64_t> g_lazy_waits(0);
+std::atomic<uint64_t> g_long_guards_registered(0);
+std::atomic<uint64_t> g_long_guards_released(0);
+std::atomic<uint64_t> g_long_guard_keys(0);
+std::atomic<uint64_t> g_long_guard_build_ns(0);
+std::atomic<uint64_t> g_long_guard_gc_probes(0);
+std::atomic<uint64_t> g_long_guard_gc_protected(0);
+std::atomic<uint64_t> g_long_guard_active(0);
+std::atomic<uint64_t> g_long_guard_peak_active(0);
 pthread_mutex_t g_snapshot_pin_latch = PTHREAD_MUTEX_INITIALIZER;
 std::multiset<uint64_t> g_snapshot_pins;
+// GC is the overwhelmingly common operation and only reads the registry.
+// A rwlock lets independent row GC paths probe the single L1 guard without
+// serializing on one process-wide mutex; begin/finalize/remove are rare.
+pthread_rwlock_t g_long_guard_latch = PTHREAD_RWLOCK_INITIALIZER;
+std::vector<SDMVCCLongReadGuard *> g_long_guards;
+
+uint64_t mix64(uint64_t value) {
+    value += 0x9e3779b97f4a7c15ULL;
+    value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+    return value ^ (value >> 31);
+}
+
+void long_guard_add(SDMVCCLongReadGuard *guard, row_t *row) {
+    assert(guard != NULL && guard->building);
+    const uint64_t bit_count = guard->bloom.size() * 64;
+    assert(bit_count > 0);
+    const uint64_t key = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(row));
+    const uint64_t h1 = mix64(key);
+    const uint64_t h2 = mix64(key ^ 0xd6e8feb86659fd93ULL) | 1ULL;
+    for (uint64_t i = 0; i < SDMVCC_LONG_READ_GUARD_HASHES; ++i) {
+        const uint64_t bit = (h1 + i * h2) % bit_count;
+        guard->bloom[bit >> 6] |= 1ULL << (bit & 63);
+    }
+    ++guard->key_count;
+}
+
+bool long_guard_maybe_contains(const SDMVCCLongReadGuard *guard, row_t *row) {
+    const uint64_t bit_count = guard->bloom.size() * 64;
+    const uint64_t key = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(row));
+    const uint64_t h1 = mix64(key);
+    const uint64_t h2 = mix64(key ^ 0xd6e8feb86659fd93ULL) | 1ULL;
+    for (uint64_t i = 0; i < SDMVCC_LONG_READ_GUARD_HASHES; ++i) {
+        const uint64_t bit = (h1 + i * h2) % bit_count;
+        if ((guard->bloom[bit >> 6] & (1ULL << (bit & 63))) == 0)
+            return false;
+    }
+    return true;
+}
 }
 
 Row_sdmvcc::Row_sdmvcc() : _row(NULL), _initial_copied(false) {
@@ -72,9 +121,13 @@ RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
     const uint64_t sid = txn->sdmvcc_snapshot();
     const int registration = txn->register_sdmvcc_access(_row, type);
     if (registration == 0) return RCOK;
+    const bool long_guard = txn->uses_sdmvcc_long_read_guard();
+    // A guarded read needs neither the row latch nor a per-key intent during
+    // registration.  Writes still reserve their private version below.
+    if (type != WR && long_guard) return RCOK;
     pthread_mutex_lock(&_latch);
     ensure_initial_locked();
-    if (registration == 1 && !SDMVCC_LAZY_READ_INTENT) {
+    if (registration == 1 && !SDMVCC_LAZY_READ_INTENT && !long_guard) {
         _read_intents[sid]++;
         g_intents_registered.fetch_add(1, std::memory_order_relaxed);
     } else if (registration == 1) {
@@ -123,9 +176,8 @@ bool Row_sdmvcc::arm_read(TxnManager *txn, uint64_t snapshot) {
 // the readiness test and waiter insertion prevents a lost wakeup.
 bool Row_sdmvcc::wait_for_predecessor_locked(TxnManager *txn,
                                              uint64_t snapshot) {
-#if !SDMVCC_LAZY_READ_INTENT
-    return false;
-#else
+    if (!SDMVCC_LAZY_READ_INTENT && !txn->uses_sdmvcc_long_read_guard())
+        return false;
     bool new_intent = false;
     if (!txn->arm_sdmvcc_lazy_access(_row, new_intent)) return true;
     if (new_intent) {
@@ -140,7 +192,6 @@ bool Row_sdmvcc::wait_for_predecessor_locked(TxnManager *txn,
     g_intent_waits.fetch_add(1, std::memory_order_relaxed);
     g_lazy_waits.fetch_add(1, std::memory_order_relaxed);
     return true;
-#endif
 }
 
 RC Row_sdmvcc::read(TxnManager *txn, uint64_t snapshot, row_t *local_row) {
@@ -155,9 +206,8 @@ RC Row_sdmvcc::read(TxnManager *txn, uint64_t snapshot, row_t *local_row) {
         pthread_mutex_unlock(&_latch);
         return WAIT;
     }
-#if SDMVCC_LAZY_READ_INTENT
-    g_lazy_ready_reads.fetch_add(1, std::memory_order_relaxed);
-#endif
+    if (SDMVCC_LAZY_READ_INTENT || txn->uses_sdmvcc_long_read_guard())
+        g_lazy_ready_reads.fetch_add(1, std::memory_order_relaxed);
     if (version->base_backed) {
         memcpy(local_row->get_data(), _row->get_data(), _row->get_tuple_size());
     } else {
@@ -181,9 +231,8 @@ RC Row_sdmvcc::read_value(TxnManager *txn, uint64_t snapshot, uint32_t column, v
         pthread_mutex_unlock(&_latch);
         return WAIT;
     }
-#if SDMVCC_LAZY_READ_INTENT
-    g_lazy_ready_reads.fetch_add(1, std::memory_order_relaxed);
-#endif
+    if (SDMVCC_LAZY_READ_INTENT || txn->uses_sdmvcc_long_read_guard())
+        g_lazy_ready_reads.fetch_add(1, std::memory_order_relaxed);
     assert(size <= _row->get_schema()->get_field_size(column));
     const uint32_t offset = _row->get_schema()->get_field_index(column);
     const char *data = version->base_backed ? _row->get_data()
@@ -299,7 +348,7 @@ void Row_sdmvcc::gc_locked(uint64_t watermark) {
         }
         auto intent = _read_intents.lower_bound(current->sid);
         const bool covered = intent != _read_intents.end() && intent->first < next->sid;
-        if (covered) {
+        if (covered || long_read_guard_covers(_row, current->sid, next->sid)) {
             current = next;
             continue;
         }
@@ -353,6 +402,95 @@ void Row_sdmvcc::release_intent(uint64_t snapshot, uint64_t watermark) {
     pthread_mutex_unlock(&_latch);
 }
 
+void Row_sdmvcc::long_read_guard_released(uint64_t watermark) {
+    pthread_mutex_lock(&_latch);
+    gc_locked(watermark);
+    pthread_mutex_unlock(&_latch);
+}
+
+SDMVCCLongReadGuard *Row_sdmvcc::begin_long_read_guard(uint64_t snapshot) {
+    assert(SDMVCC_LONG_READ_GUARD_BITS >= 64);
+    assert(SDMVCC_LONG_READ_GUARD_HASHES > 0);
+    SDMVCCLongReadGuard *guard = new SDMVCCLongReadGuard();
+    guard->snapshot = snapshot;
+    guard->building = true;
+    guard->key_count = 0;
+    guard->build_start_ns = get_sys_clock();
+    guard->bloom.assign((SDMVCC_LONG_READ_GUARD_BITS + 63) / 64, 0);
+    pthread_rwlock_wrlock(&g_long_guard_latch);
+    g_long_guards.push_back(guard);
+    pthread_rwlock_unlock(&g_long_guard_latch);
+    const uint64_t active = g_long_guard_active.fetch_add(1) + 1;
+    uint64_t peak = g_long_guard_peak_active.load();
+    while (active > peak &&
+           !g_long_guard_peak_active.compare_exchange_weak(peak, active)) {}
+    g_long_guards_registered.fetch_add(1, std::memory_order_relaxed);
+    return guard;
+}
+
+void Row_sdmvcc::add_long_read_guard_key(SDMVCCLongReadGuard *guard,
+                                         row_t *row) {
+    long_guard_add(guard, row);
+}
+
+void Row_sdmvcc::finalize_long_read_guard(SDMVCCLongReadGuard *guard) {
+    assert(guard != NULL);
+    pthread_rwlock_wrlock(&g_long_guard_latch);
+    assert(guard->building);
+    guard->building = false;
+    pthread_rwlock_unlock(&g_long_guard_latch);
+    g_long_guard_keys.fetch_add(guard->key_count, std::memory_order_relaxed);
+    g_long_guard_build_ns.fetch_add(get_sys_clock() - guard->build_start_ns,
+                                    std::memory_order_relaxed);
+}
+
+void Row_sdmvcc::remove_long_read_guard(SDMVCCLongReadGuard *guard) {
+    if (guard == NULL) return;
+    pthread_rwlock_wrlock(&g_long_guard_latch);
+    auto it = std::find(g_long_guards.begin(), g_long_guards.end(), guard);
+    assert(it != g_long_guards.end());
+    g_long_guards.erase(it);
+    pthread_rwlock_unlock(&g_long_guard_latch);
+    g_long_guard_active.fetch_sub(1, std::memory_order_relaxed);
+    g_long_guards_released.fetch_add(1, std::memory_order_relaxed);
+    delete guard;
+}
+
+bool Row_sdmvcc::long_read_guard_covers(row_t *row, uint64_t current_sid,
+                                        uint64_t next_sid) {
+#if !SDMVCC_LONG_READ_GUARD
+    // Keep the disabled side of the ablation identical to eager intent GC:
+    // no process-wide registry probe or rwlock acquisition on the GC path.
+    (void)row;
+    (void)current_sid;
+    (void)next_sid;
+    return false;
+#else
+    // Almost every GC call runs while there is no L1 transaction.  The
+    // scheduler installs and increments the guard before it can advance the
+    // registration frontier, so an empty fast path is safe: the watermark
+    // still protects the snapshot during guard construction.
+    if (g_long_guard_active.load(std::memory_order_acquire) == 0) return false;
+    bool covered = false;
+    pthread_rwlock_rdlock(&g_long_guard_latch);
+    for (SDMVCCLongReadGuard *guard : g_long_guards) {
+        // Visibility is strict: predecessor(snapshot) is the greatest version
+        // with sid < snapshot, hence current is selected for
+        // current.sid < snapshot <= next.sid.
+        if (guard->snapshot <= current_sid || guard->snapshot > next_sid)
+            continue;
+        g_long_guard_gc_probes.fetch_add(1, std::memory_order_relaxed);
+        if (guard->building || long_guard_maybe_contains(guard, row)) {
+            covered = true;
+            g_long_guard_gc_protected.fetch_add(1, std::memory_order_relaxed);
+            break;
+        }
+    }
+    pthread_rwlock_unlock(&g_long_guard_latch);
+    return covered;
+#endif
+}
+
 void Row_sdmvcc::print_stats(FILE *outf) {
     fprintf(outf,
             ",sdmvcc_intents_registered=%lu,sdmvcc_intents_released=%lu"
@@ -367,10 +505,27 @@ void Row_sdmvcc::print_stats(FILE *outf) {
             g_gc_calls.load(), g_gc_disabled_calls.load());
     fprintf(outf,
             ",sdmvcc_lazy_read_intent=%d,sdmvcc_lazy_registration_skips=%lu"
-            ",sdmvcc_lazy_ready_reads=%lu,sdmvcc_lazy_waits=%lu",
+            ",sdmvcc_lazy_ready_reads=%lu,sdmvcc_lazy_waits=%lu"
+            ",sdmvcc_long_guard_enabled=%d,sdmvcc_long_guards_registered=%lu"
+            ",sdmvcc_long_guards_released=%lu,sdmvcc_long_guard_keys=%lu"
+            ",sdmvcc_long_guard_avg_build_ns=%f"
+            ",sdmvcc_long_guard_gc_probes=%lu"
+            ",sdmvcc_long_guard_gc_protected=%lu"
+            ",sdmvcc_long_guard_peak_active=%lu"
+            ",sdmvcc_long_guard_peak_metadata_bytes=%lu",
             SDMVCC_LAZY_READ_INTENT ? 1 : 0,
             g_lazy_registration_skips.load(), g_lazy_ready_reads.load(),
-            g_lazy_waits.load());
+            g_lazy_waits.load(), SDMVCC_LONG_READ_GUARD ? 1 : 0,
+            g_long_guards_registered.load(), g_long_guards_released.load(),
+            g_long_guard_keys.load(),
+            g_long_guards_registered.load() == 0 ? 0.0 :
+                static_cast<double>(g_long_guard_build_ns.load()) /
+                g_long_guards_registered.load(),
+            g_long_guard_gc_probes.load(),
+            g_long_guard_gc_protected.load(),
+            g_long_guard_peak_active.load(),
+            g_long_guard_peak_active.load() *
+                ((SDMVCC_LONG_READ_GUARD_BITS + 7) / 8));
 }
 
 #endif

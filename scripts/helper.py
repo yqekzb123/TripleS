@@ -146,6 +146,13 @@ stat_map = OrderedDict([
   ('sdmvcc_versions_created', []),
   ('sdmvcc_versions_reclaimed', []),
   ('sdmvcc_version_bytes', []),
+  ('sdmvcc_long_guards_registered', []),
+  ('sdmvcc_long_guards_released', []),
+  ('sdmvcc_long_guard_keys', []),
+  ('sdmvcc_long_guard_gc_probes', []),
+  ('sdmvcc_long_guard_gc_protected', []),
+  ('sdmvcc_long_guard_peak_active', []),
+  ('sdmvcc_long_guard_peak_metadata_bytes', []),
 
   # Client
   ('txn_sent_cnt', []),

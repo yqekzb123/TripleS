@@ -14,7 +14,7 @@
 // Simulation + Hardware
 /***********************************************/
 #define NODE_CNT 2
-#define THREAD_CNT 8
+#define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
 #define LOGGER_THREAD_CNT 3
@@ -97,7 +97,7 @@
 
 #define PRIORITY_WORK_QUEUE false
 #define PRIORITY PRIORITY_ACTIVE
-#define MSG_SIZE_MAX 1048576
+#define MSG_SIZE_MAX 4194304
 #define MSG_TIME_LIMIT 0
 
 /***********************************************/
@@ -185,7 +185,7 @@
 #define SDPCC_LONG_HOLE_ADAPTIVE_WINDOW 1024
 #define SDPCC_LONG_HOLE_ENABLE_PCT 8
 #define SDPCC_LONG_HOLE_DISABLE_PCT 4
-#define SDPCC_LONG_BLOOM_BITS 8192
+#define SDPCC_LONG_BLOOM_BITS 262144
 #define SDPCC_LONG_BLOOM_HASHES 4
 // Safe SDMVCC GC: reclaim an old version only after the watermark passes its
 // successor and no per-key read intent (or pinned scan) can still select it.
@@ -195,6 +195,12 @@
 // reserves write versions. Reads that encounter an unfinished predecessor
 // attach a temporary intent/waiter and resume after its publish notification.
 #define SDMVCC_LAZY_READ_INTENT false
+// Large deterministic readers can replace thousands of eager per-key intents
+// with one node-local Bloom guard.  Scheme A enables this only for BoMB L1;
+// short transactions retain eager intents and exact intent-driven GC.
+#define SDMVCC_LONG_READ_GUARD false
+#define SDMVCC_LONG_READ_GUARD_BITS 262144
+#define SDMVCC_LONG_READ_GUARD_HASHES 4
 /***********************************************/
 // Dynamic write perc and skew
 /***********************************************/
@@ -448,14 +454,14 @@ enum PPSTxnType {
 #define BOMB_INJECT_STALE_PRESET false
 
 // Paper defaults.  Smoke-test experiments override these with small values.
-#define BOMB_FACTORY_COUNT 2
-#define BOMB_PRODUCT_TYPES 64
-#define BOMB_MATERIAL_TYPES 160
-#define BOMB_RAW_MATERIAL_TYPES 64
+#define BOMB_FACTORY_COUNT 8
+#define BOMB_PRODUCT_TYPES 72000
+#define BOMB_MATERIAL_TYPES 198000
+#define BOMB_RAW_MATERIAL_TYPES 75000
 #define BOMB_TREES_PER_PRODUCT 5
 #define BOMB_TREE_SIZE 10
 #define BOMB_RAW_MATERIALS_PER_LEAF 3
-#define BOMB_TARGET_PRODUCTS 4
+#define BOMB_TARGET_PRODUCTS 100
 #define BOMB_TARGET_MATERIALS 1
 
 // Static short mix: S1/S2 = 50/50. Dynamic: S1..S5 = 45/45/1/1/8.
@@ -527,8 +533,8 @@ enum PPSTxnType {
 #define PROG_TIMER 10 * BILLION // in s
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
-#define DONE_TIMER 20*BILLION
-#define WARMUP_TIMER 20*BILLION
+#define DONE_TIMER 30*BILLION
+#define WARMUP_TIMER 30*BILLION
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define ONE_MILLISECOND 1 * MILLION

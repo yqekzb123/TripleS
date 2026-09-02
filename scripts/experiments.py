@@ -58,6 +58,7 @@ SHORTNAMES = {
     "BOMB_SHORT_WORKERS":"BSW",
     "SDMVCC_LAZY_READ_INTENT":"LRI",
     "SDMVCC_INTENT_GC":"IGC",
+    "SDMVCC_LONG_READ_GUARD":"LRG",
 }
 
 fmt_title=["NODE_CNT","CC_ALG","ACCESS_PERC","TXN_WRITE_PERC","PERC_PAYMENT","MPR","MODE","MAX_TXN_IN_FLIGHT","SEND_THREAD_CNT","REM_THREAD_CNT","THREAD_CNT","SCHEDULER_CNT","TXN_WRITE_PERC","TUP_WRITE_PERC","ZIPF_THETA","LONG_QUERY_PERC","NUM_WH"]
@@ -675,7 +676,6 @@ def bomb_calvin_smoke():
     return fmt, exp
 
 
-
 def bomb_sdmvcc_smoke():
     """Two-node SDMVCC + BoMB static-mode smoke test.  SDMVCC shares the
     SDPCC scheduler plumbing with CALVIN, so the plan mirrors
@@ -703,11 +703,33 @@ def bomb_sdmvcc_lazy_intent_ablation():
            "BOMB_TARGET_PRODUCTS", "BOMB_LONG_TX_MODE",
            "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
            "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", lazy, "false", 2, 2, 8, 4, 10000,
-            2, 64, 160, 64, 50, "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304,
+    exp = [["BOMB", "SDMVCC", lazy, "false", 2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304,
             "30*BILLION", "30*BILLION"]
-           for lazy in ["false"]]
-        #    for lazy in ["false", "true"]]
+        #    for lazy in ["false"]]
+           for lazy in ["false", "true"]]
+    return fmt, exp
+
+def bomb_sdmvcc_long_read_guard_ablation():
+    """Scheme A: only BoMB L1 uses a transaction-level LongReadGuard.
+    All short transactions keep eager per-key intents and intent-driven GC."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", guard,
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for guard in ["true", "false"]]
+        #    for guard in ["false", "true"]]
     return fmt, exp
 
 def bomb_sdmvcc_bypass_smoke():
@@ -719,12 +741,12 @@ def bomb_sdmvcc_bypass_smoke():
            "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
            "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "SDPCC_LONG_HOLE_MODE",
            "SDPCC_LONG_HOLE_ADAPTIVE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", 2, 2, 8, 4, 10000,
-            2, 64, 160, 64, 50, "false",
+    exp = [["BOMB", "SDMVCC", 2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
             "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304, mode, "false",
-            "2*BILLION", "5*BILLION"]
+            "20*BILLION", "20*BILLION"]
            for mode in ["SDPCC_LONG_HOLE_DISABLED",
-                        "SDPCC_LONG_HOLE_EXACT",
+                        # "SDPCC_LONG_HOLE_EXACT",
                         "SDPCC_LONG_HOLE_BLOOM"]]
     return fmt, exp
 
@@ -738,10 +760,31 @@ def bomb_sdmvcc_dynamic_smoke():
            "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
            "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
            "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", 2, 2, 8, 4, 10000,
-            2, 64, 160, 64, 4, "true",
+    exp = [["BOMB", "SDMVCC", 2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "true",
             "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
-            "2*BILLION", "5*BILLION"]]
+            "20*BILLION", "20*BILLION"]]
+    return fmt, exp
+
+def bomb_sdmvcc_long_read_guard_dynamic_ablation():
+    """Dynamic BoMB counterpart of the LongReadGuard ablation.
+    S3/S4/S5 remain eager-intent transactions; only L1 uses the guard."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", guard,
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "true",
+            "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for guard in ["false", "true"]]
     return fmt, exp
 
 def bomb_aria_dynamic_hif():
@@ -871,6 +914,8 @@ experiment_map = {
     'bomb_aria_dynamic_hif': bomb_aria_dynamic_hif,
     'bomb_sdmvcc_smoke': bomb_sdmvcc_smoke,
     'bomb_sdmvcc_lazy_intent_ablation': bomb_sdmvcc_lazy_intent_ablation,
+    'bomb_sdmvcc_long_read_guard_ablation': bomb_sdmvcc_long_read_guard_ablation,
+    'bomb_sdmvcc_long_read_guard_dynamic_ablation': bomb_sdmvcc_long_read_guard_dynamic_ablation,
     'bomb_sdmvcc_bypass_smoke': bomb_sdmvcc_bypass_smoke,
     'bomb_sdmvcc_dynamic_smoke': bomb_sdmvcc_dynamic_smoke,
 
@@ -930,6 +975,7 @@ configs = {
     "LONG_QUERY_PERC":0.0,
     "OPEN_DISTRIBUTED_WATERMARK":'false',
     "SDPCC_LONG_HOLE_MODE":"SDPCC_LONG_HOLE_DISABLED",
+    "SDMVCC_LONG_READ_GUARD":"false",
     "OPEN_RANDOM_WAIT":'false',
 #YCSB
     "INIT_PARALLELISM" : 8,

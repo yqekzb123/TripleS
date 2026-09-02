@@ -64,6 +64,14 @@ keywords += ['sdmvcc_intents_registered', 'sdmvcc_intents_released',
 keywords_cal_type = (['sum'] * 6 + ['avg'] * 3 + ['sum'] * 12 +
                      ['avg'] * 2 + ['sum', 'avg', 'sum', 'sum'] + ['sum'] * 7 +
                      ['avg', 'sum', 'sum', 'avg', 'sum', 'sum', 'sum'])
+keywords += ['sdmvcc_long_guard_enabled', 'sdmvcc_long_guards_registered',
+             'sdmvcc_long_guards_released', 'sdmvcc_long_guard_keys',
+             'sdmvcc_long_guard_avg_build_ns', 'sdmvcc_long_guard_gc_probes',
+             'sdmvcc_long_guard_gc_protected',
+             'sdmvcc_long_guard_peak_active',
+             'sdmvcc_long_guard_peak_metadata_bytes']
+keywords_cal_type += ['avg', 'sum', 'sum', 'sum', 'avg', 'sum', 'sum',
+                      'sum', 'sum']
 draw_keywords = ['tput']
 
 if len(sys.argv) < 2:

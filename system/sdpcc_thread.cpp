@@ -104,7 +104,16 @@ RC SDPCCLockThread::run() {
 		if (long_hole) sdpcc_long_hole_man->publish(id, key, txn_man);
 		#endif
 		if (!txn_man->isRecon()) {
+			#if CC_ALG == SDMVCC
+			// Install a BUILDING guard before enumerating L1's local read set.
+			// During construction GC conservatively treats every row at this
+			// snapshot as protected, closing the registration/GC race.
+			txn_man->begin_sdmvcc_long_read_guard();
+			#endif
 			rc = txn_man->acquire_locks();
+			#if CC_ALG == SDMVCC
+			txn_man->finalize_sdmvcc_long_read_guard();
+			#endif
 		}
 		#if SDPCC_FAMILY && !OPEN_DISTRIBUTED_WATERMARK
 		if (long_hole) {

@@ -35,6 +35,7 @@ class TxnQEntry;
 class YCSBQuery;
 class TPCCQuery;
 class Row_sdmvcc;
+struct SDMVCCLongReadGuard;
 //class r_query;
 struct list_node_entry;
 
@@ -239,6 +240,7 @@ public:
 	std::vector<SDMVCCAccessRegistration> sdmvcc_accesses;
 	std::unordered_map<row_t *, size_t> sdmvcc_access_index;
 	bool sdmvcc_snapshot_pinned;
+	SDMVCCLongReadGuard *sdmvcc_long_read_guard;
 	uint64_t sdmvcc_snapshot() const;
 	// 0: duplicate, 1: new per-key intent, 2: RD-to-WR upgrade.
 	int register_sdmvcc_access(row_t *row, access_t type);
@@ -247,6 +249,12 @@ public:
 	void consume_sdmvcc_access(row_t *row);
 	void finish_sdmvcc(RC rc);
 	void pin_sdmvcc_snapshot();
+	bool should_use_sdmvcc_long_read_guard() const;
+	bool uses_sdmvcc_long_read_guard() const {
+		return sdmvcc_long_read_guard != nullptr;
+	}
+	void begin_sdmvcc_long_read_guard();
+	void finalize_sdmvcc_long_read_guard();
 #endif
 
 #if CC_ALG == ARIA

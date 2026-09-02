@@ -368,6 +368,7 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	sdmvcc_accesses.clear();
 	sdmvcc_access_index.clear();
 	sdmvcc_snapshot_pinned = false;
+	sdmvcc_long_read_guard = nullptr;
 #endif
 #if CC_ALG == SILO
 	_pre_abort = (g_params["pre_abort"] == "true");
@@ -443,6 +444,7 @@ void TxnManager::reset() {
 	sdmvcc_accesses.clear();
 	sdmvcc_access_index.clear();
 	assert(!sdmvcc_snapshot_pinned);
+	assert(sdmvcc_long_read_guard == nullptr);
 #endif
 #if CC_ALG == ARIA
 	for (uint64_t i = 0; i < g_node_cnt; i++) {
@@ -1330,9 +1332,12 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 		return 2;
 	}
 	SDMVCCAccessRegistration entry = {
-		row, type, false, 1, false, !SDMVCC_LAZY_READ_INTENT};
+		row, type, false, 1, false,
+		!SDMVCC_LAZY_READ_INTENT && !uses_sdmvcc_long_read_guard()};
 	sdmvcc_accesses.push_back(entry);
 	sdmvcc_access_index[row] = sdmvcc_accesses.size() - 1;
+	if (uses_sdmvcc_long_read_guard())
+		Row_sdmvcc::add_long_read_guard_key(sdmvcc_long_read_guard, row);
 	return 1;
 }
 
@@ -1352,6 +1357,9 @@ void TxnManager::consume_sdmvcc_access(row_t *row) {
 }
 
 void TxnManager::arm_sdmvcc_intents() {
+	// A long-read guard protects the not-yet-consumed snapshot versions.  Only
+	// a predecessor actually found unfinished at execution time gets a waiter.
+	if (uses_sdmvcc_long_read_guard()) return;
 #if SDMVCC_LAZY_READ_INTENT
 	return;
 #else
@@ -1387,6 +1395,14 @@ bool TxnManager::arm_sdmvcc_lazy_access(row_t *row, bool &new_intent) {
 // publish_write() sends notifications immediately.
 void TxnManager::finish_sdmvcc(RC rc) {
 	const uint64_t sid = sdmvcc_snapshot();
+	const bool had_long_guard = uses_sdmvcc_long_read_guard();
+	if (had_long_guard) {
+		// Execution (or abort handling) no longer needs any not-yet-consumed
+		// snapshot version.  Remove the global protection before publishing our
+		// writes so those publish-time GC attempts can reclaim immediately.
+		Row_sdmvcc::remove_long_read_guard(sdmvcc_long_read_guard);
+		sdmvcc_long_read_guard = nullptr;
+	}
 	if (rc == RCOK) {
 		// Copy all local writes into their private versions first. Publishing is
 		// a second pass so no reader observes a partially installed local txn.
@@ -1407,6 +1423,8 @@ void TxnManager::finish_sdmvcc(RC rc) {
 	for (auto &entry : sdmvcc_accesses) {
 		if (entry.intent_registered && !entry.intent_released)
 			entry.row->manager->release_intent(sid, minSid);
+		else if (had_long_guard)
+			entry.row->manager->long_read_guard_released(minSid);
 	}
 	sdmvcc_accesses.clear();
 	sdmvcc_access_index.clear();
@@ -1420,6 +1438,26 @@ void TxnManager::pin_sdmvcc_snapshot() {
 	if (sdmvcc_snapshot_pinned) return;
 	Row_sdmvcc::pin_snapshot(sdmvcc_snapshot());
 	sdmvcc_snapshot_pinned = true;
+}
+
+bool TxnManager::should_use_sdmvcc_long_read_guard() const {
+#if SDMVCC_LONG_READ_GUARD && WORKLOAD == BOMB
+	return query != nullptr &&
+		static_cast<const BombQuery *>(query)->txn_type == BOMB_L1;
+#else
+	return false;
+#endif
+}
+
+void TxnManager::begin_sdmvcc_long_read_guard() {
+	if (!should_use_sdmvcc_long_read_guard()) return;
+	assert(sdmvcc_long_read_guard == nullptr);
+	sdmvcc_long_read_guard = Row_sdmvcc::begin_long_read_guard(sdmvcc_snapshot());
+}
+
+void TxnManager::finalize_sdmvcc_long_read_guard() {
+	if (sdmvcc_long_read_guard != nullptr)
+		Row_sdmvcc::finalize_long_read_guard(sdmvcc_long_read_guard);
 }
 #endif
 

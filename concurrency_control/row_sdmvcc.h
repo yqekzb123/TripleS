@@ -10,6 +10,19 @@
 class row_t;
 class TxnManager;
 
+// Transaction-level protection for a large deterministic read set.  While a
+// guard is BUILDING, its snapshot conservatively protects every row; after
+// finalize_long_read_guard(), the Bloom filter limits protection to rows that
+// the transaction registered locally.  False positives only retain an extra
+// version and therefore cannot violate visibility.
+struct SDMVCCLongReadGuard {
+    uint64_t snapshot;
+    bool building;
+    uint64_t key_count;
+    uint64_t build_start_ns;
+    std::vector<uint64_t> bloom;
+};
+
 // Per-key deterministic MVCC state. Read intents are snapshot timestamps,
 // not pointers to versions, so an intent remains valid while older write
 // reservations are still arriving out of scheduler order.
@@ -63,11 +76,16 @@ public:
     void publish_write(uint64_t sid, uint64_t thd_id);
     void abort_write(uint64_t sid, uint64_t thd_id);
     void release_intent(uint64_t snapshot, uint64_t watermark);
+    void long_read_guard_released(uint64_t watermark);
     bool has_write_lock() const { return false; }
 
     static void print_stats(FILE *outf);
     static void pin_snapshot(uint64_t snapshot);
     static void unpin_snapshot(uint64_t snapshot);
+    static SDMVCCLongReadGuard *begin_long_read_guard(uint64_t snapshot);
+    static void add_long_read_guard_key(SDMVCCLongReadGuard *guard, row_t *row);
+    static void finalize_long_read_guard(SDMVCCLongReadGuard *guard);
+    static void remove_long_read_guard(SDMVCCLongReadGuard *guard);
 
 private:
     struct Version {
@@ -93,6 +111,8 @@ private:
     void gc_locked(uint64_t watermark);
     static void notify_ready(TxnManager *txn, uint64_t thd_id);
     static uint64_t oldest_pinned_snapshot();
+    static bool long_read_guard_covers(row_t *row, uint64_t current_sid,
+                                       uint64_t next_sid);
 };
 
 #endif
