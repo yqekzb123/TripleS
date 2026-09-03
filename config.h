@@ -22,7 +22,7 @@
 // PART_CNT should be at least NODE_CNT
 #define PART_CNT NODE_CNT
 #define CLIENT_NODE_CNT 2
-#define CLIENT_THREAD_CNT 4
+#define CLIENT_THREAD_CNT 8
 #define CLIENT_REM_THREAD_CNT 2
 #define CLIENT_SEND_THREAD_CNT 2
 #define CLIENT_RUNTIME false
@@ -201,6 +201,17 @@
 #define SDMVCC_LONG_READ_GUARD false
 #define SDMVCC_LONG_READ_GUARD_BITS 262144
 #define SDMVCC_LONG_READ_GUARD_HASHES 4
+// UNSAFE, ONE-OFF UPPER-BOUND EXPERIMENT ONLY.  BoMB L1 skips per-key read
+// intents and unfinished-version waits while GC continues normally.  Reads
+// may therefore observe the wrong committed version.  Never enable for a
+// correctness run or for any workload/CC combination other than BoMB+SDMVCC.
+#define SDMVCC_UNSAFE_L1_NO_INTENT false
+#if SDMVCC_UNSAFE_L1_NO_INTENT && (CC_ALG != SDMVCC || WORKLOAD != BOMB)
+#error "SDMVCC_UNSAFE_L1_NO_INTENT is restricted to SDMVCC + BoMB"
+#endif
+#if SDMVCC_UNSAFE_L1_NO_INTENT && SDMVCC_LONG_READ_GUARD
+#error "Unsafe no-intent upper bound and LongReadGuard are mutually exclusive"
+#endif
 /***********************************************/
 // Dynamic write perc and skew
 /***********************************************/
@@ -444,11 +455,17 @@ enum PPSTxnType {
 // 0 = static BoM (L1/S1/S2), 1 = dynamic BoM (adds S3/S4/S5 and
 // topology-plan validation).  The first Calvin milestone uses static mode.
 #define BOMB_DYNAMIC_MODE false
+// Total long-transaction source threads across the whole client cluster.  They
+// are distributed as evenly as possible; all remaining client threads are
+// short-transaction sources.
+#define BOMB_LONG_TX_SOURCES 8
+
+// Deprecated compatibility knobs.  BoMB source assignment no longer uses
+// these values; keep them temporarily so existing experiment files compile.
 #define BOMB_LONG_TX_GLOBAL 0
 #define BOMB_LONG_TX_PER_CLIENT 1
 #define BOMB_LONG_TX_MODE BOMB_LONG_TX_GLOBAL
-#define BOMB_LONG_TX_SOURCES 1
-#define BOMB_SHORT_WORKERS 3
+#define BOMB_SHORT_WORKERS 4
 #define BOMB_QUERY_CACHE_SIZE 2048
 #define BOMB_FORCE_SHORT_TYPE -1
 #define BOMB_INJECT_STALE_PRESET false

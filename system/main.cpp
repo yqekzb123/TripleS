@@ -80,6 +80,11 @@ void parser(int argc, char * argv[]);
 int main(int argc, char *argv[]) {
 	// 0. initialize global data structure
 	parser(argc, argv);
+#if SDMVCC_UNSAFE_L1_NO_INTENT
+	fprintf(stderr,
+		"\n*** WARNING: UNSAFE SDMVCC BoMB L1 NO-INTENT UPPER-BOUND MODE ***\n"
+		"*** Results are not correctness-valid. GC remains enabled. ***\n\n");
+#endif
 #if SEED != 0
 	uint64_t seed = SEED + g_node_id;
 #else
@@ -469,6 +474,7 @@ int main(int argc, char *argv[]) {
 	fflush(stdout);
 	printf("PASS! SimTime = %f\n", (float)(endtime - starttime) / BILLION);
 	if (STATS_ENABLE) stats.print(false);
+	if (STATS_ENABLE) { fprintf(stdout, "\n"); BombStats::print(stdout); }
 	//malloc_stats_print(NULL, NULL, NULL);
 	printf("\n");
 	fflush(stdout);

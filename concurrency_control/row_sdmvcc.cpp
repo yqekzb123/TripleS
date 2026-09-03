@@ -35,6 +35,9 @@ std::atomic<uint64_t> g_long_guard_gc_probes(0);
 std::atomic<uint64_t> g_long_guard_gc_protected(0);
 std::atomic<uint64_t> g_long_guard_active(0);
 std::atomic<uint64_t> g_long_guard_peak_active(0);
+std::atomic<uint64_t> g_unsafe_intent_skips(0);
+std::atomic<uint64_t> g_unsafe_reads(0);
+std::atomic<uint64_t> g_unsafe_fallback_reads(0);
 pthread_mutex_t g_snapshot_pin_latch = PTHREAD_MUTEX_INITIALIZER;
 std::multiset<uint64_t> g_snapshot_pins;
 // GC is the overwhelmingly common operation and only reads the registry.
@@ -122,12 +125,16 @@ RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
     const int registration = txn->register_sdmvcc_access(_row, type);
     if (registration == 0) return RCOK;
     const bool long_guard = txn->uses_sdmvcc_long_read_guard();
+    const bool unsafe_no_intent = txn->uses_sdmvcc_unsafe_l1_no_intent();
+    if (registration == 1 && unsafe_no_intent)
+        g_unsafe_intent_skips.fetch_add(1, std::memory_order_relaxed);
     // A guarded read needs neither the row latch nor a per-key intent during
     // registration.  Writes still reserve their private version below.
-    if (type != WR && long_guard) return RCOK;
+    if (type != WR && (long_guard || unsafe_no_intent)) return RCOK;
     pthread_mutex_lock(&_latch);
     ensure_initial_locked();
-    if (registration == 1 && !SDMVCC_LAZY_READ_INTENT && !long_guard) {
+    if (registration == 1 && !SDMVCC_LAZY_READ_INTENT && !long_guard &&
+        !unsafe_no_intent) {
         _read_intents[sid]++;
         g_intents_registered.fetch_add(1, std::memory_order_relaxed);
     } else if (registration == 1) {
@@ -197,7 +204,28 @@ bool Row_sdmvcc::wait_for_predecessor_locked(TxnManager *txn,
 RC Row_sdmvcc::read(TxnManager *txn, uint64_t snapshot, row_t *local_row) {
     pthread_mutex_lock(&_latch);
     auto version = predecessor_locked(snapshot);
+    const bool unsafe_no_intent = txn->uses_sdmvcc_unsafe_l1_no_intent();
+    bool fallback = false;
+    if (unsafe_no_intent &&
+        (version == _versions.end() || !version->ready)) {
+        // Intentionally incorrect upper-bound behavior: choose the newest
+        // committed version instead of waiting for/preserving the snapshot
+        // predecessor.  Selection and copying remain under _latch, so normal
+        // GC cannot turn this experiment into a use-after-free.
+        version = _versions.end();
+        for (auto it = _versions.begin(); it != _versions.end(); ++it)
+            if (it->ready) version = it;
+        fallback = true;
+    }
     if (version == _versions.end()) {
+        if (unsafe_no_intent) {
+            memcpy(local_row->get_data(), _row->get_data(),
+                   _row->get_tuple_size());
+            g_unsafe_reads.fetch_add(1, std::memory_order_relaxed);
+            g_unsafe_fallback_reads.fetch_add(1, std::memory_order_relaxed);
+            pthread_mutex_unlock(&_latch);
+            return RCOK;
+        }
         pthread_mutex_unlock(&_latch);
         return Abort;
     }
@@ -208,6 +236,11 @@ RC Row_sdmvcc::read(TxnManager *txn, uint64_t snapshot, row_t *local_row) {
     }
     if (SDMVCC_LAZY_READ_INTENT || txn->uses_sdmvcc_long_read_guard())
         g_lazy_ready_reads.fetch_add(1, std::memory_order_relaxed);
+    if (unsafe_no_intent) {
+        g_unsafe_reads.fetch_add(1, std::memory_order_relaxed);
+        if (fallback)
+            g_unsafe_fallback_reads.fetch_add(1, std::memory_order_relaxed);
+    }
     if (version->base_backed) {
         memcpy(local_row->get_data(), _row->get_data(), _row->get_tuple_size());
     } else {
@@ -222,7 +255,25 @@ RC Row_sdmvcc::read_value(TxnManager *txn, uint64_t snapshot, uint32_t column, v
                           uint32_t size) {
     pthread_mutex_lock(&_latch);
     auto version = predecessor_locked(snapshot);
+    const bool unsafe_no_intent = txn->uses_sdmvcc_unsafe_l1_no_intent();
+    bool fallback = false;
+    if (unsafe_no_intent &&
+        (version == _versions.end() || !version->ready)) {
+        version = _versions.end();
+        for (auto it = _versions.begin(); it != _versions.end(); ++it)
+            if (it->ready) version = it;
+        fallback = true;
+    }
     if (version == _versions.end()) {
+        if (unsafe_no_intent) {
+            assert(size <= _row->get_schema()->get_field_size(column));
+            const uint32_t offset = _row->get_schema()->get_field_index(column);
+            memcpy(value, _row->get_data() + offset, size);
+            g_unsafe_reads.fetch_add(1, std::memory_order_relaxed);
+            g_unsafe_fallback_reads.fetch_add(1, std::memory_order_relaxed);
+            pthread_mutex_unlock(&_latch);
+            return RCOK;
+        }
         pthread_mutex_unlock(&_latch);
         return Abort;
     }
@@ -233,6 +284,11 @@ RC Row_sdmvcc::read_value(TxnManager *txn, uint64_t snapshot, uint32_t column, v
     }
     if (SDMVCC_LAZY_READ_INTENT || txn->uses_sdmvcc_long_read_guard())
         g_lazy_ready_reads.fetch_add(1, std::memory_order_relaxed);
+    if (unsafe_no_intent) {
+        g_unsafe_reads.fetch_add(1, std::memory_order_relaxed);
+        if (fallback)
+            g_unsafe_fallback_reads.fetch_add(1, std::memory_order_relaxed);
+    }
     assert(size <= _row->get_schema()->get_field_size(column));
     const uint32_t offset = _row->get_schema()->get_field_index(column);
     const char *data = version->base_backed ? _row->get_data()
@@ -512,7 +568,11 @@ void Row_sdmvcc::print_stats(FILE *outf) {
             ",sdmvcc_long_guard_gc_probes=%lu"
             ",sdmvcc_long_guard_gc_protected=%lu"
             ",sdmvcc_long_guard_peak_active=%lu"
-            ",sdmvcc_long_guard_peak_metadata_bytes=%lu",
+            ",sdmvcc_long_guard_peak_metadata_bytes=%lu"
+            ",sdmvcc_unsafe_l1_no_intent=%d"
+            ",sdmvcc_unsafe_intent_skips=%lu"
+            ",sdmvcc_unsafe_reads=%lu"
+            ",sdmvcc_unsafe_fallback_reads=%lu",
             SDMVCC_LAZY_READ_INTENT ? 1 : 0,
             g_lazy_registration_skips.load(), g_lazy_ready_reads.load(),
             g_lazy_waits.load(), SDMVCC_LONG_READ_GUARD ? 1 : 0,
@@ -525,7 +585,10 @@ void Row_sdmvcc::print_stats(FILE *outf) {
             g_long_guard_gc_protected.load(),
             g_long_guard_peak_active.load(),
             g_long_guard_peak_active.load() *
-                ((SDMVCC_LONG_READ_GUARD_BITS + 7) / 8));
+                ((SDMVCC_LONG_READ_GUARD_BITS + 7) / 8),
+            SDMVCC_UNSAFE_L1_NO_INTENT ? 1 : 0,
+            g_unsafe_intent_skips.load(), g_unsafe_reads.load(),
+            g_unsafe_fallback_reads.load());
 }
 
 #endif

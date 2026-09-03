@@ -179,34 +179,29 @@ void BombQueryGenerator::init_source_state(uint64_t thread_count) {
 
 bool BombQueryGenerator::is_long_source(uint64_t client_thread) {
   if (client_thread == UINT64_MAX) return false;
-  const uint64_t source_id =
-      (g_node_id - g_node_cnt) * g_client_thread_cnt + client_thread;
-  if (BOMB_LONG_TX_SOURCES == 0) return false;
-  if (BOMB_LONG_TX_MODE == BOMB_LONG_TX_GLOBAL) return source_id == 0;
-  return source_id < BOMB_LONG_TX_SOURCES;
+  return client_thread < local_long_source_count();
+}
+
+uint64_t BombQueryGenerator::local_long_source_count() {
+  assert(g_client_node_cnt > 0);
+  assert(g_node_id >= g_node_cnt);
+  const uint64_t client_node = g_node_id - g_node_cnt;
+  assert(client_node < g_client_node_cnt);
+  assert(BOMB_LONG_TX_SOURCES <=
+         g_client_node_cnt * g_client_thread_cnt);
+
+  // BOMB_LONG_TX_SOURCES is a cluster-wide count.  Split it evenly among
+  // client nodes; the first remainder clients receive one extra long source.
+  const uint64_t base = BOMB_LONG_TX_SOURCES / g_client_node_cnt;
+  const uint64_t remainder = BOMB_LONG_TX_SOURCES % g_client_node_cnt;
+  return base + (client_node < remainder ? 1 : 0);
 }
 
 bool BombQueryGenerator::is_enabled_client(uint64_t client_thread) {
   if (client_thread == UINT64_MAX) return true;
-  const uint64_t client_id =
-      (g_node_id - g_node_cnt) * g_client_thread_cnt + client_thread;
-  const uint64_t long_count = BOMB_LONG_TX_MODE == BOMB_LONG_TX_GLOBAL
-      ? (BOMB_LONG_TX_SOURCES == 0 ? 0 : 1) : BOMB_LONG_TX_SOURCES;
-#if CC_ALG == ARIA || CC_ALG == SDMVCC
-  // Every Aria/SDMVCC server owns a sequencer that must fill a same-sized batch.
-  // Keep long sources globally unique, but provision BOMB_SHORT_WORKERS local
-  // short sources for every paired client/server so no sequencer starves.
-  if (client_id < long_count) return true;
-  const uint64_t client_node = g_node_id - g_node_cnt;
-  const uint64_t node_begin = client_node * g_client_thread_cnt;
-  const uint64_t node_end = node_begin + g_client_thread_cnt;
-  const uint64_t local_long_count = long_count <= node_begin ? 0 :
-      (long_count >= node_end ? g_client_thread_cnt : long_count - node_begin);
-  return client_thread >= local_long_count &&
-      client_thread < local_long_count + BOMB_SHORT_WORKERS;
-#else
-  return client_id < long_count + BOMB_SHORT_WORKERS;
-#endif
+  // Every configured client thread is active.  The local long-source prefix is
+  // selected by is_long_source(); every remaining thread generates short txns.
+  return client_thread < g_client_thread_cnt;
 }
 
 bool BombQueryGenerator::try_begin_long(uint64_t client_thread) {

@@ -728,8 +728,7 @@ def bomb_sdmvcc_long_read_guard_ablation():
             8, 72000, 198000, 75000, 100, "false",
             "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304,
             "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for guard in ["true", "false"]]
-        #    for guard in ["false", "true"]]
+           for guard in ["false", "true"]]
     return fmt, exp
 
 def bomb_sdmvcc_bypass_smoke():
@@ -785,6 +784,150 @@ def bomb_sdmvcc_long_read_guard_dynamic_ablation():
             "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304,
             "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
            for guard in ["false", "true"]]
+    return fmt, exp
+
+def bomb_sdmvcc_long_tx_interference_ceiling():
+    """Measure the maximum TP throughput recoverable by a long-txn
+    optimization: identical eager-intent + GC runs with zero versus one L1
+    source. Keep the short-worker count fixed so offered TP load is equal."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_GLOBAL", long_sources, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for long_sources in [1, 0]]
+    return fmt, exp
+
+def bomb_sdmvcc_ltc_perclient4_fwd():
+    """Long-tx interference ceiling, PER_CLIENT mode with BLS=4 (half the client
+    threads are long sources), forward order (with-L1 first, then without-L1)."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for long_sources in [4, 0]]
+    return fmt, exp
+
+def bomb_sdmvcc_ltc_perclient4_rev():
+    """Long-tx interference ceiling, PER_CLIENT mode with BLS=4, reverse order
+    (without-L1 first, then with-L1)."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for long_sources in [0, 4]]
+    return fmt, exp
+
+def bomb_sdmvcc_ltc_global_fwd():
+    """Long-tx interference ceiling, GLOBAL mode, forward order (with-L1 first, then without-L1). Identical short load; measures max TP recoverable by a perfect long-tx optimization."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_GLOBAL", long_sources, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for long_sources in [1, 0]]
+    return fmt, exp
+
+def bomb_sdmvcc_ltc_global_rev():
+    """Long-tx interference ceiling, GLOBAL mode, reverse order (without-L1 first, then with-L1). Controls for order/temperature drift."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_GLOBAL", long_sources, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for long_sources in [0, 1]]
+    return fmt, exp
+
+def bomb_sdmvcc_ltc_perclient_fwd():
+    """Long-tx interference ceiling, PER_CLIENT mode, forward order (with-L1 first, then without-L1)."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for long_sources in [1, 0]]
+    return fmt, exp
+
+def bomb_sdmvcc_ltc_perclient_rev():
+    """Long-tx interference ceiling, PER_CLIENT mode, reverse order (without-L1 first, then with-L1)."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for long_sources in [0, 1]]
     return fmt, exp
 
 def bomb_aria_dynamic_hif():
@@ -864,7 +1007,149 @@ def bomb_aria_dynamic_smoke():
     return fmt, exp
 
 
+def bomb_sdmvcc_ltc_perclient4_guard_fwd():
+    """PER_CLIENT BLS=4 with SDMVCC_LONG_READ_GUARD=true, forward (L1 first)."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "true",
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for long_sources in [4, 0]]
+    return fmt, exp
+
+def bomb_sdmvcc_ltc_perclient4_guard_rev():
+    """PER_CLIENT BLS=4 with SDMVCC_LONG_READ_GUARD=true, reverse (no-L1 first)."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "true",
+            2, 2, 16, 4, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
+           for long_sources in [0, 4]]
+    return fmt, exp
+
+
+def bomb_sdmvcc_htap8_fwd():
+    """HTAP: CLIENT_THREAD_CNT=8, BLS=8 (cluster-wide 8 long txns => 4 L1 + 4 short per
+    client node), guard off first then on. Compares against TP-only (CT=4, BLS=0)
+    with identical short-thread supply (4 per node)."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 8, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", 8, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"],
+           ["BOMB", "SDMVCC", "false", "true", "true",
+            2, 2, 16, 8, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", 8, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]]
+    return fmt, exp
+
+def bomb_sdmvcc_htap8_rev():
+    """HTAP same as htap8_fwd but guard on first then off (reverse order)."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "true",
+            2, 2, 16, 8, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", 8, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"],
+           ["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 8, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", 8, 3, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]]
+    return fmt, exp
+
+def bomb_sdmvcc_unsafe_l1_upper_fwd():
+    """One-off upper bound: correct eager L1 first, then UNSAFE no-intent L1."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "SDMVCC_UNSAFE_L1_NO_INTENT",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_SOURCES", "MSG_SIZE_MAX",
+           "WARMUP_TIMER", "DONE_TIMER"]
+    common = [2, 2, 16, 4, 10000, 8, 72000, 198000, 75000, 100,
+              "false", 4, 4194304, "30*BILLION", "30*BILLION"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false", unsafe] + common
+           for unsafe in ["false", "true"]]
+    return fmt, exp
+
+def bomb_sdmvcc_unsafe_l1_upper_rev():
+    """One-off upper bound in reverse order: UNSAFE no-intent, then correct."""
+    fmt, exp = bomb_sdmvcc_unsafe_l1_upper_fwd()
+    return fmt, list(reversed(exp))
+
+def bomb_sdmvcc_htap8_unsafe_fwd():
+    """HTAP CT=8 BLS=8 (4 L1 + 4 short per node), guard off, unsafe off first
+    then on. Upper bound for removing L1 read intents under mixed workload."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "SDMVCC_UNSAFE_L1_NO_INTENT",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_SOURCES", "MSG_SIZE_MAX",
+           "WARMUP_TIMER", "DONE_TIMER"]
+    common = [2, 2, 16, 8, 10000, 8, 72000, 198000, 75000, 100,
+              "false", 8, 4194304, "30*BILLION", "30*BILLION"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false", unsafe] + common
+           for unsafe in ["false", "true"]]
+    return fmt, exp
+
+def bomb_sdmvcc_htap8_unsafe_rev():
+    """HTAP CT=8 BLS=8, guard off, unsafe on first then off (reverse order)."""
+    fmt, exp = bomb_sdmvcc_htap8_unsafe_fwd()
+    exp = [exp[1], exp[0]]
+    return fmt, exp
+
+
 experiment_map = {
+    'bomb_sdmvcc_htap8_unsafe_fwd': bomb_sdmvcc_htap8_unsafe_fwd,
+    'bomb_sdmvcc_htap8_unsafe_rev': bomb_sdmvcc_htap8_unsafe_rev,
     # for test
     'ycsb_skew' : ycsb_skew,
     # YCSB_WRITE
@@ -916,6 +1201,17 @@ experiment_map = {
     'bomb_sdmvcc_lazy_intent_ablation': bomb_sdmvcc_lazy_intent_ablation,
     'bomb_sdmvcc_long_read_guard_ablation': bomb_sdmvcc_long_read_guard_ablation,
     'bomb_sdmvcc_long_read_guard_dynamic_ablation': bomb_sdmvcc_long_read_guard_dynamic_ablation,
+    'bomb_sdmvcc_long_tx_interference_ceiling': bomb_sdmvcc_long_tx_interference_ceiling,
+    'bomb_sdmvcc_ltc_perclient_rev': bomb_sdmvcc_ltc_perclient_rev,
+    'bomb_sdmvcc_ltc_perclient_fwd': bomb_sdmvcc_ltc_perclient_fwd,
+    'bomb_sdmvcc_ltc_global_rev': bomb_sdmvcc_ltc_global_rev,
+    'bomb_sdmvcc_ltc_global_fwd': bomb_sdmvcc_ltc_global_fwd,
+    'bomb_sdmvcc_ltc_perclient4_fwd': bomb_sdmvcc_ltc_perclient4_fwd,
+    'bomb_sdmvcc_ltc_perclient4_rev': bomb_sdmvcc_ltc_perclient4_rev,
+    'bomb_sdmvcc_ltc_perclient4_guard_fwd': bomb_sdmvcc_ltc_perclient4_guard_fwd,
+    'bomb_sdmvcc_ltc_perclient4_guard_rev': bomb_sdmvcc_ltc_perclient4_guard_rev,
+    'bomb_sdmvcc_ltc_perclient4_guard_rev': bomb_sdmvcc_ltc_perclient4_guard_rev,
+
     'bomb_sdmvcc_bypass_smoke': bomb_sdmvcc_bypass_smoke,
     'bomb_sdmvcc_dynamic_smoke': bomb_sdmvcc_dynamic_smoke,
 
@@ -931,6 +1227,10 @@ experiment_map = {
     # 下面是没跑的实验
     'ycsb_rwset_ratio': ycsb_rwset_ratio,
     'tpcc_dist_ratio': tpcc_dist_ratio,
+    'bomb_sdmvcc_htap8_fwd': bomb_sdmvcc_htap8_fwd,
+    'bomb_sdmvcc_htap8_rev': bomb_sdmvcc_htap8_rev,
+    'bomb_sdmvcc_unsafe_l1_upper_fwd': bomb_sdmvcc_unsafe_l1_upper_fwd,
+    'bomb_sdmvcc_unsafe_l1_upper_rev': bomb_sdmvcc_unsafe_l1_upper_rev,
     'tpcc_aria_batch2': tpcc_aria_batch2,
 }
 
@@ -976,6 +1276,7 @@ configs = {
     "OPEN_DISTRIBUTED_WATERMARK":'false',
     "SDPCC_LONG_HOLE_MODE":"SDPCC_LONG_HOLE_DISABLED",
     "SDMVCC_LONG_READ_GUARD":"false",
+    "SDMVCC_UNSAFE_L1_NO_INTENT":"false",
     "OPEN_RANDOM_WAIT":'false',
 #YCSB
     "INIT_PARALLELISM" : 8,

@@ -1333,7 +1333,8 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 	}
 	SDMVCCAccessRegistration entry = {
 		row, type, false, 1, false,
-		!SDMVCC_LAZY_READ_INTENT && !uses_sdmvcc_long_read_guard()};
+		!SDMVCC_LAZY_READ_INTENT && !uses_sdmvcc_long_read_guard() &&
+		!uses_sdmvcc_unsafe_l1_no_intent()};
 	sdmvcc_accesses.push_back(entry);
 	sdmvcc_access_index[row] = sdmvcc_accesses.size() - 1;
 	if (uses_sdmvcc_long_read_guard())
@@ -1359,7 +1360,8 @@ void TxnManager::consume_sdmvcc_access(row_t *row) {
 void TxnManager::arm_sdmvcc_intents() {
 	// A long-read guard protects the not-yet-consumed snapshot versions.  Only
 	// a predecessor actually found unfinished at execution time gets a waiter.
-	if (uses_sdmvcc_long_read_guard()) return;
+	if (uses_sdmvcc_long_read_guard() ||
+		uses_sdmvcc_unsafe_l1_no_intent()) return;
 #if SDMVCC_LAZY_READ_INTENT
 	return;
 #else
@@ -1442,6 +1444,15 @@ void TxnManager::pin_sdmvcc_snapshot() {
 
 bool TxnManager::should_use_sdmvcc_long_read_guard() const {
 #if SDMVCC_LONG_READ_GUARD && WORKLOAD == BOMB
+	return query != nullptr &&
+		static_cast<const BombQuery *>(query)->txn_type == BOMB_L1;
+#else
+	return false;
+#endif
+}
+
+bool TxnManager::uses_sdmvcc_unsafe_l1_no_intent() const {
+#if SDMVCC_UNSAFE_L1_NO_INTENT && WORKLOAD == BOMB
 	return query != nullptr &&
 		static_cast<const BombQuery *>(query)->txn_type == BOMB_L1;
 #else

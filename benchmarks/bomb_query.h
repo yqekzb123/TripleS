@@ -88,6 +88,7 @@ public:
   static void prepare_next(BombQuery *query, uint64_t home_node,
                            uint64_t client_thread);
   static void init_source_state(uint64_t thread_count);
+  static uint64_t local_long_source_count();
   static bool is_long_source(uint64_t client_thread);
   static bool is_enabled_client(uint64_t client_thread);
   static bool try_begin_long(uint64_t client_thread);

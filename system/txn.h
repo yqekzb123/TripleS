@@ -253,6 +253,7 @@ public:
 	bool uses_sdmvcc_long_read_guard() const {
 		return sdmvcc_long_read_guard != nullptr;
 	}
+	bool uses_sdmvcc_unsafe_l1_no_intent() const;
 	void begin_sdmvcc_long_read_guard();
 	void finalize_sdmvcc_long_read_guard();
 #endif
