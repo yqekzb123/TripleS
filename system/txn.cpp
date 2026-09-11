@@ -1322,10 +1322,30 @@ uint64_t TxnManager::sdmvcc_snapshot() const {
 //
 // A read-to-write upgrade keeps the single intent but also ensures that the
 // row has a private write-version reservation for this transaction's SID.
+size_t TxnManager::find_sdmvcc_access(row_t *row) const {
+	if (!sdmvcc_access_index.empty()) {
+		auto existing = sdmvcc_access_index.find(row);
+		return existing == sdmvcc_access_index.end()
+			? sdmvcc_accesses.size() : existing->second;
+	}
+	for (size_t i = 0; i < sdmvcc_accesses.size(); ++i) {
+		if (sdmvcc_accesses[i].row == row) return i;
+	}
+	return sdmvcc_accesses.size();
+}
+
+void TxnManager::maybe_build_sdmvcc_access_index() {
+	if (!sdmvcc_access_index.empty() ||
+		sdmvcc_accesses.size() <= SDMVCC_ACCESS_INDEX_THRESHOLD) return;
+	sdmvcc_access_index.reserve(sdmvcc_accesses.size() * 2);
+	for (size_t i = 0; i < sdmvcc_accesses.size(); ++i)
+		sdmvcc_access_index[sdmvcc_accesses[i].row] = i;
+}
+
 int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
-	auto existing = sdmvcc_access_index.find(row);
-	if (existing != sdmvcc_access_index.end()) {
-		auto &entry = sdmvcc_accesses[existing->second];
+	const size_t existing = find_sdmvcc_access(row);
+	if (existing != sdmvcc_accesses.size()) {
+		auto &entry = sdmvcc_accesses[existing];
 		entry.remaining_uses++;
 		if (entry.type == WR || type != WR) return 0;
 		entry.type = WR;
@@ -1336,7 +1356,10 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 		!SDMVCC_LAZY_READ_INTENT && !uses_sdmvcc_long_read_guard() &&
 		!uses_sdmvcc_unsafe_l1_no_intent()};
 	sdmvcc_accesses.push_back(entry);
-	sdmvcc_access_index[row] = sdmvcc_accesses.size() - 1;
+	if (!sdmvcc_access_index.empty())
+		sdmvcc_access_index[row] = sdmvcc_accesses.size() - 1;
+	else
+		maybe_build_sdmvcc_access_index();
 	if (uses_sdmvcc_long_read_guard())
 		Row_sdmvcc::add_long_read_guard_key(sdmvcc_long_read_guard, row);
 	return 1;
@@ -1347,16 +1370,16 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 // occurrence. Workloads that do not call this hook retain all intents until
 // finish_sdmvcc(), which is correct but less aggressive for GC.
 void TxnManager::consume_sdmvcc_access(row_t *row) {
-	auto existing = sdmvcc_access_index.find(row);
+	const size_t existing = find_sdmvcc_access(row);
 #if BOMB_L1_ACQUIRE_ONLY_WRITES
 	// Upper-bound experiment: rows skipped by acquire_locks() (BOMB_L1 RD rows)
 	// were never registered, so there is no bookkeeping to consume and no
 	// intent to early-release here. finish_sdmvcc() handles the write rows.
-	if (existing == sdmvcc_access_index.end()) return;
+	if (existing == sdmvcc_accesses.size()) return;
 #else
-	assert(existing != sdmvcc_access_index.end());
+	assert(existing != sdmvcc_accesses.size());
 #endif
-	auto &entry = sdmvcc_accesses[existing->second];
+	auto &entry = sdmvcc_accesses[existing];
 	assert(entry.remaining_uses > 0);
 	if (--entry.remaining_uses == 0 && entry.intent_registered) {
 		entry.row->manager->release_intent(sdmvcc_snapshot(), minSid);
@@ -1385,9 +1408,9 @@ void TxnManager::arm_sdmvcc_intents() {
 // second latch. false means a waiter was already attached (e.g. a spurious
 // retry); true grants the caller responsibility for attaching exactly once.
 bool TxnManager::arm_sdmvcc_lazy_access(row_t *row, bool &new_intent) {
-	auto existing = sdmvcc_access_index.find(row);
-	assert(existing != sdmvcc_access_index.end());
-	auto &entry = sdmvcc_accesses[existing->second];
+	const size_t existing = find_sdmvcc_access(row);
+	assert(existing != sdmvcc_accesses.size());
+	auto &entry = sdmvcc_accesses[existing];
 	if (entry.armed) {
 		new_intent = false;
 		return false;

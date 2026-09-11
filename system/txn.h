@@ -242,6 +242,8 @@ public:
 	bool sdmvcc_snapshot_pinned;
 	SDMVCCLongReadGuard *sdmvcc_long_read_guard;
 	uint64_t sdmvcc_snapshot() const;
+	size_t find_sdmvcc_access(row_t *row) const;
+	void maybe_build_sdmvcc_access_index();
 	// 0: duplicate, 1: new per-key intent, 2: RD-to-WR upgrade.
 	int register_sdmvcc_access(row_t *row, access_t type);
 	void arm_sdmvcc_intents();

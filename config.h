@@ -195,6 +195,10 @@
 // reserves write versions. Reads that encounter an unfinished predecessor
 // attach a temporary intent/waiter and resume after its publish notification.
 #define SDMVCC_LAZY_READ_INTENT false
+// Per-transaction access metadata uses a compact linear vector for small
+// read/write sets.  Once the number of distinct keys exceeds this threshold,
+// SDMVCC builds a row-to-vector-index hash table for the rest of the txn.
+#define SDMVCC_ACCESS_INDEX_THRESHOLD 32
 // Large deterministic readers can replace thousands of eager per-key intents
 // with one node-local Bloom guard.  Scheme A enables this only for BoMB L1;
 // short transactions retain eager intents and exact intent-driven GC.
