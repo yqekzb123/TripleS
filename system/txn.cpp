@@ -1348,7 +1348,14 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 // finish_sdmvcc(), which is correct but less aggressive for GC.
 void TxnManager::consume_sdmvcc_access(row_t *row) {
 	auto existing = sdmvcc_access_index.find(row);
+#if BOMB_L1_ACQUIRE_ONLY_WRITES
+	// Upper-bound experiment: rows skipped by acquire_locks() (BOMB_L1 RD rows)
+	// were never registered, so there is no bookkeeping to consume and no
+	// intent to early-release here. finish_sdmvcc() handles the write rows.
+	if (existing == sdmvcc_access_index.end()) return;
+#else
 	assert(existing != sdmvcc_access_index.end());
+#endif
 	auto &entry = sdmvcc_accesses[existing->second];
 	assert(entry.remaining_uses > 0);
 	if (--entry.remaining_uses == 0 && entry.intent_registered) {

@@ -67,6 +67,7 @@ RC SDPCCLockThread::run() {
 		}
 		if(idle_starttime > 0) {
 			INC_STATS(_thd_id,sched_idle_time,get_sys_clock() - idle_starttime);
+			INC_STATS(_thd_id,sched_idle_cnt,1);
 			idle_starttime = 0;
 		}
 

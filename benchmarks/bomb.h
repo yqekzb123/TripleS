@@ -20,6 +20,9 @@ public:
   static void record_complete(BombClientQueryMessage *msg, uint64_t latency,
                               bool aborted);
   static void record_abort_attempt(BombClientQueryMessage *msg);
+  // Execution-time row-operation counters: one unit per local row actually
+  // touched during the read/write phase (index_read + get_row completed).
+  static void record_exec(uint32_t type, bool write);
   static void print(FILE *out);
 
 private:
@@ -31,6 +34,8 @@ private:
   static std::atomic<uint64_t> node_sum[BOMB_TXN_TYPE_COUNT];
   static std::atomic<uint64_t> remote_read_sum[BOMB_TXN_TYPE_COUNT];
   static std::atomic<uint64_t> remote_write_sum[BOMB_TXN_TYPE_COUNT];
+  static std::atomic<uint64_t> exec_read_ops[BOMB_TXN_TYPE_COUNT];
+  static std::atomic<uint64_t> exec_write_ops[BOMB_TXN_TYPE_COUNT];
   static std::atomic<uint64_t> active_l1;
   static std::atomic<uint64_t> peak_l1;
   static std::atomic<uint64_t> first_submit_time;

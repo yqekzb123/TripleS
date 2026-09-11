@@ -662,6 +662,79 @@ def chbenchmark_sdmvcc_test():
 # END PLOTS
 ##############################
 
+def _bomb_formal(dynamic_mode, algos):
+    """Full-size two-node BoMB configuration used for paper experiments."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "ARIA_BATCH_SIZE", "BOMB_DYNAMIC_MODE",
+           "BOMB_L1_PERIODIC_MIX", "BOMB_L1_MIX_PERIOD",
+           "BOMB_LONG_TX_MODE",
+           "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TREES_PER_PRODUCT", "BOMB_TREE_SIZE",
+           "BOMB_RAW_MATERIALS_PER_LEAF", "BOMB_TARGET_PRODUCTS",
+           "BOMB_TARGET_MATERIALS", "BOMB_QUERY_CACHE_SIZE",
+           "BOMB_FORCE_SHORT_TYPE", "BOMB_INJECT_STALE_PRESET",
+           "MSG_SIZE_MAX", "OPEN_DISTRIBUTED_WATERMARK",
+           "SDPCC_LONG_HOLE_MODE", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "SDMVCC_UNSAFE_L1_NO_INTENT", "BOMB_L1_ACQUIRE_ONLY_WRITES",
+           "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", algo, 2, 2,
+            16, 4, 10000,
+            3000, dynamic_mode,
+            "true", 256, "BOMB_LONG_TX_PER_CLIENT",
+            1, 3,
+            8, 72000,
+            198000, 75000,
+            5, 10,
+            3, 100,
+            1, 2048,
+            -1, "false",
+            4194304, "false",
+            "SDPCC_LONG_HOLE_DISABLED", "false",
+            "true", "false",
+            "false", "false",
+            "30*BILLION", "30*BILLION"]
+           for algo in algos]
+    return fmt, exp
+
+
+def bomb_static():
+    """Formal static BoMB (L1/S1/S2), not a smoke test."""
+    return _bomb_formal("false", ["CALVIN", "SDMVCC"])
+    # return _bomb_formal("false", ["CALVIN", "ARIA", "SDMVCC"])
+
+
+def bomb_dynamic():
+    """Formal dynamic BoMB (L1/S1/S2/S3/S4/S5), not a smoke test."""
+    return _bomb_formal("true", ["CALVIN", "ARIA", "SDMVCC"])
+
+
+def ycsb_idle_default():
+    """Two-node default YCSB used for the Aria/SDMVCC idle comparison."""
+    algos = ["SDPCC", "SDMVCC"]
+    # algos = ["ARIA", "SDMVCC","CALVIN"]
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
+           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
+           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
+           "ARIA_BATCH_SIZE", "OPEN_DISTRIBUTED_WATERMARK",
+           "SDMVCC_LAZY_READ_INTENT", "SDMVCC_INTENT_GC",
+           "SDMVCC_LONG_READ_GUARD", "SDMVCC_UNSAFE_L1_NO_INTENT",
+           "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["YCSB", algo, 2, 2,
+            16, 4, 3,
+            10000, 8 * 1024 * 1024, 10,
+            0.7, 0.2, 1.0, 0.2,
+            3000, "false",
+            "false", "true",
+            "false", "false",
+            "30*BILLION", "30*BILLION"]
+           for algo in algos]
+    return fmt, exp
+
 def bomb_calvin_smoke():
     fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
            "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
@@ -669,10 +742,10 @@ def bomb_calvin_smoke():
            "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
            "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
            "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "CALVIN", 2, 2, 8, 3, 32,
+    exp = [["BOMB", "CALVIN", 2, 2, 8, 3, 10000,
             2, 64, 160, 64, 4,
             "BOMB_LONG_TX_GLOBAL", 1, 2,
-            1048576, "2*BILLION", "5*BILLION"]]
+            1048576, "20*BILLION", "30*BILLION"]]
     return fmt, exp
 
 
@@ -1147,7 +1220,288 @@ def bomb_sdmvcc_htap8_unsafe_rev():
     return fmt, exp
 
 
+def bomb_sdmvcc_htap8_mix_fwd():
+    """HTAP CT=8/BLS=8: back-to-back L1 injection (legacy, one L1 in flight per
+    source, self-clocked) vs periodic mix (BOMB_L1_PERIODIC_MIX=true, one L1
+    every BOMB_L1_MIX_PERIOD=64 txns per long source, L1s may overlap).  Guard
+    off in both."""
+    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
+           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
+           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
+           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
+           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
+           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "BOMB_L1_PERIODIC_MIX",
+           "BOMB_L1_MIX_PERIOD", "MSG_SIZE_MAX",
+           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 8, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", 8, 3, "false", 256, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"],
+           ["BOMB", "SDMVCC", "false", "true", "false",
+            2, 2, 16, 8, 10000,
+            8, 72000, 198000, 75000, 100, "false",
+            "BOMB_LONG_TX_PER_CLIENT", 8, 3, "true", 256, 4194304,
+            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]]
+    return fmt, exp
+
+def bomb_sdmvcc_htap8_mix_rev():
+    """Same two configs as mix_fwd, reverse order (periodic mix first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_fwd()
+    exp = [exp[1], exp[0]]
+    return fmt, exp
+
+
+def bomb_sdmvcc_htap8_mix_guard_fwd():
+    """HTAP CT=8/BLS=8 periodic mix (X=256): L1 read-intent bloom guard
+    off vs on under the dense periodic-mix L1 load. Mix on in both."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_fwd()
+    # keep config2 (mix=true, guard=false) and flip guard to true
+    cfg_mix = exp[1][:]
+    cfg_mix[4] = "true"   # SDMVCC_LONG_READ_GUARD
+    return fmt, [exp[1], cfg_mix]
+
+
+def bomb_sdmvcc_htap8_mix_guard_rev():
+    """Same two configs as mix_guard_fwd, reverse order (guard on first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_guard_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
+def bomb_sdmvcc_htap8_mix_unsafe_fwd():
+    """HTAP CT=8/BLS=8 periodic mix (X=256), guard off: unsafe (no L1 read
+    intent) off vs on under the dense periodic-mix L1 load. Upper bound for
+    zero-cost L1 read intents; intentionally incorrect snapshot semantics."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_fwd()
+    # insert SDMVCC_UNSAFE_L1_NO_INTENT right after SDMVCC_LONG_READ_GUARD
+    fmt.insert(5, "SDMVCC_UNSAFE_L1_NO_INTENT")
+    for row in exp:
+        row.insert(5, "false")
+    # keep config2 (mix=true, unsafe=false) and flip unsafe to true
+    cfg_mix = exp[1][:]
+    cfg_mix[5] = "true"
+    return fmt, [exp[1], cfg_mix]
+
+
+def bomb_sdmvcc_htap8_mix_unsafe_rev():
+    """Same two configs as mix_unsafe_fwd, reverse order (unsafe on first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_unsafe_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
+def bomb_sdmvcc_htap8_mix_unsafe_skiprd_fwd():
+    """HTAP CT=8/BLS=8 periodic mix (X=256), guard off, unsafe ON in both:
+    L1 acquire_locks registers all requests vs only the write set
+    (BOMB_L1_ACQUIRE_ONLY_WRITES, ~100 WR rows out of ~19.4k).  Isolates the
+    cost of the per-row registration machinery itself (loop + index_read +
+    register_access) on top of the zero-intent unsafe baseline.  Intentionally
+    incorrect read-set snapshot semantics."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_unsafe_fwd()
+    # unsafe lives at index 5; append the scale ablation flag at the end
+    fmt.append("BOMB_L1_ACQUIRE_ONLY_WRITES")
+    for row in exp:
+        row.append("false")
+    # exp[1] = mix + unsafe on; flip only the ablation flag for the second cfg
+    cfg_on = exp[1][:]
+    cfg_on[-1] = "true"
+    return fmt, [exp[1], cfg_on]
+
+
+def bomb_sdmvcc_htap8_mix_unsafe_skiprd_rev():
+    """Same two configs as mix_unsafe_skiprd_fwd, reverse order (skiprd on
+    first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_unsafe_skiprd_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
+def bomb_sdmvcc_htap8_mix_vs_nol1_fwd():
+    """HTAP CT=8/BLS=8 periodic mix, guard off, unsafe OFF, correct semantics
+    in both arms.  cfg A: periodic mix, one L1 every BOMB_L1_MIX_PERIOD=256
+    txns (BLS=8 long sources).  cfg B: identical client/short-txn stream but
+    BOMB_LONG_TX_SOURCES=0 -> no L1 at all.  Measures the QPS cost of mixing
+    one L1 per 256 txns into the short stream."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_unsafe_fwd()
+    # exp[0] = periodic mix on + unsafe off (correct baseline WITH L1)
+    cfg_a = exp[0][:]
+    assert cfg_a[5] == "false", "unsafe must be off: %s" % cfg_a[5]  # unsafe
+    assert cfg_a[20] == "true", "periodic mix must be on: %s" % cfg_a[20]
+    cfg_b = cfg_a[:]
+    cfg_b[18] = 0  # BOMB_LONG_TX_SOURCES: 8 -> 0 (no L1 in the whole cluster)
+    return fmt, [cfg_a, cfg_b]
+
+
+def bomb_sdmvcc_htap8_mix_vs_nol1_rev():
+    """Same two configs as mix_vs_nol1_fwd, reverse order (no-L1 first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
+def bomb_sdmvcc_htap8_mix64_vs_nol1_fwd():
+    """HTAP CT=8/BLS=8 periodic mix, guard off, unsafe OFF, correct semantics
+    in both arms.  cfg A: periodic mix, one L1 every BOMB_L1_MIX_PERIOD=64
+    txns (4x denser than the 256 run).  cfg B: identical short-txn stream but
+    BOMB_LONG_TX_SOURCES=0 -> no L1.  Measures the QPS/TPS cost of a denser
+    L1 mix ratio."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
+    cfg_a = exp[0][:]
+    assert str(cfg_a[21]) == "256", "base must be X=256: %s" % cfg_a[21]
+    cfg_a = cfg_a[:]
+    cfg_a[21] = 64  # BOMB_L1_MIX_PERIOD: 256 -> 64
+    cfg_b = cfg_a[:]
+    cfg_b[18] = 0  # BOMB_LONG_TX_SOURCES: 8 -> 0 (no L1)
+    return fmt, [cfg_a, cfg_b]
+
+
+def bomb_sdmvcc_htap8_mix64_vs_nol1_rev():
+    """Same two configs as mix64_vs_nol1_fwd, reverse order (no-L1 first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix64_vs_nol1_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
+def bomb_sdmvcc_htap8_mix32_vs_nol1_fwd():
+    """HTAP CT=8/BLS=8 periodic mix, guard off, unsafe OFF, correct semantics
+    in both arms.  cfg A: periodic mix, one L1 every BOMB_L1_MIX_PERIOD=32
+    txns (8x denser than the 256 run, 2x denser than 64).  cfg B: identical
+    short-txn stream but BOMB_LONG_TX_SOURCES=0 -> no L1."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
+    cfg_a = exp[0][:]
+    assert str(cfg_a[21]) == "256", "base must be X=256: %s" % cfg_a[21]
+    cfg_a = cfg_a[:]
+    cfg_a[21] = 32  # BOMB_L1_MIX_PERIOD: 256 -> 32
+    cfg_b = cfg_a[:]
+    cfg_b[18] = 0  # BOMB_LONG_TX_SOURCES: 8 -> 0 (no L1)
+    return fmt, [cfg_a, cfg_b]
+
+
+def bomb_sdmvcc_htap8_mix32_vs_nol1_rev():
+    """Same two configs as mix32_vs_nol1_fwd, reverse order (no-L1 first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix32_vs_nol1_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
+def bomb_sdmvcc_htap8_mix16_vs_nol1_fwd():
+    """HTAP CT=8/BLS=8 periodic mix, guard off, unsafe OFF.  cfg A: one L1
+    every BOMB_L1_MIX_PERIOD=16 txns.  cfg B: no L1."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
+    cfg_a = exp[0][:]
+    assert str(cfg_a[21]) == "256", "base must be X=256: %s" % cfg_a[21]
+    cfg_a = cfg_a[:]
+    cfg_a[21] = 16  # BOMB_L1_MIX_PERIOD: 256 -> 16
+    cfg_b = cfg_a[:]
+    cfg_b[18] = 0  # BOMB_LONG_TX_SOURCES: 8 -> 0 (no L1)
+    return fmt, [cfg_a, cfg_b]
+
+
+def bomb_sdmvcc_htap8_mix16_vs_nol1_rev():
+    """Same two configs as mix16_vs_nol1_fwd, reverse order (no-L1 first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix16_vs_nol1_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
+def bomb_sdmvcc_htap8_mix8_vs_nol1_fwd():
+    """HTAP CT=8/BLS=8 periodic mix, guard off, unsafe OFF.  cfg A: one L1
+    every BOMB_L1_MIX_PERIOD=8 txns.  cfg B: no L1."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
+    cfg_a = exp[0][:]
+    assert str(cfg_a[21]) == "256", "base must be X=256: %s" % cfg_a[21]
+    cfg_a = cfg_a[:]
+    cfg_a[21] = 8  # BOMB_L1_MIX_PERIOD: 256 -> 8
+    cfg_b = cfg_a[:]
+    cfg_b[18] = 0  # BOMB_LONG_TX_SOURCES: 8 -> 0 (no L1)
+    return fmt, [cfg_a, cfg_b]
+
+
+def bomb_sdmvcc_htap8_mix8_vs_nol1_rev():
+    """Same two configs as mix8_vs_nol1_fwd, reverse order (no-L1 first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix8_vs_nol1_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
+def bomb_sdmvcc_htap8_mix64_unsafe_fwd():
+    """X=64 periodic mix, guard off: L1 read-intent unsafe ON (no L1 read
+    intents registered, incorrect snapshot semantics, upper bound) vs unsafe
+    OFF (correct semantics).  Same L1 density in both arms -> isolates the
+    cost of L1 read-intent registration itself."""
+    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
+    cfg_a = exp[0][:]
+    assert str(cfg_a[21]) == "256", "base must be X=256: %s" % cfg_a[21]
+    cfg_a = cfg_a[:]
+    cfg_a[21] = 64   # BOMB_L1_MIX_PERIOD
+    cfg_a[5] = "true"    # SDMVCC_UNSAFE_L1_NO_INTENT on
+    cfg_b = cfg_a[:]
+    cfg_b[5] = "false"   # unsafe off, same density
+    return fmt, [cfg_a, cfg_b]
+
+
+def bomb_sdmvcc_htap8_mix64_unsafe_rev():
+    """Same two configs as mix64_unsafe_fwd, reverse order (unsafe off first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix64_unsafe_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
+def bomb_sdmvcc_htap8_mix32_unsafe_fwd():
+    """X=32 periodic mix, guard off: unsafe ON vs OFF, same density both arms."""
+    fmt, exp = bomb_sdmvcc_htap8_mix64_unsafe_fwd()
+    cfg_a = exp[0][:]
+    cfg_a[21] = 32
+    cfg_b = cfg_a[:]
+    cfg_b[5] = "false"
+    return fmt, [cfg_a, cfg_b]
+
+
+def bomb_sdmvcc_htap8_mix32_unsafe_rev():
+    """Same two configs as mix32_unsafe_fwd, reverse order (unsafe off first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix32_unsafe_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
+def bomb_sdmvcc_htap8_mix16_unsafe_fwd():
+    """X=16 periodic mix, guard off: unsafe ON vs OFF, same density both arms."""
+    fmt, exp = bomb_sdmvcc_htap8_mix64_unsafe_fwd()
+    cfg_a = exp[0][:]
+    cfg_a[21] = 16
+    cfg_b = cfg_a[:]
+    cfg_b[5] = "false"
+    return fmt, [cfg_a, cfg_b]
+
+
+def bomb_sdmvcc_htap8_mix16_unsafe_rev():
+    """Same two configs as mix16_unsafe_fwd, reverse order (unsafe off first)."""
+    fmt, exp = bomb_sdmvcc_htap8_mix16_unsafe_fwd()
+    return fmt, [exp[1], exp[0]]
+
+
 experiment_map = {
+    'bomb_static': bomb_static,
+    'bomb_dynamic': bomb_dynamic,
+    'ycsb_idle_default': ycsb_idle_default,
+    'bomb_sdmvcc_htap8_mix_fwd': bomb_sdmvcc_htap8_mix_fwd,
+    'bomb_sdmvcc_htap8_mix_rev': bomb_sdmvcc_htap8_mix_rev,
+    'bomb_sdmvcc_htap8_mix_guard_fwd': bomb_sdmvcc_htap8_mix_guard_fwd,
+    'bomb_sdmvcc_htap8_mix_guard_rev': bomb_sdmvcc_htap8_mix_guard_rev,
+    'bomb_sdmvcc_htap8_mix_unsafe_fwd': bomb_sdmvcc_htap8_mix_unsafe_fwd,
+    'bomb_sdmvcc_htap8_mix_unsafe_rev': bomb_sdmvcc_htap8_mix_unsafe_rev,
+    'bomb_sdmvcc_htap8_mix_unsafe_skiprd_fwd': bomb_sdmvcc_htap8_mix_unsafe_skiprd_fwd,
+    'bomb_sdmvcc_htap8_mix_unsafe_skiprd_rev': bomb_sdmvcc_htap8_mix_unsafe_skiprd_rev,
+    'bomb_sdmvcc_htap8_mix_vs_nol1_fwd': bomb_sdmvcc_htap8_mix_vs_nol1_fwd,
+    'bomb_sdmvcc_htap8_mix_vs_nol1_rev': bomb_sdmvcc_htap8_mix_vs_nol1_rev,
+    'bomb_sdmvcc_htap8_mix64_vs_nol1_fwd': bomb_sdmvcc_htap8_mix64_vs_nol1_fwd,
+    'bomb_sdmvcc_htap8_mix64_vs_nol1_rev': bomb_sdmvcc_htap8_mix64_vs_nol1_rev,
+    'bomb_sdmvcc_htap8_mix32_vs_nol1_fwd': bomb_sdmvcc_htap8_mix32_vs_nol1_fwd,
+    'bomb_sdmvcc_htap8_mix32_vs_nol1_rev': bomb_sdmvcc_htap8_mix32_vs_nol1_rev,
+    'bomb_sdmvcc_htap8_mix16_vs_nol1_fwd': bomb_sdmvcc_htap8_mix16_vs_nol1_fwd,
+    'bomb_sdmvcc_htap8_mix16_vs_nol1_rev': bomb_sdmvcc_htap8_mix16_vs_nol1_rev,
+    'bomb_sdmvcc_htap8_mix8_vs_nol1_fwd': bomb_sdmvcc_htap8_mix8_vs_nol1_fwd,
+    'bomb_sdmvcc_htap8_mix8_vs_nol1_rev': bomb_sdmvcc_htap8_mix8_vs_nol1_rev,
+    'bomb_sdmvcc_htap8_mix64_unsafe_fwd': bomb_sdmvcc_htap8_mix64_unsafe_fwd,
+    'bomb_sdmvcc_htap8_mix64_unsafe_rev': bomb_sdmvcc_htap8_mix64_unsafe_rev,
+    'bomb_sdmvcc_htap8_mix32_unsafe_fwd': bomb_sdmvcc_htap8_mix32_unsafe_fwd,
+    'bomb_sdmvcc_htap8_mix32_unsafe_rev': bomb_sdmvcc_htap8_mix32_unsafe_rev,
+    'bomb_sdmvcc_htap8_mix16_unsafe_fwd': bomb_sdmvcc_htap8_mix16_unsafe_fwd,
+    'bomb_sdmvcc_htap8_mix16_unsafe_rev': bomb_sdmvcc_htap8_mix16_unsafe_rev,
     'bomb_sdmvcc_htap8_unsafe_fwd': bomb_sdmvcc_htap8_unsafe_fwd,
     'bomb_sdmvcc_htap8_unsafe_rev': bomb_sdmvcc_htap8_unsafe_rev,
     # for test
@@ -1304,6 +1658,7 @@ configs = {
     "CH_SUPPLIER_COUNT":10000,
 #BoMB
     "BOMB_DYNAMIC_MODE":"false",
+    "BOMB_L1_PERIODIC_MIX":"false",
     "BOMB_LONG_TX_MODE":"BOMB_LONG_TX_GLOBAL",
     "BOMB_LONG_TX_SOURCES":1,
     "BOMB_SHORT_WORKERS":4,

@@ -176,6 +176,16 @@ public:
 
   // Worker thread
   double worker_idle_time;
+  // Tail idle at an Aria phase barrier: a worker has no more work for the
+  // current phase and is waiting for the global phase to advance.
+  double aria_read_phase_idle_time;
+  uint64_t aria_read_phase_idle_cnt;
+  double aria_reservation_phase_idle_time;
+  uint64_t aria_reservation_phase_idle_cnt;
+  double aria_check_phase_idle_time;
+  uint64_t aria_check_phase_idle_cnt;
+  double aria_commit_phase_idle_time;
+  uint64_t aria_commit_phase_idle_cnt;
   double worker_activate_txn_time;
   double worker_deactivate_txn_time;
   double worker_release_msg_time;
@@ -287,6 +297,7 @@ public:
   double sched_queue_dequeue_time;
   double calvin_sched_time;
   double sched_idle_time;
+  uint64_t sched_idle_cnt;
   double sched_txn_table_time;
   uint64_t sched_epoch_cnt;
   double sched_epoch_diff;

@@ -223,6 +223,14 @@ void Stats_thd::clear() {
 
   // Worker thread
   worker_idle_time=0;
+  aria_read_phase_idle_time=0;
+  aria_read_phase_idle_cnt=0;
+  aria_reservation_phase_idle_time=0;
+  aria_reservation_phase_idle_cnt=0;
+  aria_check_phase_idle_time=0;
+  aria_check_phase_idle_cnt=0;
+  aria_commit_phase_idle_time=0;
+  aria_commit_phase_idle_cnt=0;
   worker_activate_txn_time=0;
   worker_deactivate_txn_time=0;
   worker_release_msg_time=0;
@@ -332,6 +340,7 @@ void Stats_thd::clear() {
   sched_queue_dequeue_time=0;
   calvin_sched_time=0;
   sched_idle_time=0;
+  sched_idle_cnt=0;
   sched_txn_table_time=0;
   sched_epoch_cnt=0;
   sched_epoch_diff=0;
@@ -827,15 +836,44 @@ void Stats_thd::print(FILE * outf, bool prog) {
   // Worker thread
   double worker_process_avg_time = 0;
   if (worker_process_cnt > 0) worker_process_avg_time = worker_process_time / worker_process_cnt;
+  double aria_read_phase_idle_avg_time = aria_read_phase_idle_cnt > 0 ?
+      aria_read_phase_idle_time / aria_read_phase_idle_cnt : 0;
+  double aria_reservation_phase_idle_avg_time = aria_reservation_phase_idle_cnt > 0 ?
+      aria_reservation_phase_idle_time / aria_reservation_phase_idle_cnt : 0;
+  double aria_check_phase_idle_avg_time = aria_check_phase_idle_cnt > 0 ?
+      aria_check_phase_idle_time / aria_check_phase_idle_cnt : 0;
+  double aria_commit_phase_idle_avg_time = aria_commit_phase_idle_cnt > 0 ?
+      aria_commit_phase_idle_time / aria_commit_phase_idle_cnt : 0;
   fprintf(outf,
     ",worker_idle_time=%f"
+    ",aria_read_phase_idle_time=%f"
+    ",aria_read_phase_idle_cnt=%lu"
+    ",aria_read_phase_idle_avg_time=%f"
+    ",aria_reservation_phase_idle_time=%f"
+    ",aria_reservation_phase_idle_cnt=%lu"
+    ",aria_reservation_phase_idle_avg_time=%f"
+    ",aria_check_phase_idle_time=%f"
+    ",aria_check_phase_idle_cnt=%lu"
+    ",aria_check_phase_idle_avg_time=%f"
+    ",aria_commit_phase_idle_time=%f"
+    ",aria_commit_phase_idle_cnt=%lu"
+    ",aria_commit_phase_idle_avg_time=%f"
     ",worker_activate_txn_time=%f"
     ",worker_deactivate_txn_time=%f"
     ",worker_release_msg_time=%f"
     ",worker_process_time=%f"
     ",worker_process_cnt=%ld"
           ",worker_process_avg_time=%f",
-          worker_idle_time / BILLION, worker_activate_txn_time / BILLION,
+          worker_idle_time / BILLION,
+          aria_read_phase_idle_time / BILLION, aria_read_phase_idle_cnt,
+          aria_read_phase_idle_avg_time / BILLION,
+          aria_reservation_phase_idle_time / BILLION, aria_reservation_phase_idle_cnt,
+          aria_reservation_phase_idle_avg_time / BILLION,
+          aria_check_phase_idle_time / BILLION, aria_check_phase_idle_cnt,
+          aria_check_phase_idle_avg_time / BILLION,
+          aria_commit_phase_idle_time / BILLION, aria_commit_phase_idle_cnt,
+          aria_commit_phase_idle_avg_time / BILLION,
+          worker_activate_txn_time / BILLION,
           worker_deactivate_txn_time / BILLION, worker_release_msg_time / BILLION,
           worker_process_time / BILLION, worker_process_cnt, worker_process_avg_time / BILLION);
   for(uint64_t i = 0; i < NO_MSG; i ++) {
@@ -996,6 +1034,8 @@ void Stats_thd::print(FILE * outf, bool prog) {
   if (seq_queue_cnt > 0) seq_queue_wait_avg_time = seq_queue_wait_time / seq_queue_cnt;
   double sched_queue_wait_avg_time = 0;
   if (sched_queue_cnt > 0) sched_queue_wait_avg_time = sched_queue_wait_time / sched_queue_cnt;
+  double sched_idle_avg_time = 0;
+  if (sched_idle_cnt > 0) sched_idle_avg_time = sched_idle_time / sched_idle_cnt;
   fprintf(outf,
   ",seq_txn_cnt=%ld"
   ",seq_batch_cnt=%ld"
@@ -1021,6 +1061,8 @@ void Stats_thd::print(FILE * outf, bool prog) {
   ",sched_queue_dequeue_time=%f"
   ",calvin_sched_time=%f"
   ",sched_idle_time=%f"
+  ",sched_idle_cnt=%lu"
+  ",sched_idle_avg_time=%f"
   ",sched_txn_table_time=%f"
   ",sched_epoch_cnt=%ld"
           ",sched_epoch_diff=%f"
@@ -1033,8 +1075,16 @@ void Stats_thd::print(FILE * outf, bool prog) {
           sched_queue_wait_time / BILLION, sched_queue_cnt, sched_queue_enq_cnt,
           sched_queue_wait_avg_time / BILLION, sched_queue_enqueue_time / BILLION,
           sched_queue_dequeue_time / BILLION, calvin_sched_time / BILLION,
-          sched_idle_time / BILLION, sched_txn_table_time / BILLION, sched_epoch_cnt,
+          sched_idle_time / BILLION, sched_idle_cnt, sched_idle_avg_time / BILLION,
+          sched_txn_table_time / BILLION, sched_epoch_cnt,
           sched_epoch_diff / BILLION, order_idle_time / BILLION);
+#if CC_ALG == SDMVCC
+  // Total scheduler idle divided by scheduler-thread count: SDMVCC's average
+  // per-scheduler delay over the measured interval.
+  fprintf(outf, ",sdmvcc_scheduler_idle_avg_time=%f",
+          g_scheduler_thread_cnt > 0 ?
+              sched_idle_time / (g_scheduler_thread_cnt * BILLION) : 0);
+#endif
 
   //OCC
   fprintf(outf,
@@ -1479,6 +1529,14 @@ void Stats_thd::combine(Stats_thd * stats) {
 
   // Worker thread
   worker_idle_time+=stats->worker_idle_time;
+  aria_read_phase_idle_time+=stats->aria_read_phase_idle_time;
+  aria_read_phase_idle_cnt+=stats->aria_read_phase_idle_cnt;
+  aria_reservation_phase_idle_time+=stats->aria_reservation_phase_idle_time;
+  aria_reservation_phase_idle_cnt+=stats->aria_reservation_phase_idle_cnt;
+  aria_check_phase_idle_time+=stats->aria_check_phase_idle_time;
+  aria_check_phase_idle_cnt+=stats->aria_check_phase_idle_cnt;
+  aria_commit_phase_idle_time+=stats->aria_commit_phase_idle_time;
+  aria_commit_phase_idle_cnt+=stats->aria_commit_phase_idle_cnt;
   worker_activate_txn_time+=stats->worker_activate_txn_time;
   worker_deactivate_txn_time+=stats->worker_deactivate_txn_time;
   worker_release_msg_time+=stats->worker_release_msg_time;
@@ -1601,6 +1659,7 @@ void Stats_thd::combine(Stats_thd * stats) {
   sched_queue_dequeue_time+=stats->sched_queue_dequeue_time;
   calvin_sched_time+=stats->calvin_sched_time;
   sched_idle_time+=stats->sched_idle_time;
+  sched_idle_cnt+=stats->sched_idle_cnt;
   sched_txn_table_time+=stats->sched_txn_table_time;
   sched_epoch_cnt+=stats->sched_epoch_cnt;
   sched_epoch_diff+=stats->sched_epoch_diff;

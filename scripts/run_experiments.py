@@ -72,6 +72,22 @@ keywords += ['sdmvcc_long_guard_enabled', 'sdmvcc_long_guards_registered',
              'sdmvcc_long_guard_peak_metadata_bytes']
 keywords_cal_type += ['avg', 'sum', 'sum', 'sum', 'avg', 'sum', 'sum',
                       'sum', 'sum']
+# Idle-time metrics used to compare phased protocols with SDMVCC.  For Aria,
+# *_phase_idle_avg_time is the mean tail wait of one worker at one phase
+# barrier.  SDMVCC has no batch barrier, so its comparable scheduler metric is
+# the accumulated idle time per scheduler over the measurement interval.
+keywords += ['aria_read_phase_idle_time', 'aria_read_phase_idle_cnt',
+             'aria_read_phase_idle_avg_time',
+             'aria_reservation_phase_idle_time',
+             'aria_reservation_phase_idle_cnt',
+             'aria_reservation_phase_idle_avg_time',
+             'aria_check_phase_idle_time', 'aria_check_phase_idle_cnt',
+             'aria_check_phase_idle_avg_time',
+             'aria_commit_phase_idle_time', 'aria_commit_phase_idle_cnt',
+             'aria_commit_phase_idle_avg_time',
+             'sched_idle_cnt', 'sched_idle_avg_time',
+             'sdmvcc_scheduler_idle_avg_time', 'total_runtime']
+keywords_cal_type += ['sum', 'sum', 'avg'] * 4 + ['sum', 'avg', 'avg', 'avg']
 draw_keywords = ['tput']
 
 if len(sys.argv) < 2:
@@ -248,6 +264,33 @@ for exp in exps:
                     simple_f.write(keyword + '_sum = ' + str(calculate[keyword]) + '\n')
                 if cal_type == 'avg':
                     simple_f.write(keyword + '_avg = ' + str(calculate[keyword] / cfgs['NODE_CNT']) + '\n')
+
+        # Normalize idle time by the capacity of the relevant thread class.
+        # total_runtime is summed across nodes, while THREAD_CNT and
+        # SCHEDULER_CNT are per-node counts, so no extra NODE_CNT factor is
+        # needed in these denominators.
+        runtime_sum = calculate.get('total_runtime', 0.0)
+        worker_capacity = runtime_sum * cfgs['THREAD_CNT']
+        if worker_capacity > 0:
+            worker_idle_ratio = calculate.get('worker_idle_time', 0.0) / worker_capacity
+            simple_f.write('worker_idle_ratio = ' + str(worker_idle_ratio) + '\n')
+            simple_f.write('worker_idle_percent = ' + str(worker_idle_ratio * 100.0) + '\n')
+
+        if cfgs['CC_ALG'] == 'ARIA' and worker_capacity > 0:
+            aria_phase_idle = sum(calculate.get(key, 0.0) for key in (
+                'aria_read_phase_idle_time',
+                'aria_reservation_phase_idle_time',
+                'aria_check_phase_idle_time',
+                'aria_commit_phase_idle_time'))
+            aria_phase_idle_ratio = aria_phase_idle / worker_capacity
+            simple_f.write('aria_phase_idle_ratio = ' + str(aria_phase_idle_ratio) + '\n')
+            simple_f.write('aria_phase_idle_percent = ' + str(aria_phase_idle_ratio * 100.0) + '\n')
+
+        scheduler_capacity = runtime_sum * cfgs['SCHEDULER_CNT']
+        if cfgs['CC_ALG'] == 'SDMVCC' and scheduler_capacity > 0:
+            sdmvcc_scheduler_idle_ratio = calculate.get('sched_idle_time', 0.0) / scheduler_capacity
+            simple_f.write('sdmvcc_scheduler_idle_ratio = ' + str(sdmvcc_scheduler_idle_ratio) + '\n')
+            simple_f.write('sdmvcc_scheduler_idle_percent = ' + str(sdmvcc_scheduler_idle_ratio * 100.0) + '\n')
 
         simple_f.write('\n')
         simple_f.close()

@@ -22,7 +22,7 @@
 // PART_CNT should be at least NODE_CNT
 #define PART_CNT NODE_CNT
 #define CLIENT_NODE_CNT 2
-#define CLIENT_THREAD_CNT 8
+#define CLIENT_THREAD_CNT 4
 #define CLIENT_REM_THREAD_CNT 2
 #define CLIENT_SEND_THREAD_CNT 2
 #define CLIENT_RUNTIME false
@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB, TPCC, CHBENCHMARK, PPS, or BOMB
-#define WORKLOAD BOMB
+#define WORKLOAD YCSB
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -97,7 +97,7 @@
 
 #define PRIORITY_WORK_QUEUE false
 #define PRIORITY PRIORITY_ACTIVE
-#define MSG_SIZE_MAX 4194304
+#define MSG_SIZE_MAX 4096
 #define MSG_TIME_LIMIT 0
 
 /***********************************************/
@@ -256,7 +256,7 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 1048576*8
+#define SYNTH_TABLE_SIZE 8388608
 #define ZIPF_THETA 0.7
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
@@ -455,10 +455,31 @@ enum PPSTxnType {
 // 0 = static BoM (L1/S1/S2), 1 = dynamic BoM (adds S3/S4/S5 and
 // topology-plan validation).  The first Calvin milestone uses static mode.
 #define BOMB_DYNAMIC_MODE false
+
+// BoMB L1 issue policy.
+// false (default; current behavior): back-to-back.  A long source issues a new
+//   L1 only after its previous L1 commits (source_busy gate).  At most one L1
+//   per long source is in flight, so the L1 issue rate is self-clocked by L1
+//   runtime (sparse when L1s are slow).
+// true: periodic mix.  A long source runs the regular short-txn stream and
+//   issues one L1 every BOMB_L1_MIX_PERIOD transactions, without waiting for
+//   completion.  Several L1s from one source may be in flight; the L1 arrival
+//   rate is set by the mix period, not by L1 runtime.
+#define BOMB_L1_PERIODIC_MIX false
+#define BOMB_L1_MIX_PERIOD 256
+
+// L1 acquire-locks scale ablation (upper bound).  When enabled, an L1 txn
+// registers only its write set (~100 rows) in acquire_locks(); every read row
+// is skipped before index_read.  Shrinks acquire_locks from O(all requests)
+// to O(writes).  Intentionally incomplete read-set snapshot/GC protection;
+// pair with SDMVCC_UNSAFE_L1_NO_INTENT so execution-time reads fall back
+// instead of waiting on an unregistered predecessor.
+#define BOMB_L1_ACQUIRE_ONLY_WRITES false
+
 // Total long-transaction source threads across the whole client cluster.  They
 // are distributed as evenly as possible; all remaining client threads are
 // short-transaction sources.
-#define BOMB_LONG_TX_SOURCES 8
+#define BOMB_LONG_TX_SOURCES 1
 
 // Deprecated compatibility knobs.  BoMB source assignment no longer uses
 // these values; keep them temporarily so existing experiment files compile.

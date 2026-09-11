@@ -10,6 +10,7 @@
 
 std::atomic<uint64_t> BombQueryGenerator::next_ordinal(0);
 std::atomic<bool> *BombQueryGenerator::source_busy = NULL;
+std::atomic<uint64_t> *BombQueryGenerator::mix_txn_cnt = NULL;
 uint64_t BombQueryGenerator::source_count = 0;
 
 BombQuery::BombQuery()
@@ -161,13 +162,30 @@ void BombQueryGenerator::prepare_next(BombQuery *query, uint64_t home,
   query->factory_id = 1 + (mix_hash(query->ordinal ^ home) % BOMB_FACTORY_COUNT);
   query->source_id = client_thread == UINT64_MAX ? UINT64_MAX :
       (g_node_id - g_node_cnt) * g_client_thread_cnt + client_thread;
-  query->txn_type = is_long_source(client_thread) ? BOMB_L1 :
-      (BOMB_FORCE_SHORT_TYPE >= static_cast<int>(BOMB_S1)
-       ? static_cast<BombTxnType>(BOMB_FORCE_SHORT_TYPE)
-       : choose_short(query->ordinal));
+  query->txn_type = pick_txn_type(client_thread, query->ordinal);
   query->plan_epoch = 0;
   query->rwset_known = true;
   query->rwset_variable = false;
+}
+
+BombTxnType BombQueryGenerator::pick_txn_type(uint64_t client_thread,
+                                              uint64_t ordinal) {
+  if (is_long_source(client_thread)) {
+#if BOMB_L1_PERIODIC_MIX
+    // Periodic mix: the source emits one L1 every BOMB_L1_MIX_PERIOD txns and
+    // runs the regular short mix in the remaining slots.  No busy gate, so the
+    // source may have several L1s in flight at once.
+    assert(mix_txn_cnt != NULL && client_thread < source_count);
+    const uint64_t n = mix_txn_cnt[client_thread].fetch_add(1) + 1;
+    if (n % BOMB_L1_MIX_PERIOD == 0) return BOMB_L1;
+    // fall through: this slot is a short txn on the long source thread
+#else
+    return BOMB_L1;
+#endif
+  }
+  return (BOMB_FORCE_SHORT_TYPE >= static_cast<int>(BOMB_S1)
+          ? static_cast<BombTxnType>(BOMB_FORCE_SHORT_TYPE)
+          : choose_short(ordinal));
 }
 
 void BombQueryGenerator::init_source_state(uint64_t thread_count) {
@@ -175,6 +193,8 @@ void BombQueryGenerator::init_source_state(uint64_t thread_count) {
   source_count = thread_count;
   source_busy = new std::atomic<bool>[thread_count];
   for (uint64_t i = 0; i < thread_count; ++i) source_busy[i].store(false);
+  mix_txn_cnt = new std::atomic<uint64_t>[thread_count];
+  for (uint64_t i = 0; i < thread_count; ++i) mix_txn_cnt[i].store(0);
 }
 
 bool BombQueryGenerator::is_long_source(uint64_t client_thread) {

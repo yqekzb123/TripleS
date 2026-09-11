@@ -27,6 +27,8 @@ std::atomic<uint64_t> BombStats::write_sum[BOMB_TXN_TYPE_COUNT];
 std::atomic<uint64_t> BombStats::node_sum[BOMB_TXN_TYPE_COUNT];
 std::atomic<uint64_t> BombStats::remote_read_sum[BOMB_TXN_TYPE_COUNT];
 std::atomic<uint64_t> BombStats::remote_write_sum[BOMB_TXN_TYPE_COUNT];
+std::atomic<uint64_t> BombStats::exec_read_ops[BOMB_TXN_TYPE_COUNT];
+std::atomic<uint64_t> BombStats::exec_write_ops[BOMB_TXN_TYPE_COUNT];
 std::atomic<uint64_t> BombStats::active_l1(0);
 std::atomic<uint64_t> BombStats::peak_l1(0);
 std::atomic<uint64_t> BombStats::first_submit_time(0);
@@ -90,6 +92,12 @@ void BombStats::record_abort_attempt(BombClientQueryMessage *msg) {
   aborted[type].fetch_add(1);
 }
 
+void BombStats::record_exec(uint32_t type, bool write) {
+  assert(type < BOMB_TXN_TYPE_COUNT);
+  if (write) exec_write_ops[type].fetch_add(1);
+  else exec_read_ops[type].fetch_add(1);
+}
+
 void BombStats::print(FILE *out) {
   static const char *names[BOMB_TXN_TYPE_COUNT] = {"l1","s1","s2","s3","s4","s5"};
   const uint64_t start = first_submit_time.load();
@@ -101,6 +109,14 @@ void BombStats::print(FILE *out) {
   fprintf(out, ",bomb_long_mode=%d,bomb_long_sources=%d,bomb_active_l1=%lu,bomb_peak_l1=%lu",
           BOMB_LONG_TX_MODE, BOMB_LONG_TX_SOURCES, active_l1.load(), peak_l1.load());
   fprintf(out, ",bomb_short_tput=%f", seconds > 0 ? short_commits / seconds : 0.0);
+  uint64_t exec_rd_total = 0, exec_wr_total = 0;
+  for (uint64_t t = 0; t < BOMB_TXN_TYPE_COUNT; ++t) {
+    exec_rd_total += exec_read_ops[t].load();
+    exec_wr_total += exec_write_ops[t].load();
+  }
+  fprintf(out, ",bomb_exec_read_ops=%lu,bomb_exec_write_ops=%lu,bomb_exec_ops_tput=%f",
+          exec_rd_total, exec_wr_total,
+          seconds > 0 ? (exec_rd_total + exec_wr_total) / seconds : 0.0);
   std::lock_guard<std::mutex> guard(latency_mutex);
   for (uint64_t t = 0; t < BOMB_TXN_TYPE_COUNT; ++t) {
     const uint64_t sub = submitted[t].load();
@@ -126,6 +142,8 @@ void BombStats::print(FILE *out) {
       names[t], sub ? static_cast<double>(node_sum[t].load()) / sub : 0.0,
       names[t], sub ? static_cast<double>(remote_read_sum[t].load()) / sub : 0.0,
       names[t], sub ? static_cast<double>(remote_write_sum[t].load()) / sub : 0.0);
+    fprintf(out, ",bomb_%s_exec_read_ops=%lu,bomb_%s_exec_write_ops=%lu",
+            names[t], exec_read_ops[t].load(), names[t], exec_write_ops[t].load());
   }
   for (uint64_t s = 0; s < BOMB_LONG_TX_SOURCES && s < 64; ++s)
     fprintf(out, ",bomb_l1_source%lu_submitted=%lu,bomb_l1_source%lu_committed=%lu",

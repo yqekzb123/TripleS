@@ -420,6 +420,33 @@ RC WorkerThread::run() {
   uint64_t idle_starttime = 0;
   uint64_t last_batch_id = 0;
 
+#if CC_ALG == ARIA
+  ARIA_PHASE observed_aria_phase = simulation->aria_phase;
+  uint64_t aria_phase_idle_starttime = 0;
+  auto record_aria_phase_idle = [this](ARIA_PHASE phase, uint64_t idle_time) {
+    switch (phase) {
+      case ARIA_READ:
+        INC_STATS(_thd_id, aria_read_phase_idle_time, idle_time);
+        INC_STATS(_thd_id, aria_read_phase_idle_cnt, 1);
+        break;
+      case ARIA_RESERVATION:
+        INC_STATS(_thd_id, aria_reservation_phase_idle_time, idle_time);
+        INC_STATS(_thd_id, aria_reservation_phase_idle_cnt, 1);
+        break;
+      case ARIA_CHECK:
+        INC_STATS(_thd_id, aria_check_phase_idle_time, idle_time);
+        INC_STATS(_thd_id, aria_check_phase_idle_cnt, 1);
+        break;
+      case ARIA_COMMIT:
+        INC_STATS(_thd_id, aria_commit_phase_idle_time, idle_time);
+        INC_STATS(_thd_id, aria_commit_phase_idle_cnt, 1);
+        break;
+      default:
+        break;
+    }
+  };
+#endif
+
   #if CC_ALG == SDOCC
   // uint64_t current_minSid = 0;
   uint64_t old_minSid = 0;
@@ -428,6 +455,20 @@ RC WorkerThread::run() {
 	while(!simulation->is_done()) {
     txn_man = NULL;
     heartbeat();
+
+#if CC_ALG == ARIA
+    // Count only the final empty tail of a phase. If work arrives again in the
+    // same phase, the tentative idle interval is discarded below.
+    ARIA_PHASE current_aria_phase = simulation->aria_phase;
+    if (current_aria_phase != observed_aria_phase) {
+      uint64_t now = get_sys_clock();
+      uint64_t barrier_idle = aria_phase_idle_starttime > 0 ?
+          now - aria_phase_idle_starttime : 0;
+      record_aria_phase_idle(observed_aria_phase, barrier_idle);
+      observed_aria_phase = current_aria_phase;
+      aria_phase_idle_starttime = 0;
+    }
+#endif
 
     #if CC_ALG == SDOCC
     // handle_txn_for_validate();
@@ -454,6 +495,12 @@ RC WorkerThread::run() {
     #endif
     if(!msg) {
       if (idle_starttime == 0) idle_starttime = get_sys_clock();
+#if CC_ALG == ARIA
+      if (aria_phase_idle_starttime == 0 && simulation->is_warmup_done() &&
+          observed_aria_phase >= ARIA_READ && observed_aria_phase <= ARIA_COMMIT) {
+        aria_phase_idle_starttime = get_sys_clock();
+      }
+#endif
       uint64_t dequeue_endtime = get_sys_clock();
       INC_STATS(get_thd_id(),workqueue_dequeue_time,dequeue_endtime - dequeue_starttime);
       // dequeue_starttime = dequeue_endtime;
@@ -461,6 +508,10 @@ RC WorkerThread::run() {
       continue;
     }
     simulation->last_da_query_time = get_sys_clock();
+#if CC_ALG == ARIA
+    // This was only a transient empty queue, not the wait at the phase barrier.
+    aria_phase_idle_starttime = 0;
+#endif
     if(idle_starttime > 0) {
       INC_STATS(_thd_id,worker_idle_time,get_sys_clock() - idle_starttime);
       idle_starttime = 0;

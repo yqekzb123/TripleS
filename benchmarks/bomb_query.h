@@ -109,9 +109,13 @@ public:
 private:
   static std::atomic<uint64_t> next_ordinal;
   static std::atomic<bool> *source_busy;
+  // Per-client-thread txn counter used by BOMB_L1_PERIODIC_MIX to decide when
+  // a long source emits its periodic L1.
+  static std::atomic<uint64_t> *mix_txn_cnt;
   static uint64_t source_count;
   static uint64_t mix_hash(uint64_t value);
   static BombTxnType choose_short(uint64_t ordinal);
+  static BombTxnType pick_txn_type(uint64_t client_thread, uint64_t ordinal);
   static void add_request(BombQuery *query, BombTable table, access_t access,
                           BombRequestRole role, uint64_t key,
                           uint64_t arg0 = 0, uint64_t arg1 = 0,

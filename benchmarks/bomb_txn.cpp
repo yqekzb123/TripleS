@@ -33,8 +33,16 @@ RC BombTxnManager::acquire_locks() {
   locking_done = false;
   RC rc = RCOK;
   incr_lr();
+  // Upper-bound ablation: register only the L1 write set.  Skipping read rows
+  // removes index_read + register_access for ~19k requests, shrinking
+  // acquire_locks from O(all requests) to O(writes).  Intentionally incomplete
+  // read-set protection; pair with SDMVCC_UNSAFE_L1_NO_INTENT so execution
+  // falls back instead of waiting on an unregistered predecessor.
+  const bool l1_skip_reads = BOMB_L1_ACQUIRE_ONLY_WRITES &&
+                             bomb_query->txn_type == BOMB_L1;
   for (uint64_t i = 0; i < bomb_query->requests.size(); ++i) {
     BombRequest *request = bomb_query->requests[i];
+    if (l1_skip_reads && request->acctype != WR) continue;
     uint64_t part = _bomb_wl->request_to_part(*request);
     if (GET_NODE_ID(part) != g_node_id) continue;
     itemid_t *item = index_read(_bomb_wl->request_index(*request),
@@ -61,6 +69,12 @@ RC BombTxnManager::access_request(BombRequest *request, bool write_phase) {
   RC rc = get_row(static_cast<row_t *>(item->location), request->acctype, local);
   if (rc != RCOK) return rc;
   assert(local != NULL);
+  // One executed row operation per local row that actually completes a
+  // get_row in this phase (read rows in the read phase, write rows in the
+  // write phase).  Remote rows never reach here on this node.
+  const uint32_t exec_type =
+      static_cast<BombQuery *>(query)->txn_type;
+  BombStats::record_exec(exec_type, write_phase);
   if (!write_phase) {
     const char *data = local->get_data();
     for (uint64_t i = 0; i < local->get_tuple_size(); ++i)
