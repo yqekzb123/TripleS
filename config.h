@@ -471,6 +471,11 @@ enum PPSTxnType {
 //   rate is set by the mix period, not by L1 runtime.
 #define BOMB_L1_PERIODIC_MIX false
 #define BOMB_L1_MIX_PERIOD 256
+// Random-ratio mix: every client thread independently generates an L1 with
+// this percentage.  Selection uses a reproducible per-thread pseudo-random
+// sequence.  When enabled, the source/periodic policy above is ignored.
+#define BOMB_L1_RANDOM_MIX false
+#define BOMB_L1_RANDOM_PCT 0.1
 
 // L1 acquire-locks scale ablation (upper bound).  When enabled, an L1 txn
 // registers only its write set (~100 rows) in acquire_locks(); every read row

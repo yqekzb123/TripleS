@@ -170,6 +170,20 @@ void BombQueryGenerator::prepare_next(BombQuery *query, uint64_t home,
 
 BombTxnType BombQueryGenerator::pick_txn_type(uint64_t client_thread,
                                               uint64_t ordinal) {
+#if BOMB_L1_RANDOM_MIX
+  if (client_thread != UINT64_MAX) {
+    assert(mix_txn_cnt != NULL && client_thread < source_count);
+    const uint64_t n = mix_txn_cnt[client_thread].fetch_add(1) + 1;
+    const uint64_t source_id =
+        (g_node_id - g_node_cnt) * g_client_thread_cnt + client_thread;
+    const uint64_t sample = mix_hash(
+        n ^ ((source_id + 1) * 0x9e3779b97f4a7c15ULL));
+    const double pct = BOMB_L1_RANDOM_PCT;
+    assert(pct >= 0.0 && pct <= 100.0);
+    const uint64_t cutoff = static_cast<uint64_t>(pct * 100.0 + 0.5);
+    if (sample % 10000 < cutoff) return BOMB_L1;
+  }
+#else
   if (is_long_source(client_thread)) {
 #if BOMB_L1_PERIODIC_MIX
     // Periodic mix: the source emits one L1 every BOMB_L1_MIX_PERIOD txns and
@@ -183,6 +197,7 @@ BombTxnType BombQueryGenerator::pick_txn_type(uint64_t client_thread,
     return BOMB_L1;
 #endif
   }
+#endif
   return (BOMB_FORCE_SHORT_TYPE >= static_cast<int>(BOMB_S1)
           ? static_cast<BombTxnType>(BOMB_FORCE_SHORT_TYPE)
           : choose_short(ordinal));

@@ -668,6 +668,7 @@ def _bomb_formal(dynamic_mode, algos):
            "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
            "ARIA_BATCH_SIZE", "BOMB_DYNAMIC_MODE",
            "BOMB_L1_PERIODIC_MIX", "BOMB_L1_MIX_PERIOD",
+           "BOMB_L1_RANDOM_MIX", "BOMB_L1_RANDOM_PCT",
            "BOMB_LONG_TX_MODE",
            "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
            "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
@@ -684,7 +685,8 @@ def _bomb_formal(dynamic_mode, algos):
     exp = [["BOMB", algo, 2, 2,
             16, 4, 10000,
             3000, dynamic_mode,
-            "true", 256, "BOMB_LONG_TX_PER_CLIENT",
+            "true", 2048, "false", 10,
+            "BOMB_LONG_TX_PER_CLIENT",
             1, 3,
             8, 72000,
             198000, 75000,
@@ -703,13 +705,29 @@ def _bomb_formal(dynamic_mode, algos):
 
 def bomb_static():
     """Formal static BoMB (L1/S1/S2), not a smoke test."""
-    return _bomb_formal("false", ["CALVIN", "SDMVCC"])
-    # return _bomb_formal("false", ["CALVIN", "ARIA", "SDMVCC"])
+    return _bomb_formal("false", ["CALVIN", "ARIA", "SDMVCC"])
 
 
 def bomb_dynamic():
     """Formal dynamic BoMB (L1/S1/S2/S3/S4/S5), not a smoke test."""
     return _bomb_formal("true", ["CALVIN", "ARIA", "SDMVCC"])
+
+
+def bomb_random_static():
+    """Static BoMB with every client thread sampling L1 at 0.1%."""
+    fmt, base = _bomb_formal("false", ["CALVIN", "ARIA", "SDMVCC"])
+    periodic_idx = fmt.index("BOMB_L1_PERIODIC_MIX")
+    random_idx = fmt.index("BOMB_L1_RANDOM_MIX")
+    pct_idx = fmt.index("BOMB_L1_RANDOM_PCT")
+    exp = []
+    for pct in [0.1]:
+        for template in base:
+            row = list(template)
+            row[periodic_idx] = "false"
+            row[random_idx] = "true"
+            row[pct_idx] = pct
+            exp.append(row)
+    return fmt, exp
 
 
 def ycsb_idle_default():
@@ -1477,6 +1495,7 @@ def bomb_sdmvcc_htap8_mix16_unsafe_rev():
 experiment_map = {
     'bomb_static': bomb_static,
     'bomb_dynamic': bomb_dynamic,
+    'bomb_random_static': bomb_random_static,
     'ycsb_idle_default': ycsb_idle_default,
     'bomb_sdmvcc_htap8_mix_fwd': bomb_sdmvcc_htap8_mix_fwd,
     'bomb_sdmvcc_htap8_mix_rev': bomb_sdmvcc_htap8_mix_rev,
@@ -1659,6 +1678,8 @@ configs = {
 #BoMB
     "BOMB_DYNAMIC_MODE":"false",
     "BOMB_L1_PERIODIC_MIX":"false",
+    "BOMB_L1_RANDOM_MIX":"false",
+    "BOMB_L1_RANDOM_PCT":10,
     "BOMB_LONG_TX_MODE":"BOMB_LONG_TX_GLOBAL",
     "BOMB_LONG_TX_SOURCES":1,
     "BOMB_SHORT_WORKERS":4,
