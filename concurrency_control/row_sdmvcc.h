@@ -2,7 +2,6 @@
 #define _ROW_SDMVCC_H_
 
 #include "global.h"
-#include <list>
 #include <map>
 #include <set>
 #include <vector>
@@ -101,13 +100,21 @@ private:
     row_t *_row;
     pthread_mutex_t _latch;
     bool _initial_copied;
-    std::list<Version> _versions;
+    // Iterators never escape the row latch. A vector retains its allocation
+    // after GC erases old versions, avoiding one list-node allocation for
+    // every write while preserving the same SID ordering.
+    std::vector<Version> _versions;
+    uint64_t _single_read_intent_sid;
+    uint32_t _single_read_intent_count;
     std::map<uint64_t, uint32_t> _read_intents;
 
     void ensure_initial_locked();
-    std::list<Version>::iterator find_version_locked(uint64_t sid);
-    std::list<Version>::iterator predecessor_locked(uint64_t snapshot);
+    std::vector<Version>::iterator find_version_locked(uint64_t sid);
+    std::vector<Version>::iterator predecessor_locked(uint64_t snapshot);
     bool wait_for_predecessor_locked(TxnManager *txn, uint64_t snapshot);
+    void add_read_intent_locked(uint64_t snapshot);
+    void remove_read_intent_locked(uint64_t snapshot);
+    bool read_intent_covers_locked(uint64_t begin, uint64_t end) const;
     void gc_locked(uint64_t watermark);
     static void notify_ready(TxnManager *txn, uint64_t thd_id);
     static uint64_t oldest_pinned_snapshot();

@@ -40,6 +40,7 @@ std::atomic<uint64_t> g_unsafe_reads(0);
 std::atomic<uint64_t> g_unsafe_fallback_reads(0);
 pthread_mutex_t g_snapshot_pin_latch = PTHREAD_MUTEX_INITIALIZER;
 std::multiset<uint64_t> g_snapshot_pins;
+std::atomic<uint64_t> g_oldest_pinned_snapshot(UINT64_MAX);
 // GC is the overwhelmingly common operation and only reads the registry.
 // A rwlock lets independent row GC paths probe the single L1 guard without
 // serializing on one process-wide mutex; begin/finalize/remove are rare.
@@ -81,7 +82,9 @@ bool long_guard_maybe_contains(const SDMVCCLongReadGuard *guard, row_t *row) {
 }
 }
 
-Row_sdmvcc::Row_sdmvcc() : _row(NULL), _initial_copied(false) {
+Row_sdmvcc::Row_sdmvcc()
+    : _row(NULL), _initial_copied(false), _single_read_intent_sid(0),
+      _single_read_intent_count(0) {
     pthread_mutex_init(&_latch, NULL);
 }
 
@@ -97,7 +100,55 @@ void Row_sdmvcc::ensure_initial_locked() {
     _initial_copied = true;
 }
 
-std::list<Row_sdmvcc::Version>::iterator
+void Row_sdmvcc::add_read_intent_locked(uint64_t snapshot) {
+    if (_single_read_intent_count != 0) {
+        assert(_read_intents.empty());
+        if (_single_read_intent_sid == snapshot) {
+            ++_single_read_intent_count;
+            return;
+        }
+        _read_intents.emplace(_single_read_intent_sid,
+                              _single_read_intent_count);
+        _single_read_intent_count = 0;
+    }
+    if (_read_intents.empty()) {
+        _single_read_intent_sid = snapshot;
+        _single_read_intent_count = 1;
+        return;
+    }
+    ++_read_intents[snapshot];
+}
+
+void Row_sdmvcc::remove_read_intent_locked(uint64_t snapshot) {
+    if (_single_read_intent_count != 0) {
+        assert(_read_intents.empty());
+        assert(_single_read_intent_sid == snapshot);
+        if (--_single_read_intent_count == 0) _single_read_intent_sid = 0;
+        return;
+    }
+    auto it = _read_intents.find(snapshot);
+    assert(it != _read_intents.end() && it->second > 0);
+    if (--it->second == 0) _read_intents.erase(it);
+    if (_read_intents.size() == 1) {
+        it = _read_intents.begin();
+        _single_read_intent_sid = it->first;
+        _single_read_intent_count = it->second;
+        _read_intents.clear();
+    }
+}
+
+bool Row_sdmvcc::read_intent_covers_locked(uint64_t begin,
+                                           uint64_t end) const {
+    if (_single_read_intent_count != 0) {
+        assert(_read_intents.empty());
+        return _single_read_intent_sid >= begin &&
+               _single_read_intent_sid < end;
+    }
+    auto intent = _read_intents.lower_bound(begin);
+    return intent != _read_intents.end() && intent->first < end;
+}
+
+std::vector<Row_sdmvcc::Version>::iterator
 Row_sdmvcc::find_version_locked(uint64_t sid) {
     for (auto it = _versions.begin(); it != _versions.end(); ++it) {
         if (it->sid == sid) return it;
@@ -106,7 +157,7 @@ Row_sdmvcc::find_version_locked(uint64_t sid) {
     return _versions.end();
 }
 
-std::list<Row_sdmvcc::Version>::iterator
+std::vector<Row_sdmvcc::Version>::iterator
 Row_sdmvcc::predecessor_locked(uint64_t snapshot) {
     auto result = _versions.end();
     for (auto it = _versions.begin(); it != _versions.end(); ++it) {
@@ -135,7 +186,7 @@ RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
     ensure_initial_locked();
     if (registration == 1 && !SDMVCC_LAZY_READ_INTENT && !long_guard &&
         !unsafe_no_intent) {
-        _read_intents[sid]++;
+        add_read_intent_locked(sid);
         g_intents_registered.fetch_add(1, std::memory_order_relaxed);
     } else if (registration == 1) {
         g_lazy_registration_skips.fetch_add(1, std::memory_order_relaxed);
@@ -188,7 +239,7 @@ bool Row_sdmvcc::wait_for_predecessor_locked(TxnManager *txn,
     bool new_intent = false;
     if (!txn->arm_sdmvcc_lazy_access(_row, new_intent)) return true;
     if (new_intent) {
-        _read_intents[snapshot]++;
+        add_read_intent_locked(snapshot);
         g_intents_registered.fetch_add(1, std::memory_order_relaxed);
     }
     auto version = predecessor_locked(snapshot);
@@ -391,9 +442,11 @@ void Row_sdmvcc::gc_locked(uint64_t watermark) {
     g_gc_disabled_calls.fetch_add(1, std::memory_order_relaxed);
     return;
 #endif
+    // Reclamation is impossible for the overwhelmingly common one-version
+    // row. Avoid reading process-wide snapshot-pin state on that path.
+    if (_versions.size() < 2) return;
     const uint64_t pinned = oldest_pinned_snapshot();
     if (pinned < watermark) watermark = pinned;
-    if (_versions.size() < 2) return;
     auto current = _versions.begin();
     while (current != _versions.end()) {
         auto next = std::next(current);
@@ -402,9 +455,8 @@ void Row_sdmvcc::gc_locked(uint64_t watermark) {
             current = next;
             continue;
         }
-        auto intent = _read_intents.lower_bound(current->sid);
-        const bool covered = intent != _read_intents.end() && intent->first < next->sid;
-        if (covered || long_read_guard_covers(_row, current->sid, next->sid)) {
+        if (read_intent_covers_locked(current->sid, next->sid) ||
+            long_read_guard_covers(_row, current->sid, next->sid)) {
             current = next;
             continue;
         }
@@ -430,6 +482,8 @@ void Row_sdmvcc::gc_locked(uint64_t watermark) {
 void Row_sdmvcc::pin_snapshot(uint64_t snapshot) {
     pthread_mutex_lock(&g_snapshot_pin_latch);
     g_snapshot_pins.insert(snapshot);
+    g_oldest_pinned_snapshot.store(*g_snapshot_pins.begin(),
+                                   std::memory_order_release);
     pthread_mutex_unlock(&g_snapshot_pin_latch);
 }
 
@@ -438,29 +492,27 @@ void Row_sdmvcc::unpin_snapshot(uint64_t snapshot) {
     auto it = g_snapshot_pins.find(snapshot);
     assert(it != g_snapshot_pins.end());
     g_snapshot_pins.erase(it);
+    const uint64_t oldest = g_snapshot_pins.empty()
+        ? UINT64_MAX : *g_snapshot_pins.begin();
+    g_oldest_pinned_snapshot.store(oldest, std::memory_order_release);
     pthread_mutex_unlock(&g_snapshot_pin_latch);
 }
 
 uint64_t Row_sdmvcc::oldest_pinned_snapshot() {
-    pthread_mutex_lock(&g_snapshot_pin_latch);
-    const uint64_t result = g_snapshot_pins.empty() ? UINT64_MAX : *g_snapshot_pins.begin();
-    pthread_mutex_unlock(&g_snapshot_pin_latch);
-    return result;
+    return g_oldest_pinned_snapshot.load(std::memory_order_acquire);
 }
 
 void Row_sdmvcc::release_intent(uint64_t snapshot, uint64_t watermark) {
     pthread_mutex_lock(&_latch);
-    auto it = _read_intents.find(snapshot);
-    assert(it != _read_intents.end() && it->second > 0);
-    if (--it->second == 0) _read_intents.erase(it);
+    remove_read_intent_locked(snapshot);
     g_intents_released.fetch_add(1, std::memory_order_relaxed);
-    gc_locked(watermark);
+    if (_versions.size() >= 2) gc_locked(watermark);
     pthread_mutex_unlock(&_latch);
 }
 
 void Row_sdmvcc::long_read_guard_released(uint64_t watermark) {
     pthread_mutex_lock(&_latch);
-    gc_locked(watermark);
+    if (_versions.size() >= 2) gc_locked(watermark);
     pthread_mutex_unlock(&_latch);
 }
 
