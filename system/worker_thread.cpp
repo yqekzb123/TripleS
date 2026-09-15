@@ -520,11 +520,59 @@ RC WorkerThread::run() {
 
   bool last_batch_id = 0;
   int wait_cnt = 0;
+
+  // Logical phases fold each distributed *_SYNC phase into the local phase
+  // before it. COLLECT remains part of the preceding execution barrier until
+  // the next batch enters INIT.
+  int observed_caracal_phase = -1; // 0=init, 1=append, 2=execution
+  bool caracal_phase_sample_active = false;
+  uint64_t caracal_phase_idle_starttime = 0;
+  auto logical_caracal_phase = [](CARACAL_PHASE phase) {
+    if (phase == CARACAL_INIT || phase == CARACAL_INIT_SYNC) return 0;
+    if (phase == CARACAL_APPEND || phase == CARACAL_APPEND_SYNC) return 1;
+    return 2;
+  };
+  auto record_caracal_phase_idle = [this](int phase, uint64_t idle_time) {
+    switch (phase) {
+      case 0:
+        INC_STATS(_thd_id, caracal_init_phase_idle_time, idle_time);
+        INC_STATS(_thd_id, caracal_init_phase_idle_cnt, 1);
+        break;
+      case 1:
+        INC_STATS(_thd_id, caracal_append_phase_idle_time, idle_time);
+        INC_STATS(_thd_id, caracal_append_phase_idle_cnt, 1);
+        break;
+      case 2:
+        INC_STATS(_thd_id, caracal_execution_phase_idle_time, idle_time);
+        INC_STATS(_thd_id, caracal_execution_phase_idle_cnt, 1);
+        break;
+      default:
+        break;
+    }
+  };
   
 	while(!simulation->is_done()) {
     txn_man = NULL;
     heartbeat();
     progress_stats();
+
+    CARACAL_PHASE current_caracal_phase = simulation->caracal_phase.load();
+    int current_logical_phase = logical_caracal_phase(current_caracal_phase);
+    if (observed_caracal_phase == -1) {
+      observed_caracal_phase = current_logical_phase;
+      // Do not create a fake execution sample during the initial COLLECT.
+      caracal_phase_sample_active = current_caracal_phase != CARACAL_COLLECT;
+    } else if (current_logical_phase != observed_caracal_phase) {
+      if (caracal_phase_sample_active) {
+        uint64_t now = get_sys_clock();
+        uint64_t barrier_idle = caracal_phase_idle_starttime > 0 ?
+            now - caracal_phase_idle_starttime : 0;
+        record_caracal_phase_idle(observed_caracal_phase, barrier_idle);
+      }
+      observed_caracal_phase = current_logical_phase;
+      caracal_phase_sample_active = true;
+      caracal_phase_idle_starttime = 0;
+    }
 
     if (simulation->caracal_phase.load() == CARACAL_APPEND &&
         !caracal_man.is_phase_done(get_thd_id())) {
@@ -532,6 +580,9 @@ RC WorkerThread::run() {
       batch_append_and_split_on_demand();
       
       simulation->finish_append_cnt.fetch_add(1);
+      if (simulation->is_warmup_done()) {
+        caracal_phase_idle_starttime = get_sys_clock();
+      }
     }
 
     if (simulation->caracal_phase.load() == CARACAL_EXECUTION ||
@@ -547,6 +598,10 @@ RC WorkerThread::run() {
       msg = work_queue.work_dequeue(get_thd_id());
       if(!msg) {
         if (idle_starttime == 0) idle_starttime = get_sys_clock();
+        if (caracal_phase_sample_active && caracal_phase_idle_starttime == 0 &&
+            simulation->is_warmup_done()) {
+          caracal_phase_idle_starttime = get_sys_clock();
+        }
         uint64_t dequeue_endtime = get_sys_clock();
         INC_STATS(get_thd_id(),workqueue_dequeue_time,dequeue_endtime - dequeue_starttime);
         // dequeue_starttime = dequeue_endtime;
@@ -559,6 +614,9 @@ RC WorkerThread::run() {
 
     // 拿到了
     simulation->last_da_query_time = get_sys_clock();
+    // Work arrived again in this logical phase, so the previous empty interval
+    // was transient rather than the tail wait at its barrier.
+    caracal_phase_idle_starttime = 0;
     if(idle_starttime > 0) {
       INC_STATS(_thd_id,worker_idle_time,get_sys_clock() - idle_starttime);
       idle_starttime = 0;

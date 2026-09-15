@@ -176,6 +176,14 @@ public:
 
   // Worker thread
   double worker_idle_time;
+  // Tail idle at Caracal's logical phase barriers. *_SYNC belongs to the
+  // preceding logical phase, so distributed barrier wait is included.
+  double caracal_init_phase_idle_time;
+  uint64_t caracal_init_phase_idle_cnt;
+  double caracal_append_phase_idle_time;
+  uint64_t caracal_append_phase_idle_cnt;
+  double caracal_execution_phase_idle_time;
+  uint64_t caracal_execution_phase_idle_cnt;
   double worker_activate_txn_time;
   double worker_deactivate_txn_time;
   double worker_release_msg_time;

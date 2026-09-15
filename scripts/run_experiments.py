@@ -42,6 +42,16 @@ totimelist=[]
 
 keywords = ['tput', 'seq_idle_time', 'sched_idle_time', 'worker_idle_time', 'fscl50', 'fscl99']
 keywords_cal_type = ['sum', 'sum', 'sum', 'sum', 'sum', 'sum']
+# Per-phase tail wait at Caracal's logical barriers.  Each average is the mean
+# wait of one worker at one occurrence of that phase barrier.
+keywords += ['caracal_init_phase_idle_time', 'caracal_init_phase_idle_cnt',
+             'caracal_init_phase_idle_avg_time',
+             'caracal_append_phase_idle_time', 'caracal_append_phase_idle_cnt',
+             'caracal_append_phase_idle_avg_time',
+             'caracal_execution_phase_idle_time',
+             'caracal_execution_phase_idle_cnt',
+             'caracal_execution_phase_idle_avg_time', 'total_runtime']
+keywords_cal_type += ['sum', 'sum', 'avg'] * 3 + ['avg']
 draw_keywords = ['tput']
 
 if len(sys.argv) < 2:
@@ -214,6 +224,23 @@ for exp in exps:
                     simple_f.write(keyword + '_sum = ' + str(calculate[keyword]) + '\n')
                 if cal_type == 'avg':
                     simple_f.write(keyword + '_avg = ' + str(calculate[keyword] / cfgs['NODE_CNT']) + '\n')
+
+        # total_runtime is summed across nodes and THREAD_CNT is the per-node
+        # worker count, yielding the cluster-wide worker-time capacity.
+        runtime_sum = calculate.get('total_runtime', 0.0)
+        worker_capacity = runtime_sum * cfgs['THREAD_CNT']
+        if worker_capacity > 0:
+            worker_idle_ratio = calculate.get('worker_idle_time', 0.0) / worker_capacity
+            simple_f.write('worker_idle_ratio = ' + str(worker_idle_ratio) + '\n')
+            simple_f.write('worker_idle_percent = ' + str(worker_idle_ratio * 100.0) + '\n')
+
+            caracal_phase_idle = sum(calculate.get(key, 0.0) for key in (
+                'caracal_init_phase_idle_time',
+                'caracal_append_phase_idle_time',
+                'caracal_execution_phase_idle_time'))
+            caracal_phase_idle_ratio = caracal_phase_idle / worker_capacity
+            simple_f.write('caracal_phase_idle_ratio = ' + str(caracal_phase_idle_ratio) + '\n')
+            simple_f.write('caracal_phase_idle_percent = ' + str(caracal_phase_idle_ratio * 100.0) + '\n')
 
         simple_f.write('\n')
         simple_f.close()
