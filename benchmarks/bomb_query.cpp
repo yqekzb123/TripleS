@@ -9,6 +9,9 @@
 
 std::atomic<uint64_t> BombQueryGenerator::next_ordinal(0);
 std::atomic<bool> *BombQueryGenerator::source_busy = NULL;
+// Per-client-thread txn counter used by the mixed L1 modes to decide when a
+// long source emits its periodic L1.
+std::atomic<uint64_t> *BombQueryGenerator::mix_txn_cnt = NULL;
 uint64_t BombQueryGenerator::source_count = 0;
 
 BombQuery::BombQuery()
@@ -158,10 +161,44 @@ void BombQueryGenerator::prepare_next(BombQuery *query, uint64_t home,
   query->factory_id = 1 + (mix_hash(query->ordinal ^ home) % BOMB_FACTORY_COUNT);
   query->source_id = client_thread == UINT64_MAX ? UINT64_MAX :
       (g_node_id - g_node_cnt) * g_client_thread_cnt + client_thread;
-  query->txn_type = is_long_source(client_thread) ? BOMB_L1 :
-      (BOMB_FORCE_SHORT_TYPE >= static_cast<int>(BOMB_S1)
-       ? static_cast<BombTxnType>(BOMB_FORCE_SHORT_TYPE)
-       : choose_short(query->ordinal));
+#if BOMB_L1_RANDOM_MIX
+  if (client_thread != UINT64_MAX) {
+    assert(mix_txn_cnt != NULL && client_thread < source_count);
+    const uint64_t n = mix_txn_cnt[client_thread].fetch_add(1) + 1;
+    const uint64_t sample = mix_hash(
+        n ^ ((query->source_id + 1) * 0x9e3779b97f4a7c15ULL));
+    const double pct = BOMB_L1_RANDOM_PCT;
+    assert(pct >= 0.0 && pct <= 100.0);
+    const uint64_t cutoff = static_cast<uint64_t>(pct * 100.0 + 0.5);
+    query->txn_type = sample % 10000 < cutoff
+        ? BOMB_L1
+        : (BOMB_FORCE_SHORT_TYPE >= static_cast<int>(BOMB_S1)
+            ? static_cast<BombTxnType>(BOMB_FORCE_SHORT_TYPE)
+            : choose_short(query->ordinal));
+  } else {
+    query->txn_type = (BOMB_FORCE_SHORT_TYPE >= static_cast<int>(BOMB_S1)
+        ? static_cast<BombTxnType>(BOMB_FORCE_SHORT_TYPE)
+        : choose_short(query->ordinal));
+  }
+#else
+  if (is_long_source(client_thread)) {
+#if BOMB_L1_PERIODIC_MIX
+    // Periodic mix: the source emits one L1 every BOMB_L1_MIX_PERIOD txns and
+    // runs the regular short mix in the remaining slots.  No busy gate, so the
+    // source may have several L1s in flight at once.
+    assert(mix_txn_cnt != NULL && client_thread < source_count);
+    const uint64_t n = mix_txn_cnt[client_thread].fetch_add(1) + 1;
+    query->txn_type = (n % BOMB_L1_MIX_PERIOD == 0)
+        ? BOMB_L1 : choose_short(query->ordinal);
+#else
+    query->txn_type = BOMB_L1;
+#endif
+  } else {
+    query->txn_type = (BOMB_FORCE_SHORT_TYPE >= static_cast<int>(BOMB_S1)
+        ? static_cast<BombTxnType>(BOMB_FORCE_SHORT_TYPE)
+        : choose_short(query->ordinal));
+  }
+#endif
   query->plan_epoch = 0;
   query->rwset_known = true;
 }
@@ -171,6 +208,8 @@ void BombQueryGenerator::init_source_state(uint64_t thread_count) {
   source_count = thread_count;
   source_busy = new std::atomic<bool>[thread_count];
   for (uint64_t i = 0; i < thread_count; ++i) source_busy[i].store(false);
+  mix_txn_cnt = new std::atomic<uint64_t>[thread_count];
+  for (uint64_t i = 0; i < thread_count; ++i) mix_txn_cnt[i].store(0);
 }
 
 bool BombQueryGenerator::is_long_source(uint64_t client_thread) {
@@ -184,6 +223,9 @@ bool BombQueryGenerator::is_long_source(uint64_t client_thread) {
 
 bool BombQueryGenerator::is_enabled_client(uint64_t client_thread) {
   if (client_thread == UINT64_MAX) return true;
+#if BOMB_L1_RANDOM_MIX
+  return client_thread < g_client_thread_cnt;
+#else
   const uint64_t client_id =
       (g_node_id - g_node_cnt) * g_client_thread_cnt + client_thread;
   const uint64_t long_count = BOMB_LONG_TX_MODE == BOMB_LONG_TX_GLOBAL
@@ -206,6 +248,7 @@ bool BombQueryGenerator::is_enabled_client(uint64_t client_thread) {
       client_thread < lane_count;
 #else
   return client_id < long_count + BOMB_SHORT_WORKERS;
+#endif
 #endif
 }
 

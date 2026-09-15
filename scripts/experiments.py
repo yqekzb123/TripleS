@@ -270,11 +270,122 @@ def bomb_caracal_smoke():
            for dynamic in ["false", "true"]]
     return fmt, exp
 
+
+def _bomb_formal(dynamic_mode):
+    """Full-size two-node BoMB configuration used for paper experiments."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "ARIA_BATCH_SIZE", "BOMB_DYNAMIC_MODE",
+           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
+           "BOMB_SHORT_WORKERS", "BOMB_FACTORY_COUNT",
+           "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
+           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TREES_PER_PRODUCT",
+           "BOMB_TREE_SIZE", "BOMB_RAW_MATERIALS_PER_LEAF",
+           "BOMB_TARGET_PRODUCTS", "BOMB_TARGET_MATERIALS",
+           "BOMB_QUERY_CACHE_SIZE", "BOMB_FORCE_SHORT_TYPE",
+           "BOMB_INJECT_STALE_PRESET", "BOMB_L1_PERIODIC_MIX",
+           "BOMB_L1_MIX_PERIOD", "BOMB_L1_RANDOM_MIX",
+           "BOMB_L1_RANDOM_PCT", "MSG_SIZE_MAX",
+           "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "CARACAL", 2, 2,
+            16, 4, 10000,
+            3000, dynamic_mode,
+            "BOMB_LONG_TX_PER_CLIENT", 1,
+            3, 8,
+            72000, 198000,
+            75000, 5,
+            10, 3,
+            100, 1,
+            2048, -1,
+            "false", "true", 2048, "false", 10, 4194304,
+            "30*BILLION", "30*BILLION"]]
+    return fmt, exp
+
+
+def bomb_static():
+    """Formal static BoMB (L1/S1/S2), not a smoke test."""
+    return _bomb_formal("false")
+
+
+def bomb_dynamic():
+    """Formal dynamic BoMB (L1/S1/S2/S3/S4/S5), not a smoke test."""
+    return _bomb_formal("true")
+
+
+def bomb_random_static():
+    """Static BoMB with every client thread sampling L1 at 0.1%."""
+    fmt, base = _bomb_formal("false")
+    periodic_idx = fmt.index("BOMB_L1_PERIODIC_MIX")
+    random_idx = fmt.index("BOMB_L1_RANDOM_MIX")
+    pct_idx = fmt.index("BOMB_L1_RANDOM_PCT")
+    exp = []
+    for pct in [0.1]:
+        row = list(base[0])
+        row[periodic_idx] = "false"
+        row[random_idx] = "true"
+        row[pct_idx] = pct
+        exp.append(row)
+    return fmt, exp
+
+
+def ycsb_idle_default():
+    """Two-node default YCSB used for the Caracal idle comparison."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
+           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
+           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
+           "ARIA_BATCH_SIZE", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["YCSB", "CARACAL", 2, 2,
+            16, 4, 3,
+            10000, 8 * 1024 * 1024 * 2, 10,
+            0.7, 0.2, 1.0, 0.2,
+            9000, "30*BILLION", "30*BILLION"]]
+    return fmt, exp
+
 ##############################
 # END PLOTS
 ##############################
 
+def bomb_l1_mix_smoke():
+    """Short two-node BoMB smoke test for BOMB_L1_PERIODIC_MIX: identical short
+    stream in both arms, only the L1 issue policy differs.
+      arm A: periodic mix (BOMB_L1_PERIODIC_MIX=true, one L1 every
+             BOMB_L1_MIX_PERIOD=8 txns on the long source, no busy gate)
+      arm B: legacy back-to-back (BOMB_L1_PERIODIC_MIX=false, one L1 at a time)
+    """
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
+           "ARIA_BATCH_SIZE", "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE",
+           "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS", "BOMB_FACTORY_COUNT",
+           "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
+           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
+           "BOMB_L1_PERIODIC_MIX", "BOMB_L1_MIX_PERIOD",
+           "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["BOMB", "CARACAL", 2, 2,
+            16, 4, 10000,
+            9000, "false", "BOMB_LONG_TX_PER_CLIENT",
+            1, 3, 8,
+            72000, 198000,
+            75000, 100,
+            "true", 8,
+            1048576, "1*BILLION", "10*BILLION"],
+           ["BOMB", "CARACAL", 2, 2,
+            16, 4, 10000,
+            9000, "false", "BOMB_LONG_TX_PER_CLIENT",
+            1, 3, 8,
+            72000, 198000,
+            75000, 100,
+            "false", 8,
+            1048576, "1*BILLION", "10*BILLION"]]
+    return fmt, exp
+
+
 experiment_map = {
+    'bomb_static': bomb_static,
+    'bomb_random_static': bomb_random_static,
+    'bomb_l1_mix_smoke': bomb_l1_mix_smoke,
+    'bomb_dynamic': bomb_dynamic,
+    'ycsb_idle_default': ycsb_idle_default,
     # YCSB_WRITE
     'ycsb_aria_batch3': ycsb_aria_batch3,
 
@@ -368,6 +479,8 @@ configs = {
     "SCHEDULER_CNT": 3,
 #BoMB
     "BOMB_DYNAMIC_MODE":"false",
+    "BOMB_L1_RANDOM_MIX":"false",
+    "BOMB_L1_RANDOM_PCT":10,
     "BOMB_LONG_TX_MODE":"BOMB_LONG_TX_GLOBAL",
     "BOMB_LONG_TX_SOURCES":1,
     "BOMB_SHORT_WORKERS":3,
@@ -398,4 +511,3 @@ configs = {
     "LOAD_METHOD": "LOAD_MAX",
     "ISOLATION_LEVEL":"SERIALIZABLE"
 }
-

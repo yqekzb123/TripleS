@@ -195,7 +195,13 @@ Client_query_queue::get_next_query(uint64_t server_id,uint64_t thread_id) {
 	}
 	BombQuery *query = static_cast<BombQuery *>(queries[server_id][query_id]);
 	if (!BombQueryGenerator::is_enabled_client(thread_id)) return NULL;
+#if BOMB_L1_PERIODIC_MIX || BOMB_L1_RANDOM_MIX
+	// Mixed-L1 modes issue every slot without the legacy busy gate.  Long sources emit one L1
+	// every BOMB_L1_MIX_PERIOD txns (decided inside prepare_next) without
+	// waiting for prior L1s to finish, so several L1s may be in flight.
+#else
 	if (!BombQueryGenerator::try_begin_long(thread_id)) return NULL;
+#endif
 	BombQueryGenerator::prepare_next(query, server_id + g_server_start_node,
 	                                thread_id);
 	return query;

@@ -108,6 +108,9 @@ public:
 private:
   static std::atomic<uint64_t> next_ordinal;
   static std::atomic<bool> *source_busy;
+  // Per-client-thread txn counter used by the mixed L1 modes to decide when
+  // a long source emits its periodic L1.
+  static std::atomic<uint64_t> *mix_txn_cnt;
   static uint64_t source_count;
   static uint64_t mix_hash(uint64_t value);
   static BombTxnType choose_short(uint64_t ordinal);

@@ -401,6 +401,19 @@ enum PPSTxnType {
 #define BOMB_LONG_TX_PER_CLIENT 1
 #define BOMB_LONG_TX_MODE BOMB_LONG_TX_GLOBAL
 #define BOMB_LONG_TX_SOURCES 1
+
+// BoMB L1 issue policy.
+// false: a long source issues a new L1 only after its previous L1 commits.
+// true: the source issues one L1 every BOMB_L1_MIX_PERIOD generated txns;
+// multiple L1 transactions may therefore be in flight concurrently.
+#define BOMB_L1_PERIODIC_MIX false
+#define BOMB_L1_MIX_PERIOD 256
+// Random-ratio mix: every client thread independently generates an L1 with
+// this percentage.  Selection uses a reproducible per-thread pseudo-random
+// sequence.  When enabled, the source/periodic policy above is ignored.
+#define BOMB_L1_RANDOM_MIX false
+#define BOMB_L1_RANDOM_PCT 0.1
+
 #define BOMB_SHORT_WORKERS 3
 #define BOMB_QUERY_CACHE_SIZE 2048
 #define BOMB_FORCE_SHORT_TYPE -1
@@ -494,4 +507,3 @@ enum PPSTxnType {
 #define ENVIRONMENT_EC2 false
 
 #endif
-
