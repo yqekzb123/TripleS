@@ -133,7 +133,7 @@ UInt32 g_core_cnt = CORE_CNT;
 
 #if SDPCC_FAMILY
 UInt32 g_scheduler_thread_cnt = SCHEDULER_CNT;
-UInt32 g_thread_cnt = THREAD_CNT - g_scheduler_thread_cnt;
+UInt32 g_thread_cnt = THREAD_CNT + 1 - g_scheduler_thread_cnt;
 uint64_t the_first_scheduler_id = 0;
 // 调度器的水印 for SDPCC ------------------
 uint64_t * sids;
