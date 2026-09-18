@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB, TPCC, CHBENCHMARK, PPS, or BOMB
-#define WORKLOAD YCSB
+#define WORKLOAD BOMB
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -97,7 +97,7 @@
 
 #define PRIORITY_WORK_QUEUE false
 #define PRIORITY PRIORITY_ACTIVE
-#define MSG_SIZE_MAX 4096
+#define MSG_SIZE_MAX 4194304
 #define MSG_TIME_LIMIT 0
 
 /***********************************************/
@@ -195,6 +195,11 @@
 // reserves write versions. Reads that encounter an unfinished predecessor
 // attach a temporary intent/waiter and resume after its publish notification.
 #define SDMVCC_LAZY_READ_INTENT false
+// Publish a write version as soon as the workload has produced its final
+// value for that row.  Readers still wait for every predecessor in their
+// declared read set, while cleanup remains the transaction commit point.
+// Currently instrumented by YCSB and static BoMB write paths.
+#define SDMVCC_EARLY_VERSION_PUBLISH false
 // Per-transaction access metadata uses a compact linear vector for small
 // read/write sets.  Once the number of distinct keys exceeds this threshold,
 // SDMVCC builds a row-to-vector-index hash table for the rest of the txn.
@@ -246,7 +251,7 @@
 
 #define LONG_TXN_WORKLOAD false
 // #define LONG_TXN_SCHEDULE false
-#define SCHEDULER_CNT 3
+#define SCHEDULER_CNT 6
 
 #define OPEN_RANDOM_WAIT false
 #define RANDOM_WAIT_TIME 100000UL
@@ -260,7 +265,7 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 8388608
+#define SYNTH_TABLE_SIZE 1048576*8
 #define ZIPF_THETA 0.7
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
@@ -459,6 +464,9 @@ enum PPSTxnType {
 // 0 = static BoM (L1/S1/S2), 1 = dynamic BoM (adds S3/S4/S5 and
 // topology-plan validation).  The first Calvin milestone uses static mode.
 #define BOMB_DYNAMIC_MODE false
+#if SDMVCC_EARLY_VERSION_PUBLISH && WORKLOAD == BOMB && BOMB_DYNAMIC_MODE
+#error "Early version publication currently supports static BoMB only"
+#endif
 
 // BoMB L1 issue policy.
 // false (default; current behavior): back-to-back.  A long source issues a new
@@ -469,13 +477,13 @@ enum PPSTxnType {
 //   issues one L1 every BOMB_L1_MIX_PERIOD transactions, without waiting for
 //   completion.  Several L1s from one source may be in flight; the L1 arrival
 //   rate is set by the mix period, not by L1 runtime.
-#define BOMB_L1_PERIODIC_MIX false
-#define BOMB_L1_MIX_PERIOD 256
+#define BOMB_L1_PERIODIC_MIX true
+#define BOMB_L1_MIX_PERIOD 2048
 // Random-ratio mix: every client thread independently generates an L1 with
 // this percentage.  Selection uses a reproducible per-thread pseudo-random
 // sequence.  When enabled, the source/periodic policy above is ignored.
 #define BOMB_L1_RANDOM_MIX false
-#define BOMB_L1_RANDOM_PCT 0.1
+#define BOMB_L1_RANDOM_PCT 10
 
 // L1 acquire-locks scale ablation (upper bound).  When enabled, an L1 txn
 // registers only its write set (~100 rows) in acquire_locks(); every read row
@@ -494,8 +502,8 @@ enum PPSTxnType {
 // these values; keep them temporarily so existing experiment files compile.
 #define BOMB_LONG_TX_GLOBAL 0
 #define BOMB_LONG_TX_PER_CLIENT 1
-#define BOMB_LONG_TX_MODE BOMB_LONG_TX_GLOBAL
-#define BOMB_SHORT_WORKERS 4
+#define BOMB_LONG_TX_MODE BOMB_LONG_TX_PER_CLIENT
+#define BOMB_SHORT_WORKERS 3
 #define BOMB_QUERY_CACHE_SIZE 2048
 #define BOMB_FORCE_SHORT_TYPE -1
 #define BOMB_INJECT_STALE_PRESET false

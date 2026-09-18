@@ -311,6 +311,10 @@ RC YCSBTxnManager::run_ycsb_1(access_t acctype, row_t * row_local) {
     if (data[0] == 'a') return RCOK;
 #endif
 
+#if CC_ALG == SDMVCC && SDMVCC_EARLY_VERSION_PUBLISH
+    publish_sdmvcc_write(last_row, row_local);
+#endif
+
 #if ISOLATION_LEVEL == READ_UNCOMMITTED
     // Release lock after write
     release_last_row_lock();

@@ -59,6 +59,7 @@ SHORTNAMES = {
     "SDMVCC_LAZY_READ_INTENT":"LRI",
     "SDMVCC_INTENT_GC":"IGC",
     "SDMVCC_LONG_READ_GUARD":"LRG",
+    "SDMVCC_EARLY_VERSION_PUBLISH":"EVP",
 }
 
 fmt_title=["NODE_CNT","CC_ALG","ACCESS_PERC","TXN_WRITE_PERC","PERC_PAYMENT","MPR","MODE","MAX_TXN_IN_FLIGHT","SEND_THREAD_CNT","REM_THREAD_CNT","THREAD_CNT","SCHEDULER_CNT","TXN_WRITE_PERC","TUP_WRITE_PERC","ZIPF_THETA","LONG_QUERY_PERC","NUM_WH"]
@@ -518,6 +519,19 @@ def tpcc_wh_PCC():
     exp = [[wl,algo,wh*n,n,pp,prorate_rate,tif,thr,s_cnt,cthr,m,mn] for thr,s_cnt,cthr,tif,pp,prorate_rate,n,m,mn,wh,algo in itertools.product(total_cnt,scnt,ctcnt,load,npercpay,prorate,nnodes,mpr,mpr_neworder,num_wh,algos)]
     return fmt,exp
 
+def tpcc_sdmvcc_smoke():
+    """Two-node full-mix TPC-C smoke test for SDMVCC."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
+           "NUM_WH", "MAX_TXN_IN_FLIGHT", "MPR", "MPR_NEWORDER",
+           "SDMVCC_EARLY_VERSION_PUBLISH", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["TPCC", "SDMVCC", 2, 2,
+            8, 2, 3,
+            16, 10000, 0.15, 0.10,
+            "false", "0*BILLION", "10*BILLION"]]
+    return fmt, exp
+
+
 def tpcc_wh_OCC():
     wl = 'TPCC'
     nnodes = [2]
@@ -728,6 +742,69 @@ def bomb_random_static():
             row[pct_idx] = pct
             exp.append(row)
     return fmt, exp
+
+
+def bomb_sdmvcc_early_publish_ablation():
+    """Static BoMB: transaction-end publication versus per-row production."""
+    fmt, base = _bomb_formal("false", ["SDMVCC"])
+    fmt.append("SDMVCC_EARLY_VERSION_PUBLISH")
+    baseline = list(base[0]) + ["false"]
+    early = list(base[0]) + ["true"]
+    variants = [baseline, early]
+    rotation = int(os.environ.get("SDMVCC_EARLY_PUBLISH_ORDER", "0")) % 2
+    return fmt, variants[rotation:] + variants[:rotation]
+
+
+def ycsb_sdmvcc_early_publish_ablation():
+    """YCSB: transaction-end publication versus per-row production."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
+           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
+           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
+           "SDMVCC_EARLY_VERSION_PUBLISH", "WARMUP_TIMER", "DONE_TIMER"]
+    base = ["YCSB", "SDMVCC", 2, 2,
+            16, 4, 3,
+            10000, 8 * 1024 * 1024, 10,
+            0.7, 0.2, 1.0, 0.2]
+    variants = [base + ["false", "30*BILLION", "30*BILLION"],
+                base + ["true", "30*BILLION", "30*BILLION"]]
+    rotation = int(os.environ.get("SDMVCC_EARLY_PUBLISH_ORDER", "0")) % 2
+    return fmt, variants[rotation:] + variants[:rotation]
+
+
+def ycsb_sdmvcc_scheduler_sweep():
+    """Two-node YCSB sweep for the SDMVCC scheduler count."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
+           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
+           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
+           "ARIA_BATCH_SIZE", "OPEN_DISTRIBUTED_WATERMARK",
+           "SDMVCC_LAZY_READ_INTENT", "SDMVCC_INTENT_GC",
+           "SDMVCC_LONG_READ_GUARD", "SDMVCC_UNSAFE_L1_NO_INTENT",
+           "SDMVCC_EARLY_VERSION_PUBLISH", "WARMUP_TIMER", "DONE_TIMER"]
+    return fmt, [["YCSB", "SDMVCC", 2, 2,
+                  16, 4, schedulers,
+                  10000, 8 * 1024 * 1024, 10,
+                  0.7, 0.2, 1.0, 0.2,
+                  3000, "false", "false", "true", "false", "false",
+                  "false", "30*BILLION", "30*BILLION"]
+                 for schedulers in range(2, 7)]
+
+
+def bomb_sdmvcc_scheduler_sweep():
+    """Two-node static BoMB sweep for the SDMVCC scheduler count."""
+    fmt, base = _bomb_formal("false", ["SDMVCC"])
+    insert_at = fmt.index("MAX_TXN_IN_FLIGHT")
+    fmt.insert(insert_at, "SCHEDULER_CNT")
+    early_at = fmt.index("WARMUP_TIMER")
+    fmt.insert(early_at, "SDMVCC_EARLY_VERSION_PUBLISH")
+    variants = []
+    for schedulers in range(2, 7):
+        row = list(base[0])
+        row.insert(insert_at, schedulers)
+        row.insert(early_at, "false")
+        variants.append(row)
+    return fmt, variants
 
 
 def ycsb_idle_default():
@@ -1496,6 +1573,10 @@ experiment_map = {
     'bomb_static': bomb_static,
     'bomb_dynamic': bomb_dynamic,
     'bomb_random_static': bomb_random_static,
+    'bomb_sdmvcc_early_publish_ablation': bomb_sdmvcc_early_publish_ablation,
+    'ycsb_sdmvcc_early_publish_ablation': ycsb_sdmvcc_early_publish_ablation,
+    'ycsb_sdmvcc_scheduler_sweep': ycsb_sdmvcc_scheduler_sweep,
+    'bomb_sdmvcc_scheduler_sweep': bomb_sdmvcc_scheduler_sweep,
     'ycsb_idle_default': ycsb_idle_default,
     'bomb_sdmvcc_htap8_mix_fwd': bomb_sdmvcc_htap8_mix_fwd,
     'bomb_sdmvcc_htap8_mix_rev': bomb_sdmvcc_htap8_mix_rev,
@@ -1551,6 +1632,7 @@ experiment_map = {
 
     # TPCC_WH
     'tpcc_wh_PCC': tpcc_wh_PCC,
+	'tpcc_sdmvcc_smoke': tpcc_sdmvcc_smoke,
     'tpcc_wh_OCC': tpcc_wh_OCC,
     'tpcc_aria_batch': tpcc_aria_batch, # Aria的TPCC WH
 
@@ -1649,6 +1731,7 @@ configs = {
     "OPEN_DISTRIBUTED_WATERMARK":'false',
     "SDPCC_LONG_HOLE_MODE":"SDPCC_LONG_HOLE_DISABLED",
     "SDMVCC_LONG_READ_GUARD":"false",
+    "SDMVCC_EARLY_VERSION_PUBLISH":"false",
     "SDMVCC_UNSAFE_L1_NO_INTENT":"false",
     "OPEN_RANDOM_WAIT":'false',
 #YCSB

@@ -302,6 +302,29 @@ RC Row_sdmvcc::read(TxnManager *txn, uint64_t snapshot, row_t *local_row) {
     return RCOK;
 }
 
+// TPC-C has rows whose concrete keys are discovered only during execution.
+// SDPCC reads those rows directly at that point; use the newest completed
+// SDMVCC version to preserve the same workload behavior without adding a
+// second scheduling round.
+RC Row_sdmvcc::read_latest(row_t *local_row) {
+    pthread_mutex_lock(&_latch);
+    auto version = _versions.end();
+    for (auto it = _versions.begin(); it != _versions.end(); ++it)
+        if (it->ready) version = it;
+    if (version == _versions.end()) {
+        pthread_mutex_unlock(&_latch);
+        return Abort;
+    }
+    if (version->base_backed) {
+        memcpy(local_row->get_data(), _row->get_data(), _row->get_tuple_size());
+    } else {
+        assert(version->data.size() == _row->get_tuple_size());
+        memcpy(local_row->get_data(), version->data.data(), _row->get_tuple_size());
+    }
+    pthread_mutex_unlock(&_latch);
+    return RCOK;
+}
+
 RC Row_sdmvcc::read_value(TxnManager *txn, uint64_t snapshot, uint32_t column, void *value,
                           uint32_t size) {
     pthread_mutex_lock(&_latch);
@@ -360,10 +383,19 @@ bool Row_sdmvcc::visible(uint64_t snapshot) {
 
 void Row_sdmvcc::set_creation_sid(uint64_t sid) {
     pthread_mutex_lock(&_latch);
-    assert(_versions.size() == 1);
-    Version &initial = _versions.front();
-    assert(initial.sid == 0 && initial.ready && initial.base_backed);
-    initial.sid = sid;
+    auto created = find_version_locked(sid);
+    if (created == _versions.end()) {
+        assert(_versions.size() == 1);
+        Version &initial = _versions.front();
+        assert(initial.sid == 0 && initial.ready && initial.base_backed);
+        initial.sid = sid;
+    } else if (_versions.front().sid == 0) {
+        // SDMVCC reserves the transaction's write version before TPC-C adds
+        // the new row to its index. Drop the temporary base version; the
+        // reserved version is staged and published by finish_sdmvcc().
+        assert(_versions.front().ready && _versions.front().base_backed);
+        _versions.erase(_versions.begin());
+    }
     pthread_mutex_unlock(&_latch);
 }
 
@@ -392,7 +424,7 @@ void Row_sdmvcc::notify_ready(TxnManager *txn, uint64_t thd_id) {
     }
 }
 
-void Row_sdmvcc::publish_write(uint64_t sid, uint64_t thd_id) {
+void Row_sdmvcc::publish_write(uint64_t sid, uint64_t thd_id, bool early) {
     std::vector<TxnManager *> wake;
     pthread_mutex_lock(&_latch);
     auto version = find_version_locked(sid);
@@ -400,7 +432,11 @@ void Row_sdmvcc::publish_write(uint64_t sid, uint64_t thd_id) {
     assert(!version->data.empty());
     version->ready = true;
     wake.swap(version->waiters);
-    gc_locked(minSid);
+    // Early visibility is intentionally decoupled from reclamation.  The
+    // matching intent release performs the safe GC pass after the transaction
+    // has finished consuming this row.
+    if (!early)
+        gc_locked(minSid);
     pthread_mutex_unlock(&_latch);
     for (TxnManager *txn : wake) notify_ready(txn, thd_id);
 }
@@ -604,11 +640,15 @@ void Row_sdmvcc::print_stats(FILE *outf) {
             ",sdmvcc_intents_registered=%lu,sdmvcc_intents_released=%lu"
             ",sdmvcc_intent_waits=%lu,sdmvcc_notifications=%lu"
             ",sdmvcc_versions_created=%lu,sdmvcc_versions_reclaimed=%lu"
+            ",sdmvcc_early_publish_enabled=%d"
+            ",sdmvcc_early_versions_published=%lu"
             ",sdmvcc_version_bytes=%lu,sdmvcc_intent_gc=%d"
             ",sdmvcc_gc_calls=%lu,sdmvcc_gc_disabled_calls=%lu",
             g_intents_registered.load(), g_intents_released.load(),
             g_intent_waits.load(), g_intent_notifications.load(),
             g_versions_created.load(), g_versions_reclaimed.load(),
+            SDMVCC_EARLY_VERSION_PUBLISH ? 1 : 0,
+            SDMVCC_EARLY_VERSION_PUBLISH ? g_versions_created.load() : 0,
             g_version_bytes.load(), SDMVCC_INTENT_GC ? 1 : 0,
             g_gc_calls.load(), g_gc_disabled_calls.load());
     fprintf(outf,

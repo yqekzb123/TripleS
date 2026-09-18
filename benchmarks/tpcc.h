@@ -184,6 +184,7 @@ private:
   uint64_t next_item_id;
 
   row_t * district_row;
+  row_t * delivery_new_order_row;
 
 void next_tpcc_state();
 RC run_txn_state();

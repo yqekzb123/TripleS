@@ -67,12 +67,13 @@ public:
     RC register_access(access_t type, TxnManager *txn);
     bool arm_read(TxnManager *txn, uint64_t snapshot);
     RC read(TxnManager *txn, uint64_t snapshot, row_t *local_row);
+    RC read_latest(row_t *local_row);
     RC read_value(TxnManager *txn, uint64_t snapshot, uint32_t column, void *value,
                   uint32_t size);
     bool visible(uint64_t snapshot);
     void set_creation_sid(uint64_t sid);
     void stage_write(uint64_t sid, row_t *local_row);
-    void publish_write(uint64_t sid, uint64_t thd_id);
+    void publish_write(uint64_t sid, uint64_t thd_id, bool early = false);
     void abort_write(uint64_t sid, uint64_t thd_id);
     void release_intent(uint64_t snapshot, uint64_t watermark);
     void long_read_guard_released(uint64_t watermark);

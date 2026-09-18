@@ -72,6 +72,9 @@ keywords += ['sdmvcc_long_guard_enabled', 'sdmvcc_long_guards_registered',
              'sdmvcc_long_guard_peak_metadata_bytes']
 keywords_cal_type += ['avg', 'sum', 'sum', 'sum', 'avg', 'sum', 'sum',
                       'sum', 'sum']
+keywords += ['sdmvcc_early_publish_enabled',
+             'sdmvcc_early_versions_published']
+keywords_cal_type += ['avg', 'sum']
 # Idle-time metrics used to compare phased protocols with SDMVCC.  For Aria,
 # *_phase_idle_avg_time is the mean tail wait of one worker at one phase
 # barrier.  SDMVCC has no batch barrier, so its comparable scheduler metric is

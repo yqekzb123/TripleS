@@ -65,6 +65,7 @@ void TPCCTxnManager::reset() {
 	}
 	next_item_id = 0;
 	district_row = NULL;
+	delivery_new_order_row = NULL;
 	items = NULL;
 	leaf = NULL;
 	sum_amount = 0;
@@ -240,7 +241,7 @@ RC TPCCTxnManager::acquire_locks() {
 				index = _wl->i_warehouse;
 				item = index_read(index, w_id, part_id_w);
 				row_t * row = ((row_t *)item->location);
-				rc2 = get_lock(row,RD);
+				rc2 = get_lock(row, RD);
 				if (rc2 != RCOK) rc = rc2;
 			// Cust
 				index = _wl->i_customer_id;
@@ -350,6 +351,13 @@ RC TPCCTxnManager::acquire_locks() {
 				for (uint32_t i = 0; i < leaf->num_keys - 1; i++) {
 					item = (itemid_t *)leaf->pointers[i];
 					if (!item->valid) continue;
+				#if CC_ALG == SDMVCC
+					// Claim the queue entry at scheduling time. This both keeps
+					// concurrent Delivery transactions distinct and lets execution
+					// avoid mutating the B-tree while schedulers traverse it.
+					if (!__sync_bool_compare_and_swap(&item->valid, true, false))
+						continue;
+				#endif
 					temp = (row_t *)item->location;
 #if CC_ALG == CAVLIN
 					if (temp->manager->has_write_lock()) continue;
@@ -359,6 +367,7 @@ RC TPCCTxnManager::acquire_locks() {
 				}
 				leaf = leaf->next;
 			}
+			delivery_new_order_row = row;
 			rc2 = get_lock(row, WR);
 			if (rc2 != RCOK) rc = rc2;
 			row->get_value(NO_O_ID, tpcc_query->o_id);
@@ -381,11 +390,11 @@ RC TPCCTxnManager::acquire_locks() {
 			index = _wl->i_district;
 			item = index_read(index, key, part_id_w);
 			row = (row_t *) item->location;
-			rc2 = get_lock(row, WR);
+			rc2 = get_lock(row, RD);
 			if (rc2 != RCOK) rc = rc2;
 #if TXN_TYPE == TPCC_ALL
 			_wl->i_orderline->leaf_row_access(UINT64_MAX, LF_LAST, wd_to_part(w_id, d_id), this, leaf, row);
-			rc2 = get_lock(row, WR);
+			rc2 = get_lock(row, RD);
 			if (rc2 != RCOK) rc = rc2;
 #endif
 			break;
@@ -1446,6 +1455,16 @@ inline RC TPCCTxnManager::run_order_status_0(uint64_t w_id, uint64_t d_id, bool 
 		uint64_t key = custNPKey(c_last, d_id, w_id);
 		INDEX * index = _wl->i_customer_last;
 		item = index_read(index, key, wh_to_part(w_id));
+		assert(item != NULL);
+		int cnt = 0;
+		itemid_t *it = item;
+		itemid_t *mid = item;
+		while (it != NULL) {
+			cnt++;
+			it = it->next;
+			if (cnt % 2 == 0) mid = mid->next;
+		}
+		item = mid;
 	} else {
 		uint64_t key = custKey(c_id, d_id, w_id);
 		INDEX * index = _wl->i_customer_id;
@@ -1461,10 +1480,10 @@ inline RC TPCCTxnManager::run_order_status_0(uint64_t w_id, uint64_t d_id, bool 
 inline RC TPCCTxnManager::run_order_status_1(uint64_t w_id, uint64_t d_id, uint64_t c_id, uint64_t o_id, row_t*& r_row) {
 	uint64_t starttime = get_sys_clock();
 	r_row->get_value(C_ID, c_id);
-	uint64_t key = custKey(c_id, d_id, w_id);
+	uint64_t key = orderPrimaryKey(w_id, d_id, o_id);
 	itemid_t * item;
-	INDEX * index = _wl->i_order_cust;
-	item = index_read(index, key, wh_to_part(w_id));
+	_wl->i_order->index_read(key, item, wd_to_part(w_id, d_id),
+		get_thd_id(), this);
 	assert(item != NULL);
 	row_t * row = ((row_t *)item->location);
 	RC rc = get_row(row, RD, r_row);
@@ -1498,12 +1517,9 @@ inline RC TPCCTxnManager::run_delivery_0(uint64_t w_id, uint64_t d_id, uint64_t 
 	_wl->i_neworder->leaf_row_access(0, LF_FIRST, wd_to_part(w_id, d_id), this, leaf, row);
 #endif
 	RC rc = get_row(row, WR, l_row);
-	itemid_t * item;
-	for (uint32_t i = 0; i < leaf->num_keys - 1; i++) {
-		item = (itemid_t *)leaf->pointers[i];
-		if(item->valid) break;
-	}
-	l_row = (row_t *)item->location;
+	if (rc != RCOK) return rc;
+	assert(delivery_new_order_row != NULL);
+	l_row = delivery_new_order_row;
 	INC_STATS(get_thd_id(),trans_benchmark_compute_time,get_sys_clock() - starttime);
 	return rc;
 }
@@ -1646,6 +1662,7 @@ inline RC TPCCTxnManager::run_stock_level_4(uint64_t w_id, uint64_t &s_i_id, row
 	row_t * row = ((row_t *)item->location);
 	for (uint64_t i = 0; i < txn->accesses.size(); i++) {
 		if (txn->accesses[i]->orig_row == row) {
+			r_local = txn->accesses[i]->data;
 			return RCOK;
 		}
 	}
@@ -1692,7 +1709,6 @@ RC TPCCTxnManager::run_calvin_txn() {
 				DEBUG("(%ld,%ld) local reads\n",txn->txn_id,txn->batch_id);
 				rc = run_tpcc_phase2();
 				//release_read_locks(tpcc_query);
-
 				this->phase = CALVIN_SERVE_RD;
 				break;
 			case CALVIN_SERVE_RD:
@@ -2143,10 +2159,13 @@ RC TPCCTxnManager::run_tpcc_phase2() {
 		case TPCC_NEW_ORDER :
 			if(w_loc) {
 				rc = new_order_0( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+				if (rc != RCOK) return rc;
 				rc = new_order_1( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
 				rc = new_order_2( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+				if (rc != RCOK) return rc;
 				rc = new_order_3( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
 				rc = new_order_4( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
+				if (rc != RCOK) return rc;
 				tpcc_query->o_id = *(int64_t *) row->get_value(D_NEXT_O_ID);
 				district_row = row;
 				//rc = new_order_5( w_id, d_id, c_id, remote, ol_cnt, o_entry_d, &tpcc_query->o_id, row);
@@ -2162,6 +2181,7 @@ RC TPCCTxnManager::run_tpcc_phase2() {
 				bool ol_supply_w_loc = GET_NODE_ID(part_id_ol_supply_w) == g_node_id;
 				if(ol_supply_w_loc) {
 					rc = new_order_6(ol_i_id, row);
+					if (rc != RCOK) return rc;
 					rc = new_order_7(ol_i_id, row);
 				}
 			}
@@ -2169,11 +2189,14 @@ RC TPCCTxnManager::run_tpcc_phase2() {
 		case TPCC_ORDER_STATUS:
 			assert(w_loc);
 			rc = run_order_status_0(w_id, d_id, by_last_name, c_id, c_last, row);
+			if (rc != RCOK) return rc;
 			rc = run_order_status_1(w_id, d_id, c_id, tpcc_query->o_id, row);
+			if (rc != RCOK) return rc;
 			rc = run_order_status_2(w_id, d_id, tpcc_query->o_id, items, row);
 			while (items != NULL) {
 				row = (row_t *)items->location;
 				rc = run_order_status_3(row);
+				if (rc != RCOK) return rc;
 				items = items->next;
 			}
 			break;
@@ -2182,16 +2205,22 @@ RC TPCCTxnManager::run_tpcc_phase2() {
 		case TPCC_STOCK_LEVEL:
 			bt_node * leaf;
 			rc = run_stock_level_0(w_id, d_id, row);
+			if (rc != RCOK) return rc;
 			rc = run_stock_level_1(tpcc_query->o_id, row);
 			rc = run_stock_level_2(w_id, d_id, tpcc_query->o_id, leaf, row);
-			assert(*(uint64_t*)((row_t*)(((itemid_t*)(leaf->pointers[leaf->num_keys - 1]))->location))->get_value(OL_O_ID) == tpcc_query->o_id);
-			leaf_traversal_cnt = leaf->num_keys;
+			if (rc != RCOK) return rc;
+			assert(leaf != NULL && leaf->num_keys > 1);
+			// The final pointer slot in a B-tree leaf is metadata, not an
+			// OrderLine item. Start at the final data slot.
+			leaf_traversal_cnt = leaf->num_keys - 1;
 			for (uint64_t i = 0; i < 20; i++) {
 				itemid_t * item = (itemid_t *)leaf->pointers[leaf_traversal_cnt-1];
 				row = (row_t *)item->location;
 				rc = run_stock_level_3(w_id, d_id, tpcc_query->o_id, row);
+				if (rc != RCOK) return rc;
 				uint64_t s_i_id;
 				rc = run_stock_level_4(w_id, s_i_id, row);
+				if (rc != RCOK) return rc;
 				rc = run_stock_level_5(w_id, s_i_id, tpcc_query->threshold, s_i_ids, row);
 				leaf_traversal_cnt--;
 				if (leaf_traversal_cnt == 0) {

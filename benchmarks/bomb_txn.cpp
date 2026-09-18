@@ -129,6 +129,9 @@ RC BombTxnManager::access_request(BombRequest *request, bool write_phase) {
     default:
       assert(false);
   }
+#if CC_ALG == SDMVCC && SDMVCC_EARLY_VERSION_PUBLISH
+  publish_sdmvcc_write(static_cast<row_t *>(item->location), local);
+#endif
   return RCOK;
 }
 

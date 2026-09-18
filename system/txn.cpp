@@ -1191,7 +1191,13 @@ void TxnManager::insert_row(row_t * row, table_t * table) {
 #endif
 
 RC TxnManager::delete_row(row_t * row, index_btree * index) {
-#if CALVIN_FAMILY
+#if CC_ALG == SDMVCC
+	// TPC-C Delivery atomically invalidates its NewOrder item while the
+	// deterministic scheduler chooses it. Avoid a concurrent structural
+	// B-tree mutation while scheduler threads are traversing the same leaf.
+	(void)row;
+	(void)index;
+#elif CALVIN_FAMILY
 	index->index_remove(row->get_primary_key(), row->get_part_id());
 #else
 	txn->delete_rows.add(std::pair<row_t*, index_btree*>(row, index));
@@ -1354,7 +1360,7 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 	SDMVCCAccessRegistration entry = {
 		row, type, false, 1, false,
 		!SDMVCC_LAZY_READ_INTENT && !uses_sdmvcc_long_read_guard() &&
-		!uses_sdmvcc_unsafe_l1_no_intent()};
+		!uses_sdmvcc_unsafe_l1_no_intent(), false, false};
 	sdmvcc_accesses.push_back(entry);
 	if (!sdmvcc_access_index.empty())
 		sdmvcc_access_index[row] = sdmvcc_accesses.size() - 1;
@@ -1380,11 +1386,33 @@ void TxnManager::consume_sdmvcc_access(row_t *row) {
 	assert(existing != sdmvcc_accesses.size());
 #endif
 	auto &entry = sdmvcc_accesses[existing];
-	assert(entry.remaining_uses > 0);
+	// TPC-C may revisit a row discovered through a range after consuming its
+	// declared occurrence. Snapshot pinning still protects that version.
+	if (entry.remaining_uses == 0) return;
 	if (--entry.remaining_uses == 0 && entry.intent_registered) {
 		entry.row->manager->release_intent(sdmvcc_snapshot(), minSid);
 		entry.intent_released = true;
 	}
+}
+
+// Workloads call this only after the local row contains its final value for
+// the current operation. Duplicate accesses are published after the last
+// declared use; cleanup publishes any row for which no early hook fired.
+void TxnManager::publish_sdmvcc_write(row_t *row, row_t *local_row) {
+#if SDMVCC_EARLY_VERSION_PUBLISH
+	const size_t existing = find_sdmvcc_access(row);
+	assert(existing != sdmvcc_accesses.size());
+	auto &entry = sdmvcc_accesses[existing];
+	assert(entry.type == WR);
+	if (entry.write_published || entry.remaining_uses != 0) return;
+	row->manager->stage_write(sdmvcc_snapshot(), local_row);
+	entry.write_staged = true;
+	row->manager->publish_write(sdmvcc_snapshot(), get_thd_id(), true);
+	entry.write_published = true;
+#else
+	(void)row;
+	(void)local_row;
+#endif
 }
 
 void TxnManager::arm_sdmvcc_intents() {
@@ -1401,6 +1429,17 @@ void TxnManager::arm_sdmvcc_intents() {
 		entry.armed = true;
 	}
 #endif
+}
+
+// SDPCC deliberately leaves TPC-C's execution-discovered reads outside its
+// scheduled lock set. Match that behavior here. A late write still needs a
+// private SDMVCC version, but does not start a second admission/wait cycle.
+bool TxnManager::ensure_sdmvcc_execution_access(row_t *row, access_t type) {
+	if (find_sdmvcc_access(row) != sdmvcc_accesses.size()) return false;
+	if (type == RD || type == SCAN) return true;
+	const RC rc = row->get_lock(type, this);
+	assert(rc == RCOK);
+	return true;
 }
 
 // Called with the corresponding Row_sdmvcc latch held. The transaction is
@@ -1436,19 +1475,46 @@ void TxnManager::finish_sdmvcc(RC rc) {
 		sdmvcc_long_read_guard = nullptr;
 	}
 	if (rc == RCOK) {
-		// Copy all local writes into their private versions first. Publishing is
-		// a second pass so no reader observes a partially installed local txn.
+		// Copy writes that were not already produced by an early-publication
+		// hook. Baseline mode therefore retains the original two-pass commit.
 		for (uint64_t i = 0; i < txn->accesses.size(); ++i) {
 			Access *access = txn->accesses[i];
 			if (access->type == WR) {
-				access->orig_row->manager->stage_write(sid, access->data);
+				const size_t idx = find_sdmvcc_access(access->orig_row);
+				assert(idx != sdmvcc_accesses.size());
+				if (!sdmvcc_accesses[idx].write_published) {
+					access->orig_row->manager->stage_write(sid, access->data);
+					sdmvcc_accesses[idx].write_staged = true;
+				}
 			}
 		}
-		for (auto &entry : sdmvcc_accesses) {
-			if (entry.type == WR) entry.row->manager->publish_write(sid, get_thd_id());
+#if WORKLOAD == TPCC
+		// TPC-C declares B-tree leaf rows before the data rows protected by
+		// those leaves. Publish in reverse registration order so a range
+		// reader released by a leaf can observe every preceding data write.
+		for (auto it = sdmvcc_accesses.rbegin(); it != sdmvcc_accesses.rend(); ++it) {
+			if (it->type == WR && !it->write_published) {
+				if (it->write_staged)
+					it->row->manager->publish_write(sid, get_thd_id());
+				else
+					it->row->manager->abort_write(sid, get_thd_id());
+			}
 		}
+#else
+		for (auto &entry : sdmvcc_accesses) {
+			if (entry.type == WR && !entry.write_published) {
+				if (entry.write_staged)
+					entry.row->manager->publish_write(sid, get_thd_id());
+				else
+					entry.row->manager->abort_write(sid, get_thd_id());
+			}
+		}
+#endif
 	} else {
 		for (auto &entry : sdmvcc_accesses) {
+			// Early publication is enabled only for deterministic write phases
+			// that cannot subsequently abort.
+			assert(!entry.write_published);
 			if (entry.type == WR) entry.row->manager->abort_write(sid, get_thd_id());
 		}
 	}

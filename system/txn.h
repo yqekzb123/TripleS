@@ -236,6 +236,8 @@ public:
 		uint32_t remaining_uses;
 		bool intent_released;
 		bool intent_registered;
+		bool write_staged;
+		bool write_published;
 	};
 	std::vector<SDMVCCAccessRegistration> sdmvcc_accesses;
 	std::unordered_map<row_t *, size_t> sdmvcc_access_index;
@@ -247,8 +249,10 @@ public:
 	// 0: duplicate, 1: new per-key intent, 2: RD-to-WR upgrade.
 	int register_sdmvcc_access(row_t *row, access_t type);
 	void arm_sdmvcc_intents();
+	bool ensure_sdmvcc_execution_access(row_t *row, access_t type);
 	bool arm_sdmvcc_lazy_access(row_t *row, bool &new_intent);
 	void consume_sdmvcc_access(row_t *row);
+	void publish_sdmvcc_write(row_t *row, row_t *local_row);
 	void finish_sdmvcc(RC rc);
 	void pin_sdmvcc_snapshot();
 	bool should_use_sdmvcc_long_read_guard() const;
