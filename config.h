@@ -21,7 +21,7 @@
 #define CORE_CNT 2
 // PART_CNT should be at least NODE_CNT
 #define PART_CNT NODE_CNT
-#define CLIENT_NODE_CNT NODE_CNT
+#define CLIENT_NODE_CNT 2
 #define CLIENT_THREAD_CNT 4
 #define CLIENT_REM_THREAD_CNT 2
 #define CLIENT_SEND_THREAD_CNT 2
@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB, TPCC, CHBENCHMARK, PPS, or BOMB
-#define WORKLOAD YCSB
+#define WORKLOAD BOMB
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -97,7 +97,7 @@
 
 #define PRIORITY_WORK_QUEUE false
 #define PRIORITY PRIORITY_ACTIVE
-#define MSG_SIZE_MAX 4096
+#define MSG_SIZE_MAX 4194304
 #define MSG_TIME_LIMIT 0
 
 /***********************************************/
@@ -190,11 +190,11 @@
 // Safe SDMVCC GC: reclaim an old version only after the watermark passes its
 // successor and no per-key read intent (or pinned scan) can still select it.
 // Disable only for short correctness-preserving GC ablation runs.
-#define SDMVCC_INTENT_GC true
+#define SDMVCC_INTENT_GC false
 // Experimental execution-time intent mode. When enabled, scheduling only
 // reserves write versions. Reads that encounter an unfinished predecessor
 // attach a temporary intent/waiter and resume after its publish notification.
-#define SDMVCC_LAZY_READ_INTENT false
+#define SDMVCC_LAZY_READ_INTENT true
 // Publish a write version as soon as the workload has produced its final
 // value for that row.  Readers still wait for every predecessor in their
 // declared read set, while cleanup remains the transaction commit point.
@@ -259,7 +259,7 @@
 
 #define LONG_TXN_WORKLOAD false
 // #define LONG_TXN_SCHEDULE false
-#define SCHEDULER_CNT 3
+#define SCHEDULER_CNT 5
 
 #define OPEN_RANDOM_WAIT false
 #define RANDOM_WAIT_TIME 100000UL
@@ -273,9 +273,9 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 16777216
-#define ZIPF_THETA 1.5
-#define TXN_WRITE_PERC 1
+#define SYNTH_TABLE_SIZE 1048576*8
+#define ZIPF_THETA 0.7
+#define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
 #define SCAN_LEN          20
@@ -511,7 +511,7 @@ enum PPSTxnType {
 #define BOMB_LONG_TX_GLOBAL 0
 #define BOMB_LONG_TX_PER_CLIENT 1
 #define BOMB_LONG_TX_MODE BOMB_LONG_TX_PER_CLIENT
-#define BOMB_SHORT_WORKERS 4
+#define BOMB_SHORT_WORKERS 3
 #define BOMB_QUERY_CACHE_SIZE 2048
 #define BOMB_FORCE_SHORT_TYPE -1
 #define BOMB_INJECT_STALE_PRESET false
@@ -596,8 +596,8 @@ enum PPSTxnType {
 #define PROG_TIMER 10 * BILLION // in s
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
-#define DONE_TIMER 1 * 20 * BILLION // ~1 minutes
-#define WARMUP_TIMER 1 * 20 * BILLION // ~1 minutes
+#define DONE_TIMER 20*BILLION
+#define WARMUP_TIMER 20*BILLION
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define ONE_MILLISECOND 1 * MILLION

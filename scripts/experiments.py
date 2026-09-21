@@ -195,6 +195,20 @@ def ycsb_sdmvcc_vector_lookup():
                                 tup_write_perc, load, nnodes, skew, algos)]
     return fmt, exp
 
+def ycsb_skew_cc_comparison():
+    """Two-node YCSB skew comparison for ARIA, CALVIN and SDMVCC."""
+    algos = ["ARIA", "CALVIN", "SDMVCC"]
+    skew = [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5]
+    fmt = ["WORKLOAD", "CC_ALG", "ARIA_BATCH_SIZE", "ZIPF_THETA",
+           "NODE_CNT", "SYNTH_TABLE_SIZE", "TUP_WRITE_PERC",
+           "TXN_WRITE_PERC", "MAX_TXN_IN_FLIGHT", "THREAD_CNT",
+           "SCHEDULER_CNT"]
+    exp = [["YCSB", algo, 3000, sk, 2, 1048576 * 8 * 2, 0.2, 1,
+            10000, 15, 3]
+           for algo in algos for sk in skew]
+    return fmt, exp
+
+
 def ycsb_skew_OCC():
     wl = 'YCSB'
     nnodes = [2]
@@ -893,7 +907,8 @@ def ycsb_sdmvcc_scheduler_sweep():
                   0.7, 0.2, 1.0, 0.2,
                   3000, "false", "false", "true", "false", "false",
                   "false", "30*BILLION", "30*BILLION"]
-                 for schedulers in range(1,15)]
+                 for schedulers in range(5,7)]
+                #  for schedulers in range(1,15)]
 
 
 def bomb_sdmvcc_scheduler_sweep():
@@ -976,50 +991,11 @@ def bomb_sdmvcc_lazy_intent_ablation():
            "BOMB_TARGET_PRODUCTS", "BOMB_LONG_TX_MODE",
            "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
            "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", lazy, "false", 2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304,
-            "30*BILLION", "30*BILLION"]
+    exp = [["BOMB", "SDMVCC", lazy, "false", 2, 2, 15, 4, 10000,
+            8, 72000, 198000, 75000, 100, "BOMB_LONG_TX_PER_CLIENT", 1, 3, 4194304,
+            "20*BILLION", "20*BILLION"]
         #    for lazy in ["false"]]
            for lazy in ["false", "true"]]
-    return fmt, exp
-
-def bomb_sdmvcc_long_read_guard_ablation():
-    """Scheme A: only BoMB L1 uses a transaction-level LongReadGuard.
-    All short transactions keep eager per-key intents and intent-driven GC."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", guard,
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for guard in ["false", "true"]]
-    return fmt, exp
-
-def bomb_sdmvcc_bypass_smoke():
-    """Two-node static BoMB comparison for SDMVCC long-transaction bypass."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
-           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
-           "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "SDPCC_LONG_HOLE_MODE",
-           "SDPCC_LONG_HOLE_ADAPTIVE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", 2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304, mode, "false",
-            "20*BILLION", "20*BILLION"]
-           for mode in ["SDPCC_LONG_HOLE_DISABLED",
-                        # "SDPCC_LONG_HOLE_EXACT",
-                        "SDPCC_LONG_HOLE_BLOOM"]]
     return fmt, exp
 
 def bomb_sdmvcc_dynamic_smoke():
@@ -1034,174 +1010,10 @@ def bomb_sdmvcc_dynamic_smoke():
            "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
     exp = [["BOMB", "SDMVCC", 2, 2, 16, 4, 10000,
             8, 72000, 198000, 75000, 100, "true",
-            "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
+            "BOMB_LONG_TX_PER_CLIENT", 1, 3, 1048576,
             "20*BILLION", "20*BILLION"]]
     return fmt, exp
 
-def bomb_sdmvcc_long_read_guard_dynamic_ablation():
-    """Dynamic BoMB counterpart of the LongReadGuard ablation.
-    S3/S4/S5 remain eager-intent transactions; only L1 uses the guard."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", guard,
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "true",
-            "BOMB_LONG_TX_GLOBAL", 1, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for guard in ["false", "true"]]
-    return fmt, exp
-
-def bomb_sdmvcc_long_tx_interference_ceiling():
-    """Measure the maximum TP throughput recoverable by a long-txn
-    optimization: identical eager-intent + GC runs with zero versus one L1
-    source. Keep the short-worker count fixed so offered TP load is equal."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_GLOBAL", long_sources, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for long_sources in [1, 0]]
-    return fmt, exp
-
-def bomb_sdmvcc_ltc_perclient4_fwd():
-    """Long-tx interference ceiling, PER_CLIENT mode with BLS=4 (half the client
-    threads are long sources), forward order (with-L1 first, then without-L1)."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for long_sources in [4, 0]]
-    return fmt, exp
-
-def bomb_sdmvcc_ltc_perclient4_rev():
-    """Long-tx interference ceiling, PER_CLIENT mode with BLS=4, reverse order
-    (without-L1 first, then with-L1)."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for long_sources in [0, 4]]
-    return fmt, exp
-
-def bomb_sdmvcc_ltc_global_fwd():
-    """Long-tx interference ceiling, GLOBAL mode, forward order (with-L1 first, then without-L1). Identical short load; measures max TP recoverable by a perfect long-tx optimization."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_GLOBAL", long_sources, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for long_sources in [1, 0]]
-    return fmt, exp
-
-def bomb_sdmvcc_ltc_global_rev():
-    """Long-tx interference ceiling, GLOBAL mode, reverse order (without-L1 first, then with-L1). Controls for order/temperature drift."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_GLOBAL", long_sources, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for long_sources in [0, 1]]
-    return fmt, exp
-
-def bomb_sdmvcc_ltc_perclient_fwd():
-    """Long-tx interference ceiling, PER_CLIENT mode, forward order (with-L1 first, then without-L1)."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for long_sources in [1, 0]]
-    return fmt, exp
-
-def bomb_sdmvcc_ltc_perclient_rev():
-    """Long-tx interference ceiling, PER_CLIENT mode, reverse order (without-L1 first, then with-L1)."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for long_sources in [0, 1]]
-    return fmt, exp
 
 def bomb_aria_dynamic_hif():
     """Control for bomb_sdmvcc_dynamic_smoke: same dynamic-mode config but
@@ -1280,402 +1092,94 @@ def bomb_aria_dynamic_smoke():
     return fmt, exp
 
 
-def bomb_sdmvcc_ltc_perclient4_guard_fwd():
-    """PER_CLIENT BLS=4 with SDMVCC_LONG_READ_GUARD=true, forward (L1 first)."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "true",
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for long_sources in [4, 0]]
-    return fmt, exp
-
-def bomb_sdmvcc_ltc_perclient4_guard_rev():
-    """PER_CLIENT BLS=4 with SDMVCC_LONG_READ_GUARD=true, reverse (no-L1 first)."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "true",
-            2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", long_sources, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]
-           for long_sources in [0, 4]]
+def _ycsb_sdmvcc_skew(skews):
+    """YCSB SDMVCC skew sweep; parameters copied from ycsb_skew_PCC."""
+    wl = 'YCSB'
+    nnodes = [2]
+    algos = ['SDMVCC']
+    base_table_size = 1048576 * 8
+    txn_write_perc = [1]
+    tup_write_perc = [0.2]
+    load = [10000]
+    total_cnt = [15]
+    scnt = [5]
+    fmt = ["WORKLOAD", "CC_ALG", "ZIPF_THETA", "NODE_CNT",
+           "SYNTH_TABLE_SIZE", "TUP_WRITE_PERC", "TXN_WRITE_PERC",
+           "MAX_TXN_IN_FLIGHT", "THREAD_CNT", "SCHEDULER_CNT"]
+    exp = [[wl, algo, sk, n, base_table_size * n, tup_wr_perc,
+            txn_wr_perc, ld, t_cnt, s_cnt]
+           for t_cnt, s_cnt, txn_wr_perc, tup_wr_perc, ld, n, sk, algo
+           in itertools.product(total_cnt, scnt, txn_write_perc,
+                                tup_write_perc, load, nnodes, skews, algos)]
     return fmt, exp
 
 
-def bomb_sdmvcc_htap8_fwd():
-    """HTAP: CLIENT_THREAD_CNT=8, BLS=8 (cluster-wide 8 long txns => 4 L1 + 4 short per
-    client node), guard off first then on. Compares against TP-only (CT=4, BLS=0)
-    with identical short-thread supply (4 per node)."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 8, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", 8, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"],
-           ["BOMB", "SDMVCC", "false", "true", "true",
-            2, 2, 16, 8, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", 8, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]]
-    return fmt, exp
+def ycsb_sdmvcc_skew_chain():
+    """YCSB SDMVCC skew 0.0 vs 1.3, for the version-chain change."""
+    return _ycsb_sdmvcc_skew([0.0])
+    # return _ycsb_sdmvcc_skew([0.0, 1.3])
 
-def bomb_sdmvcc_htap8_rev():
-    """HTAP same as htap8_fwd but guard on first then off (reverse order)."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "true",
-            2, 2, 16, 8, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", 8, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"],
-           ["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 8, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", 8, 3, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]]
-    return fmt, exp
 
-def bomb_sdmvcc_unsafe_l1_upper_fwd():
-    """One-off upper bound: correct eager L1 first, then UNSAFE no-intent L1."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "SDMVCC_UNSAFE_L1_NO_INTENT",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_SOURCES", "MSG_SIZE_MAX",
-           "WARMUP_TIMER", "DONE_TIMER"]
-    common = [2, 2, 16, 4, 10000, 8, 72000, 198000, 75000, 100,
-              "false", 4, 4194304, "30*BILLION", "30*BILLION"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false", unsafe] + common
-           for unsafe in ["false", "true"]]
-    return fmt, exp
+def ycsb_sdmvcc_scan_probe():
+    """Skew 1.3 only: measure how far the chain lookups scan."""
+    return _ycsb_sdmvcc_skew([1.3])
 
-def bomb_sdmvcc_unsafe_l1_upper_rev():
-    """One-off upper bound in reverse order: UNSAFE no-intent, then correct."""
-    fmt, exp = bomb_sdmvcc_unsafe_l1_upper_fwd()
-    return fmt, list(reversed(exp))
 
-def bomb_sdmvcc_htap8_unsafe_fwd():
-    """HTAP CT=8 BLS=8 (4 L1 + 4 short per node), guard off, unsafe off first
-    then on. Upper bound for removing L1 read intents under mixed workload."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "SDMVCC_UNSAFE_L1_NO_INTENT",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_SOURCES", "MSG_SIZE_MAX",
-           "WARMUP_TIMER", "DONE_TIMER"]
-    common = [2, 2, 16, 8, 10000, 8, 72000, 198000, 75000, 100,
-              "false", 8, 4194304, "30*BILLION", "30*BILLION"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false", unsafe] + common
-           for unsafe in ["false", "true"]]
-    return fmt, exp
+def bomb_sdmvcc_chain():
+    """Static BoMB, SDMVCC only, for the version-chain change."""
+    return _bomb_formal("false", ["SDMVCC"])
 
-def bomb_sdmvcc_htap8_unsafe_rev():
-    """HTAP CT=8 BLS=8, guard off, unsafe on first then off (reverse order)."""
-    fmt, exp = bomb_sdmvcc_htap8_unsafe_fwd()
-    exp = [exp[1], exp[0]]
+
+def ycsb_sdmvcc_nogc_skew():
+    """Ablation: SDMVCC at hot skew with INTENT_GC off + LAZY_READ_INTENT on."""
+    wl = 'YCSB'
+    algos = ['SDMVCC']
+    skew = [1.3]
+    nnodes = [2]
+    base_table_size = 1048576 * 8
+    txn_write_perc = [1]
+    tup_write_perc = [0.2]
+    load = [10000]
+    total_cnt = [15]
+    scnt = [3]
+    fmt = ["WORKLOAD", "CC_ALG", "ZIPF_THETA", "NODE_CNT",
+           "SYNTH_TABLE_SIZE", "TUP_WRITE_PERC", "TXN_WRITE_PERC",
+           "MAX_TXN_IN_FLIGHT", "THREAD_CNT", "SCHEDULER_CNT"]
+    exp = [[wl, algo, sk, n, base_table_size * n, tup_wr_perc,
+            txn_wr_perc, ld, t_cnt, s_cnt]
+           for t_cnt, s_cnt, txn_wr_perc, tup_wr_perc, ld, n, sk, algo
+           in itertools.product(total_cnt, scnt, txn_write_perc, tup_write_perc,
+                                load, nnodes, skew, algos)]
     return fmt, exp
 
 
-def bomb_sdmvcc_htap8_mix_fwd():
-    """HTAP CT=8/BLS=8: back-to-back L1 injection (legacy, one L1 in flight per
-    source, self-clocked) vs periodic mix (BOMB_L1_PERIODIC_MIX=true, one L1
-    every BOMB_L1_MIX_PERIOD=64 txns per long source, L1s may overlap).  Guard
-    off in both."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_DYNAMIC_MODE",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "BOMB_L1_PERIODIC_MIX",
-           "BOMB_L1_MIX_PERIOD", "MSG_SIZE_MAX",
-           "SDPCC_LONG_HOLE_MODE", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 8, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", 8, 3, "false", 256, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"],
-           ["BOMB", "SDMVCC", "false", "true", "false",
-            2, 2, 16, 8, 10000,
-            8, 72000, 198000, 75000, 100, "false",
-            "BOMB_LONG_TX_PER_CLIENT", 8, 3, "true", 256, 4194304,
-            "SDPCC_LONG_HOLE_DISABLED", "30*BILLION", "30*BILLION"]]
+def ycsb_sdmvcc_entry_chain():
+    """Entry-chain SDMVCC (intent-in-version-list + O(1) watermark GC)."""
+    wl = 'YCSB'
+    algos = ['SDMVCC']
+    skew = [1.3]
+    nnodes = [2]
+    base_table_size = 1048576 * 8
+    txn_write_perc = [1]
+    tup_write_perc = [0.2]
+    load = [10000]
+    total_cnt = [15]
+    scnt = [3]
+    fmt = ["WORKLOAD", "CC_ALG", "ZIPF_THETA", "NODE_CNT",
+           "SYNTH_TABLE_SIZE", "TUP_WRITE_PERC", "TXN_WRITE_PERC",
+           "MAX_TXN_IN_FLIGHT", "THREAD_CNT", "SCHEDULER_CNT"]
+    exp = [[wl, algo, sk, n, base_table_size * n, tup_wr_perc,
+            txn_write_perc, ld, t_cnt, s_cnt]
+           for t_cnt, s_cnt, txn_write_perc, tup_wr_perc, ld, n, sk, algo
+           in itertools.product(total_cnt, scnt, txn_write_perc, tup_write_perc,
+                                load, nnodes, skew, algos)]
     return fmt, exp
-
-def bomb_sdmvcc_htap8_mix_rev():
-    """Same two configs as mix_fwd, reverse order (periodic mix first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_fwd()
-    exp = [exp[1], exp[0]]
-    return fmt, exp
-
-
-def bomb_sdmvcc_htap8_mix_guard_fwd():
-    """HTAP CT=8/BLS=8 periodic mix (X=256): L1 read-intent bloom guard
-    off vs on under the dense periodic-mix L1 load. Mix on in both."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_fwd()
-    # keep config2 (mix=true, guard=false) and flip guard to true
-    cfg_mix = exp[1][:]
-    cfg_mix[4] = "true"   # SDMVCC_LONG_READ_GUARD
-    return fmt, [exp[1], cfg_mix]
-
-
-def bomb_sdmvcc_htap8_mix_guard_rev():
-    """Same two configs as mix_guard_fwd, reverse order (guard on first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_guard_fwd()
-    return fmt, [exp[1], exp[0]]
-
-
-def bomb_sdmvcc_htap8_mix_unsafe_fwd():
-    """HTAP CT=8/BLS=8 periodic mix (X=256), guard off: unsafe (no L1 read
-    intent) off vs on under the dense periodic-mix L1 load. Upper bound for
-    zero-cost L1 read intents; intentionally incorrect snapshot semantics."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_fwd()
-    # insert SDMVCC_UNSAFE_L1_NO_INTENT right after SDMVCC_LONG_READ_GUARD
-    fmt.insert(5, "SDMVCC_UNSAFE_L1_NO_INTENT")
-    for row in exp:
-        row.insert(5, "false")
-    # keep config2 (mix=true, unsafe=false) and flip unsafe to true
-    cfg_mix = exp[1][:]
-    cfg_mix[5] = "true"
-    return fmt, [exp[1], cfg_mix]
-
-
-def bomb_sdmvcc_htap8_mix_unsafe_rev():
-    """Same two configs as mix_unsafe_fwd, reverse order (unsafe on first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_unsafe_fwd()
-    return fmt, [exp[1], exp[0]]
-
-
-def bomb_sdmvcc_htap8_mix_unsafe_skiprd_fwd():
-    """HTAP CT=8/BLS=8 periodic mix (X=256), guard off, unsafe ON in both:
-    L1 acquire_locks registers all requests vs only the write set
-    (BOMB_L1_ACQUIRE_ONLY_WRITES, ~100 WR rows out of ~19.4k).  Isolates the
-    cost of the per-row registration machinery itself (loop + index_read +
-    register_access) on top of the zero-intent unsafe baseline.  Intentionally
-    incorrect read-set snapshot semantics."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_unsafe_fwd()
-    # unsafe lives at index 5; append the scale ablation flag at the end
-    fmt.append("BOMB_L1_ACQUIRE_ONLY_WRITES")
-    for row in exp:
-        row.append("false")
-    # exp[1] = mix + unsafe on; flip only the ablation flag for the second cfg
-    cfg_on = exp[1][:]
-    cfg_on[-1] = "true"
-    return fmt, [exp[1], cfg_on]
-
-
-def bomb_sdmvcc_htap8_mix_unsafe_skiprd_rev():
-    """Same two configs as mix_unsafe_skiprd_fwd, reverse order (skiprd on
-    first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_unsafe_skiprd_fwd()
-    return fmt, [exp[1], exp[0]]
-
-
-def bomb_sdmvcc_htap8_mix_vs_nol1_fwd():
-    """HTAP CT=8/BLS=8 periodic mix, guard off, unsafe OFF, correct semantics
-    in both arms.  cfg A: periodic mix, one L1 every BOMB_L1_MIX_PERIOD=256
-    txns (BLS=8 long sources).  cfg B: identical client/short-txn stream but
-    BOMB_LONG_TX_SOURCES=0 -> no L1 at all.  Measures the QPS cost of mixing
-    one L1 per 256 txns into the short stream."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_unsafe_fwd()
-    # exp[0] = periodic mix on + unsafe off (correct baseline WITH L1)
-    cfg_a = exp[0][:]
-    assert cfg_a[5] == "false", "unsafe must be off: %s" % cfg_a[5]  # unsafe
-    assert cfg_a[20] == "true", "periodic mix must be on: %s" % cfg_a[20]
-    cfg_b = cfg_a[:]
-    cfg_b[18] = 0  # BOMB_LONG_TX_SOURCES: 8 -> 0 (no L1 in the whole cluster)
-    return fmt, [cfg_a, cfg_b]
-
-
-def bomb_sdmvcc_htap8_mix_vs_nol1_rev():
-    """Same two configs as mix_vs_nol1_fwd, reverse order (no-L1 first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
-    return fmt, [exp[1], exp[0]]
-
-
-def bomb_sdmvcc_htap8_mix64_vs_nol1_fwd():
-    """HTAP CT=8/BLS=8 periodic mix, guard off, unsafe OFF, correct semantics
-    in both arms.  cfg A: periodic mix, one L1 every BOMB_L1_MIX_PERIOD=64
-    txns (4x denser than the 256 run).  cfg B: identical short-txn stream but
-    BOMB_LONG_TX_SOURCES=0 -> no L1.  Measures the QPS/TPS cost of a denser
-    L1 mix ratio."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
-    cfg_a = exp[0][:]
-    assert str(cfg_a[21]) == "256", "base must be X=256: %s" % cfg_a[21]
-    cfg_a = cfg_a[:]
-    cfg_a[21] = 64  # BOMB_L1_MIX_PERIOD: 256 -> 64
-    cfg_b = cfg_a[:]
-    cfg_b[18] = 0  # BOMB_LONG_TX_SOURCES: 8 -> 0 (no L1)
-    return fmt, [cfg_a, cfg_b]
-
-
-def bomb_sdmvcc_htap8_mix64_vs_nol1_rev():
-    """Same two configs as mix64_vs_nol1_fwd, reverse order (no-L1 first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix64_vs_nol1_fwd()
-    return fmt, [exp[1], exp[0]]
-
-
-def bomb_sdmvcc_htap8_mix32_vs_nol1_fwd():
-    """HTAP CT=8/BLS=8 periodic mix, guard off, unsafe OFF, correct semantics
-    in both arms.  cfg A: periodic mix, one L1 every BOMB_L1_MIX_PERIOD=32
-    txns (8x denser than the 256 run, 2x denser than 64).  cfg B: identical
-    short-txn stream but BOMB_LONG_TX_SOURCES=0 -> no L1."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
-    cfg_a = exp[0][:]
-    assert str(cfg_a[21]) == "256", "base must be X=256: %s" % cfg_a[21]
-    cfg_a = cfg_a[:]
-    cfg_a[21] = 32  # BOMB_L1_MIX_PERIOD: 256 -> 32
-    cfg_b = cfg_a[:]
-    cfg_b[18] = 0  # BOMB_LONG_TX_SOURCES: 8 -> 0 (no L1)
-    return fmt, [cfg_a, cfg_b]
-
-
-def bomb_sdmvcc_htap8_mix32_vs_nol1_rev():
-    """Same two configs as mix32_vs_nol1_fwd, reverse order (no-L1 first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix32_vs_nol1_fwd()
-    return fmt, [exp[1], exp[0]]
-
-
-def bomb_sdmvcc_htap8_mix16_vs_nol1_fwd():
-    """HTAP CT=8/BLS=8 periodic mix, guard off, unsafe OFF.  cfg A: one L1
-    every BOMB_L1_MIX_PERIOD=16 txns.  cfg B: no L1."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
-    cfg_a = exp[0][:]
-    assert str(cfg_a[21]) == "256", "base must be X=256: %s" % cfg_a[21]
-    cfg_a = cfg_a[:]
-    cfg_a[21] = 16  # BOMB_L1_MIX_PERIOD: 256 -> 16
-    cfg_b = cfg_a[:]
-    cfg_b[18] = 0  # BOMB_LONG_TX_SOURCES: 8 -> 0 (no L1)
-    return fmt, [cfg_a, cfg_b]
-
-
-def bomb_sdmvcc_htap8_mix16_vs_nol1_rev():
-    """Same two configs as mix16_vs_nol1_fwd, reverse order (no-L1 first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix16_vs_nol1_fwd()
-    return fmt, [exp[1], exp[0]]
-
-
-def bomb_sdmvcc_htap8_mix8_vs_nol1_fwd():
-    """HTAP CT=8/BLS=8 periodic mix, guard off, unsafe OFF.  cfg A: one L1
-    every BOMB_L1_MIX_PERIOD=8 txns.  cfg B: no L1."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
-    cfg_a = exp[0][:]
-    assert str(cfg_a[21]) == "256", "base must be X=256: %s" % cfg_a[21]
-    cfg_a = cfg_a[:]
-    cfg_a[21] = 8  # BOMB_L1_MIX_PERIOD: 256 -> 8
-    cfg_b = cfg_a[:]
-    cfg_b[18] = 0  # BOMB_LONG_TX_SOURCES: 8 -> 0 (no L1)
-    return fmt, [cfg_a, cfg_b]
-
-
-def bomb_sdmvcc_htap8_mix8_vs_nol1_rev():
-    """Same two configs as mix8_vs_nol1_fwd, reverse order (no-L1 first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix8_vs_nol1_fwd()
-    return fmt, [exp[1], exp[0]]
-
-
-def bomb_sdmvcc_htap8_mix64_unsafe_fwd():
-    """X=64 periodic mix, guard off: L1 read-intent unsafe ON (no L1 read
-    intents registered, incorrect snapshot semantics, upper bound) vs unsafe
-    OFF (correct semantics).  Same L1 density in both arms -> isolates the
-    cost of L1 read-intent registration itself."""
-    fmt, exp = bomb_sdmvcc_htap8_mix_vs_nol1_fwd()
-    cfg_a = exp[0][:]
-    assert str(cfg_a[21]) == "256", "base must be X=256: %s" % cfg_a[21]
-    cfg_a = cfg_a[:]
-    cfg_a[21] = 64   # BOMB_L1_MIX_PERIOD
-    cfg_a[5] = "true"    # SDMVCC_UNSAFE_L1_NO_INTENT on
-    cfg_b = cfg_a[:]
-    cfg_b[5] = "false"   # unsafe off, same density
-    return fmt, [cfg_a, cfg_b]
-
-
-def bomb_sdmvcc_htap8_mix64_unsafe_rev():
-    """Same two configs as mix64_unsafe_fwd, reverse order (unsafe off first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix64_unsafe_fwd()
-    return fmt, [exp[1], exp[0]]
-
-
-def bomb_sdmvcc_htap8_mix32_unsafe_fwd():
-    """X=32 periodic mix, guard off: unsafe ON vs OFF, same density both arms."""
-    fmt, exp = bomb_sdmvcc_htap8_mix64_unsafe_fwd()
-    cfg_a = exp[0][:]
-    cfg_a[21] = 32
-    cfg_b = cfg_a[:]
-    cfg_b[5] = "false"
-    return fmt, [cfg_a, cfg_b]
-
-
-def bomb_sdmvcc_htap8_mix32_unsafe_rev():
-    """Same two configs as mix32_unsafe_fwd, reverse order (unsafe off first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix32_unsafe_fwd()
-    return fmt, [exp[1], exp[0]]
-
-
-def bomb_sdmvcc_htap8_mix16_unsafe_fwd():
-    """X=16 periodic mix, guard off: unsafe ON vs OFF, same density both arms."""
-    fmt, exp = bomb_sdmvcc_htap8_mix64_unsafe_fwd()
-    cfg_a = exp[0][:]
-    cfg_a[21] = 16
-    cfg_b = cfg_a[:]
-    cfg_b[5] = "false"
-    return fmt, [cfg_a, cfg_b]
-
-
-def bomb_sdmvcc_htap8_mix16_unsafe_rev():
-    """Same two configs as mix16_unsafe_fwd, reverse order (unsafe off first)."""
-    fmt, exp = bomb_sdmvcc_htap8_mix16_unsafe_fwd()
-    return fmt, [exp[1], exp[0]]
-
 
 experiment_map = {
     'ycsb_sdmvcc_vector_lookup': ycsb_sdmvcc_vector_lookup,
+    'ycsb_sdmvcc_skew_chain': ycsb_sdmvcc_skew_chain,
+    'ycsb_sdmvcc_scan_probe': ycsb_sdmvcc_scan_probe,
+    'bomb_sdmvcc_chain': bomb_sdmvcc_chain,
     'bomb_static': bomb_static,
     'bomb_dynamic': bomb_dynamic,
     'bomb_random_static': bomb_random_static,
@@ -1689,32 +1193,6 @@ experiment_map = {
     'ycsb_sdmvcc_scheduler_sweep': ycsb_sdmvcc_scheduler_sweep,
     'bomb_sdmvcc_scheduler_sweep': bomb_sdmvcc_scheduler_sweep,
     'ycsb_idle_default': ycsb_idle_default,
-    'bomb_sdmvcc_htap8_mix_fwd': bomb_sdmvcc_htap8_mix_fwd,
-    'bomb_sdmvcc_htap8_mix_rev': bomb_sdmvcc_htap8_mix_rev,
-    'bomb_sdmvcc_htap8_mix_guard_fwd': bomb_sdmvcc_htap8_mix_guard_fwd,
-    'bomb_sdmvcc_htap8_mix_guard_rev': bomb_sdmvcc_htap8_mix_guard_rev,
-    'bomb_sdmvcc_htap8_mix_unsafe_fwd': bomb_sdmvcc_htap8_mix_unsafe_fwd,
-    'bomb_sdmvcc_htap8_mix_unsafe_rev': bomb_sdmvcc_htap8_mix_unsafe_rev,
-    'bomb_sdmvcc_htap8_mix_unsafe_skiprd_fwd': bomb_sdmvcc_htap8_mix_unsafe_skiprd_fwd,
-    'bomb_sdmvcc_htap8_mix_unsafe_skiprd_rev': bomb_sdmvcc_htap8_mix_unsafe_skiprd_rev,
-    'bomb_sdmvcc_htap8_mix_vs_nol1_fwd': bomb_sdmvcc_htap8_mix_vs_nol1_fwd,
-    'bomb_sdmvcc_htap8_mix_vs_nol1_rev': bomb_sdmvcc_htap8_mix_vs_nol1_rev,
-    'bomb_sdmvcc_htap8_mix64_vs_nol1_fwd': bomb_sdmvcc_htap8_mix64_vs_nol1_fwd,
-    'bomb_sdmvcc_htap8_mix64_vs_nol1_rev': bomb_sdmvcc_htap8_mix64_vs_nol1_rev,
-    'bomb_sdmvcc_htap8_mix32_vs_nol1_fwd': bomb_sdmvcc_htap8_mix32_vs_nol1_fwd,
-    'bomb_sdmvcc_htap8_mix32_vs_nol1_rev': bomb_sdmvcc_htap8_mix32_vs_nol1_rev,
-    'bomb_sdmvcc_htap8_mix16_vs_nol1_fwd': bomb_sdmvcc_htap8_mix16_vs_nol1_fwd,
-    'bomb_sdmvcc_htap8_mix16_vs_nol1_rev': bomb_sdmvcc_htap8_mix16_vs_nol1_rev,
-    'bomb_sdmvcc_htap8_mix8_vs_nol1_fwd': bomb_sdmvcc_htap8_mix8_vs_nol1_fwd,
-    'bomb_sdmvcc_htap8_mix8_vs_nol1_rev': bomb_sdmvcc_htap8_mix8_vs_nol1_rev,
-    'bomb_sdmvcc_htap8_mix64_unsafe_fwd': bomb_sdmvcc_htap8_mix64_unsafe_fwd,
-    'bomb_sdmvcc_htap8_mix64_unsafe_rev': bomb_sdmvcc_htap8_mix64_unsafe_rev,
-    'bomb_sdmvcc_htap8_mix32_unsafe_fwd': bomb_sdmvcc_htap8_mix32_unsafe_fwd,
-    'bomb_sdmvcc_htap8_mix32_unsafe_rev': bomb_sdmvcc_htap8_mix32_unsafe_rev,
-    'bomb_sdmvcc_htap8_mix16_unsafe_fwd': bomb_sdmvcc_htap8_mix16_unsafe_fwd,
-    'bomb_sdmvcc_htap8_mix16_unsafe_rev': bomb_sdmvcc_htap8_mix16_unsafe_rev,
-    'bomb_sdmvcc_htap8_unsafe_fwd': bomb_sdmvcc_htap8_unsafe_fwd,
-    'bomb_sdmvcc_htap8_unsafe_rev': bomb_sdmvcc_htap8_unsafe_rev,
     # for test
     'ycsb_skew' : ycsb_skew,
     # YCSB_WRITE
@@ -1724,6 +1202,7 @@ experiment_map = {
 
     # YCSB_SKEW:
     'ycsb_skew_PCC': ycsb_skew_PCC, # calvin sdpcc
+    'ycsb_skew_cc_comparison': ycsb_skew_cc_comparison,
     'ycsb_skew_OCC': ycsb_skew_OCC, # sdocc
     'ycsb_aria_batch': ycsb_aria_batch, # Aria的skew
 
@@ -1765,20 +1244,6 @@ experiment_map = {
     'bomb_aria_dynamic_hif': bomb_aria_dynamic_hif,
     'bomb_sdmvcc_smoke': bomb_sdmvcc_smoke,
     'bomb_sdmvcc_lazy_intent_ablation': bomb_sdmvcc_lazy_intent_ablation,
-    'bomb_sdmvcc_long_read_guard_ablation': bomb_sdmvcc_long_read_guard_ablation,
-    'bomb_sdmvcc_long_read_guard_dynamic_ablation': bomb_sdmvcc_long_read_guard_dynamic_ablation,
-    'bomb_sdmvcc_long_tx_interference_ceiling': bomb_sdmvcc_long_tx_interference_ceiling,
-    'bomb_sdmvcc_ltc_perclient_rev': bomb_sdmvcc_ltc_perclient_rev,
-    'bomb_sdmvcc_ltc_perclient_fwd': bomb_sdmvcc_ltc_perclient_fwd,
-    'bomb_sdmvcc_ltc_global_rev': bomb_sdmvcc_ltc_global_rev,
-    'bomb_sdmvcc_ltc_global_fwd': bomb_sdmvcc_ltc_global_fwd,
-    'bomb_sdmvcc_ltc_perclient4_fwd': bomb_sdmvcc_ltc_perclient4_fwd,
-    'bomb_sdmvcc_ltc_perclient4_rev': bomb_sdmvcc_ltc_perclient4_rev,
-    'bomb_sdmvcc_ltc_perclient4_guard_fwd': bomb_sdmvcc_ltc_perclient4_guard_fwd,
-    'bomb_sdmvcc_ltc_perclient4_guard_rev': bomb_sdmvcc_ltc_perclient4_guard_rev,
-    'bomb_sdmvcc_ltc_perclient4_guard_rev': bomb_sdmvcc_ltc_perclient4_guard_rev,
-
-    'bomb_sdmvcc_bypass_smoke': bomb_sdmvcc_bypass_smoke,
     'bomb_sdmvcc_dynamic_smoke': bomb_sdmvcc_dynamic_smoke,
 
     # Scaling
@@ -1793,10 +1258,6 @@ experiment_map = {
     # 下面是没跑的实验
     'ycsb_rwset_ratio': ycsb_rwset_ratio,
     'tpcc_dist_ratio': tpcc_dist_ratio,
-    'bomb_sdmvcc_htap8_fwd': bomb_sdmvcc_htap8_fwd,
-    'bomb_sdmvcc_htap8_rev': bomb_sdmvcc_htap8_rev,
-    'bomb_sdmvcc_unsafe_l1_upper_fwd': bomb_sdmvcc_unsafe_l1_upper_fwd,
-    'bomb_sdmvcc_unsafe_l1_upper_rev': bomb_sdmvcc_unsafe_l1_upper_rev,
     'tpcc_aria_batch2': tpcc_aria_batch2,
 }
 
@@ -1824,6 +1285,8 @@ def _enforce_experiment_thread_count(fn):
         return fmt, rows
     return wrapped
 
+experiment_map['ycsb_sdmvcc_nogc_skew'] = ycsb_sdmvcc_nogc_skew
+experiment_map['ycsb_sdmvcc_entry_chain'] = ycsb_sdmvcc_entry_chain
 experiment_map = {name: _enforce_experiment_thread_count(fn)
                   for name, fn in experiment_map.items()}
 
@@ -1942,7 +1405,7 @@ configs = {
     "PRORATE_RATIO":0,
     "ARIA_BATCH_SIZE":3000,
     "LOGGING":"false",
-    "SCHEDULER_CNT": 3,
+    "SCHEDULER_CNT": 5,
 #OTHERS
     # "DEBUG_DISTR":"false",
     # "DEBUG_ALLOC":"false",

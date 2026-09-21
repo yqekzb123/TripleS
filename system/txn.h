@@ -35,6 +35,7 @@ class TxnQEntry;
 class YCSBQuery;
 class TPCCQuery;
 class Row_sdmvcc;
+struct SDMVCCEntry;
 struct SDMVCCLongReadGuard;
 //class r_query;
 struct list_node_entry;
@@ -239,6 +240,8 @@ public:
 		bool write_staged;
 		bool write_published;
 		bool blind_write;
+		SDMVCCEntry *intent_node;
+		SDMVCCEntry *version_node;
 	};
 	std::vector<SDMVCCAccessRegistration> sdmvcc_accesses;
 	std::unordered_map<row_t *, size_t> sdmvcc_access_index;
@@ -249,6 +252,9 @@ public:
 	void maybe_build_sdmvcc_access_index();
 	// 0: duplicate, 1: new/changed per-key registration, 2: RD-to-WR upgrade.
 	int register_sdmvcc_access(row_t *row, access_t type);
+	SDMVCCEntry *sdmvcc_intent_node(row_t *row);
+	void sdmvcc_set_intent_node(row_t *row, SDMVCCEntry *node);
+	void sdmvcc_set_version_node(row_t *row, SDMVCCEntry *node);
 	bool is_sdmvcc_blind_write(row_t *row, access_t type) const;
 	void arm_sdmvcc_intents();
 	bool ensure_sdmvcc_execution_access(row_t *row, access_t type);

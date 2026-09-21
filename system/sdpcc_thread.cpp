@@ -36,6 +36,7 @@
 #include <vector>
 #include "water_mark.h"
 #include "sdpcc_long_hole.h"
+#include "row_sdmvcc.h"
 
 #if SDPCC_FAMILY
 void SDPCCLockThread::setup() {}
@@ -51,8 +52,12 @@ RC SDPCCLockThread::run() {
 	uint64_t id = _thd_id % g_scheduler_thread_cnt;
 
 	uint64_t old_minSid = 0;
+	uint64_t gc_tick = 0, gc_shard = id;
 
 	while(!simulation->is_done()) {
+#if CC_ALG == SDMVCC
+        if ((gc_tick++ & 63) == 0) Row_sdmvcc::poll_gc(minSid, gc_shard++);
+#endif
 		txn_man = NULL;
 
 		Message * msg = work_queue.sdpcc_sched_dequeue(_thd_id);

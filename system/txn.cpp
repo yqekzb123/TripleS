@@ -1314,6 +1314,24 @@ uint64_t TxnManager::sdmvcc_snapshot() const {
 	return get_batch_key(txn->batch_id, return_id, txn->txn_id);
 }
 
+SDMVCCEntry *TxnManager::sdmvcc_intent_node(row_t *row) {
+	const size_t idx = find_sdmvcc_access(row);
+	return idx == sdmvcc_accesses.size() || sdmvcc_accesses[idx].intent_released ? nullptr
+	                                     : sdmvcc_accesses[idx].intent_node;
+}
+
+void TxnManager::sdmvcc_set_intent_node(row_t *row, SDMVCCEntry *node) {
+	const size_t idx = find_sdmvcc_access(row);
+	assert(idx != sdmvcc_accesses.size());
+	sdmvcc_accesses[idx].intent_node = node;
+}
+
+void TxnManager::sdmvcc_set_version_node(row_t *row, SDMVCCEntry *node) {
+    const size_t idx = find_sdmvcc_access(row);
+    assert(idx != sdmvcc_accesses.size());
+    sdmvcc_accesses[idx].version_node = node;
+}
+
 // Transaction-side SDMVCC metadata ties the per-key Row_sdmvcc objects back
 // to one deterministic transaction. The complete lifecycle is:
 //
@@ -1371,7 +1389,7 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 		row, type, false, 1, false,
 		!blind_write && !SDMVCC_LAZY_READ_INTENT &&
 		!uses_sdmvcc_long_read_guard() &&
-		!uses_sdmvcc_unsafe_l1_no_intent(), false, false, blind_write};
+		!uses_sdmvcc_unsafe_l1_no_intent(), false, false, blind_write, nullptr, nullptr};
 	sdmvcc_accesses.push_back(entry);
 	if (!sdmvcc_access_index.empty())
 		sdmvcc_access_index[row] = sdmvcc_accesses.size() - 1;
@@ -1408,8 +1426,10 @@ void TxnManager::consume_sdmvcc_access(row_t *row) {
 	// declared occurrence. Snapshot pinning still protects that version.
 	if (entry.remaining_uses == 0) return;
 	if (--entry.remaining_uses == 0 && entry.intent_registered) {
-		entry.row->manager->release_intent(sdmvcc_snapshot(), minSid);
+		SDMVCCEntry *node = entry.intent_node;
+		entry.intent_node = nullptr;
 		entry.intent_released = true;
+		entry.row->manager->release_intent(node, minSid);
 	}
 }
 
@@ -1423,9 +1443,10 @@ void TxnManager::publish_sdmvcc_write(row_t *row, row_t *local_row) {
 	auto &entry = sdmvcc_accesses[existing];
 	assert(entry.type == WR);
 	if (entry.write_published || entry.remaining_uses != 0) return;
-	row->manager->stage_write(sdmvcc_snapshot(), local_row);
+	row->manager->stage_write(sdmvcc_snapshot(), local_row, entry.version_node);
 	entry.write_staged = true;
-	row->manager->publish_write(sdmvcc_snapshot(), get_thd_id(), true);
+	row->manager->publish_write(sdmvcc_snapshot(), get_thd_id(), true, entry.version_node);
+	entry.version_node = nullptr;
 	entry.write_published = true;
 #else
 	(void)row;
@@ -1505,7 +1526,7 @@ void TxnManager::finish_sdmvcc(RC rc) {
 				const size_t idx = find_sdmvcc_access(access->orig_row);
 				assert(idx != sdmvcc_accesses.size());
 				if (!sdmvcc_accesses[idx].write_published) {
-					access->orig_row->manager->stage_write(sid, access->data);
+					access->orig_row->manager->stage_write(sid, access->data, sdmvcc_accesses[idx].version_node);
 					sdmvcc_accesses[idx].write_staged = true;
 				}
 			}
@@ -1517,18 +1538,18 @@ void TxnManager::finish_sdmvcc(RC rc) {
 		for (auto it = sdmvcc_accesses.rbegin(); it != sdmvcc_accesses.rend(); ++it) {
 			if (it->type == WR && !it->write_published) {
 				if (it->write_staged)
-					it->row->manager->publish_write(sid, get_thd_id());
+					it->row->manager->publish_write(sid, get_thd_id(), false, it->version_node);
 				else
-					it->row->manager->abort_write(sid, get_thd_id());
+					it->row->manager->abort_write(sid, get_thd_id(), it->version_node);
 			}
 		}
 #else
 		for (auto &entry : sdmvcc_accesses) {
 			if (entry.type == WR && !entry.write_published) {
 				if (entry.write_staged)
-					entry.row->manager->publish_write(sid, get_thd_id());
+					entry.row->manager->publish_write(sid, get_thd_id(), false, entry.version_node);
 				else
-					entry.row->manager->abort_write(sid, get_thd_id());
+					entry.row->manager->abort_write(sid, get_thd_id(), entry.version_node);
 			}
 		}
 #endif
@@ -1537,12 +1558,16 @@ void TxnManager::finish_sdmvcc(RC rc) {
 			// Early publication is enabled only for deterministic write phases
 			// that cannot subsequently abort.
 			assert(!entry.write_published);
-			if (entry.type == WR) entry.row->manager->abort_write(sid, get_thd_id());
+			if (entry.type == WR) entry.row->manager->abort_write(sid, get_thd_id(), entry.version_node);
 		}
 	}
 	for (auto &entry : sdmvcc_accesses) {
-		if (entry.intent_registered && !entry.intent_released)
-			entry.row->manager->release_intent(sid, minSid);
+		if (entry.intent_registered && !entry.intent_released) {
+            SDMVCCEntry *node = entry.intent_node;
+            entry.intent_node = nullptr;
+            entry.intent_released = true;
+            entry.row->manager->release_intent(node, minSid);
+        }
 		else if (had_long_guard)
 			entry.row->manager->long_read_guard_released(minSid);
 	}

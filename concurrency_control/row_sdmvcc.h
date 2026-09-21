@@ -2,9 +2,8 @@
 #define _ROW_SDMVCC_H_
 
 #include "global.h"
-#include <map>
-#include <set>
 #include <vector>
+#include "sdmvcc_index.h"
 
 class row_t;
 class TxnManager;
@@ -22,43 +21,39 @@ struct SDMVCCLongReadGuard {
     std::vector<uint64_t> bloom;
 };
 
-// Per-key deterministic MVCC state. Read intents are snapshot timestamps,
-// not pointers to versions, so an intent remains valid while older write
-// reservations are still arriving out of scheduler order.
-//
-// SDMVCC lifecycle / call stack:
-//
-// (1) Deterministic scheduling and metadata registration
-//   SDPCCLockThread::run()
-//     -> <workload>TxnManager::acquire_locks()
-//     -> row_t::get_lock()
-//     -> Row_sdmvcc::register_access()
-//   register_access() records one per-key read intent and reserves an
-//   uncommitted version for a local write. It does not block the scheduler.
-//
-// (2) Watermark admission and version readiness
-//   SDPCCLockThread::{run(), handle_tmp_txn()}
-//     -> TxnManager::arm_sdmvcc_intents()
-//     -> Row_sdmvcc::arm_read()
-//   A transaction whose visible predecessor is unfinished becomes a waiter
-//   on that Version. Each unresolved key contributes one lock-ready count.
-//
-// (3) Execution and optional early intent release
-//   TxnManager::get_row() -> row_t::get_row() -> Row_sdmvcc::read()
-//   Workloads that know a key will not be read again may then call
-//     TxnManager::consume_sdmvcc_access()
-//     -> Row_sdmvcc::release_intent()
-//
-// (4) Commit/abort, notification, and GC
-//   TxnManager::cleanup() -> TxnManager::finish_sdmvcc()
-//     -> stage_write() for every local write
-//     -> publish_write() (or abort_write())
-//     -> notify_ready() for transactions waiting on the affected version
-//   publish_write() and release_intent() both call gc_locked().
-//
-// Visibility rule: snapshot S reads the greatest committed version V with
-// V.sid < S. _read_intents protects versions needed by active snapshots;
-// Version::waiters is separate metadata used only for readiness notification.
+// Sorted all-entry chain, with R(S) preceding V(S) for read-modify-write.
+// The version index locates a write gap; only that gap is searched for reads.
+// myVersion is resolved at Arm (after admission), never eagerly retargeted
+// during out-of-order registration. Waiters have a separate intrusive list.
+class Row_sdmvcc;
+struct SDMVCCDeferredRow {
+    SDMVCCIndexNode node;
+    Row_sdmvcc *row;
+};
+
+struct SDMVCCEntry {
+    bool isVersion;
+    uint64_t sid;
+    // all-entry chain (versions + intents), ascending SID
+    SDMVCCEntry *prevAll;
+    SDMVCCEntry *nextAll;
+    // version only: write-only chain, ascending SID
+    SDMVCCEntry *prevWrite;
+    SDMVCCEntry *nextWrite;
+    // version only: committed (C) vs pending (P)
+    bool ready;
+    bool base_backed;
+    char *data;        // private tuple copy; null until stage_write()
+    uint32_t data_len;
+    // intent only
+    TxnManager *txn;   // null for versions
+    SDMVCCEntry *myVersion; // version this intent currently selects
+    bool armed;        // waiting for myVersion to publish
+    bool ephemeral;    // waiter-only node; never owned by a transaction handle
+    SDMVCCEntry *waitHead, *waitNext, *retiredNext;
+    SDMVCCIndexNode versionIndex, gcIndex;
+};
+
 class Row_sdmvcc {
 public:
     Row_sdmvcc();
@@ -72,13 +67,14 @@ public:
                   uint32_t size);
     bool visible(uint64_t snapshot);
     void set_creation_sid(uint64_t sid);
-    void stage_write(uint64_t sid, row_t *local_row);
-    void publish_write(uint64_t sid, uint64_t thd_id, bool early = false);
-    void abort_write(uint64_t sid, uint64_t thd_id);
-    void release_intent(uint64_t snapshot, uint64_t watermark);
+    void stage_write(uint64_t sid, row_t *local_row, SDMVCCEntry *handle = nullptr);
+    void publish_write(uint64_t sid, uint64_t thd_id, bool early = false, SDMVCCEntry *handle = nullptr);
+    void abort_write(uint64_t sid, uint64_t thd_id, SDMVCCEntry *handle = nullptr);
+    void release_intent(SDMVCCEntry *intent, uint64_t watermark);
     void long_read_guard_released(uint64_t watermark);
     bool has_write_lock() const { return false; }
 
+    static void poll_gc(uint64_t watermark, uint64_t shard);
     static void print_stats(FILE *outf);
     static void print_timeseries(FILE *outf, uint64_t elapsed_ns);
     static void pin_snapshot(uint64_t snapshot);
@@ -89,39 +85,43 @@ public:
     static void remove_long_read_guard(SDMVCCLongReadGuard *guard);
 
 private:
-    struct Version {
-        uint64_t sid;
-        bool ready;
-        bool base_backed;
-        std::vector<char> data;
-        std::vector<TxnManager *> waiters;
-        Version(uint64_t version_sid, bool is_ready, bool uses_base = false)
-            : sid(version_sid), ready(is_ready), base_backed(uses_base) {}
-    };
-
     row_t *_row;
     pthread_mutex_t _latch;
-    bool _initial_copied;
-    // Iterators never escape the row latch. A vector retains its allocation
-    // after GC erases old versions, avoiding one list-node allocation for
-    // every write while preserving the same SID ordering.
-    std::vector<Version> _versions;
-    uint64_t _single_read_intent_sid;
-    uint32_t _single_read_intent_count;
-    std::map<uint64_t, uint32_t> _read_intents;
+    // Fixed tail sentinel of both chains: isVersion, sid = UINT64_MAX,
+    // ready. Circular linking keeps every insert/delete a pointer splice and
+    // removes all empty-chain special cases.
+    SDMVCCEntry _sentinel;
+    uint32_t _version_cnt;
+    uint64_t _creation_sid;
+    SDMVCCIndex _version_index, _gc_candidates;
+    SDMVCCDeferredRow _deferred;
+    uint64_t _deferred_threshold;
+    SDMVCCEntry *_retired;
+    char *_retired_buffer;
+    uint32_t _retired_buffer_len;
 
-    void ensure_initial_locked();
-    std::vector<Version>::iterator find_version_locked(uint64_t sid);
-    std::vector<Version>::iterator predecessor_locked(uint64_t snapshot);
-    bool wait_for_predecessor_locked(TxnManager *txn, uint64_t snapshot);
-    void add_read_intent_locked(uint64_t snapshot);
-    void remove_read_intent_locked(uint64_t snapshot);
-    bool read_intent_covers_locked(uint64_t begin, uint64_t end) const;
-    void gc_locked(uint64_t watermark);
+
+    void validate_locked(const char *where);
+    SDMVCCEntry *find_version_locked(uint64_t sid);
+    SDMVCCEntry *predecessor_locked(uint64_t snapshot);
+    void insert_intent_locked(SDMVCCEntry *intent, SDMVCCEntry *myVersion);
+    void insert_version_locked(SDMVCCEntry *version);
+    void unlink_all_locked(SDMVCCEntry *entry);
+    bool wait_for_predecessor_locked(TxnManager *txn, SDMVCCEntry *version,
+                                     SDMVCCEntry *&spare);
+    SDMVCCEntry *read_version_locked(TxnManager *txn, uint64_t snapshot);
+    void check_gc_locked(SDMVCCEntry *version, uint64_t watermark);
+    void cancel_gc_locked(SDMVCCEntry *version);
+    void update_deferred_locked(bool force = false);
+    void process_deferred_locked(uint64_t watermark, unsigned budget);
+    void unlock_and_dispose();
+    void retire_locked(SDMVCCEntry *entry);
+    void promote_locked();
+    static void dispatch_waiters(SDMVCCEntry *head, uint64_t thd_id);
     static void notify_ready(TxnManager *txn, uint64_t thd_id);
     static uint64_t oldest_pinned_snapshot();
-    static bool long_read_guard_covers(row_t *row, uint64_t current_sid,
-                                       uint64_t next_sid);
+    static bool long_guard_covers(row_t *row, uint64_t current_sid,
+                                  uint64_t next_sid);
 };
 
 #endif
