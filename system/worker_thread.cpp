@@ -19,6 +19,7 @@
 #include "abort_queue.h"
 #include "global.h"
 #include "helper.h"
+#include "row_sdmvcc.h"
 #include "logger.h"
 #include "manager.h"
 #include "math.h"
@@ -1586,6 +1587,11 @@ RC StatsPerIntervalThread::run(){
       last_second = now_time;
       DEBUG_TIME("------StatsPerIntervalThread %ld seconds--------\n",loop);
       loop++;
+#if CC_ALG == SDMVCC
+      if (simulation->is_warmup_done() && simulation->warmup_end_time > 0) {
+        Row_sdmvcc::print_timeseries(stdout, now_time - simulation->warmup_end_time);
+      }
+#endif
     }
     #if CC_ALG == SDOCC
       bool updated = check_water_mark->update_local_watermark(_thd_id);

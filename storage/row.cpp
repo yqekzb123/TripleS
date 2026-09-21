@@ -33,6 +33,7 @@
 #include "row_sdmvcc.h"
 #include "mem_alloc.h"
 #include "manager.h"
+#include <cstring>
 #include <new>
 
 #define SIM_FULL_ROW true
@@ -295,11 +296,19 @@ RC row_t::get_row(access_t type, TxnManager *txn, Access *access) {
 	uint64_t init_time = get_sys_clock();
 	const bool execution_discovered =
 		txn->ensure_sdmvcc_execution_access(this, type);
+	const bool blind_write = txn->is_sdmvcc_blind_write(this, type);
 	txn->cur_row = (row_t *) mem_allocator.alloc(sizeof(row_t));
 	txn->cur_row->init(get_table(), get_part_id());
-	rc = execution_discovered
-		? manager->read_latest(txn->cur_row)
-		: manager->read(txn, txn->sdmvcc_snapshot(), txn->cur_row);
+	if (blind_write) {
+		// The YCSB upper-bound path constructs a private row without touching
+		// the predecessor. The workload overwrites the observed field next.
+		memset(txn->cur_row->get_data(), 0, get_tuple_size());
+		rc = RCOK;
+	} else {
+		rc = execution_discovered
+			? manager->read_latest(txn->cur_row)
+			: manager->read(txn, txn->sdmvcc_snapshot(), txn->cur_row);
+	}
 	if (rc != RCOK) {
 		txn->cur_row->free_row();
 		mem_allocator.free(txn->cur_row, sizeof(row_t));

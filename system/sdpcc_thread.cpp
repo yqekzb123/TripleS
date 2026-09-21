@@ -188,7 +188,7 @@ void SDPCCLockThread::handle_tmp_txn(uint64_t current_minSid, uint64_t &old_minS
 		uint64_t key = get_batch_key(txn_man->get_batch_id(), txn_man->return_id, txn_man->get_txn_id());
 		DEBUG_SCH("[SDPCCThread] %ld handle txn %ld,%ld, lock_ready_cnt %d, key %ld, current_minSid %ld\n", _thd_id, txn_man->get_batch_id(), txn_man->get_txn_id(), txn_man->lock_ready_cnt ,key, current_minSid);
 		if (key > current_minSid) break;
-		#if SDPCC_FAMILY && !OPEN_DISTRIBUTED_WATERMARK
+		#if SDPCC_FAMILY
 		sdpcc_long_hole_man->record_watermark_wait(
 				_thd_id % g_scheduler_thread_cnt,
 				get_sys_clock() - tmp_txn_list[idx].wait_start);

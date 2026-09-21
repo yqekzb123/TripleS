@@ -115,6 +115,12 @@ void SDPCCSequencer::process_ack(Message * msg, uint64_t thd_id) {
 				INC_STATS_ARR(0,first_start_commit_latency, timespan);
 				INC_STATS_ARR(0,last_start_commit_latency, timespan2);
 				INC_STATS_ARR(0,start_abort_commit_latency, timespan2);
+#if WORKLOAD == YCSB && LONG_TXN_WORKLOAD
+				YCSBStats::record(cl_msg->requests.size() == g_req_per_query &&
+				                  g_req_per_query > g_req_per_short_query,
+				                  static_cast<AckMessage *>(msg)->rc == RCOK,
+				                  timespan);
+#endif
 			}
 			if (wait_list[id].abort_cnt > 0) {
 				INC_STATS(0,unique_txn_abort_cnt,1);

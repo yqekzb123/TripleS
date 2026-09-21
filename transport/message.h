@@ -400,6 +400,7 @@ public:
   uint64_t ordinal;
   uint64_t source_id;
   uint64_t plan_epoch;
+  bool measure;
   Array<BombRequest *> requests;
 };
 

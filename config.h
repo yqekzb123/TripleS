@@ -14,14 +14,14 @@
 // Simulation + Hardware
 /***********************************************/
 #define NODE_CNT 2
-#define THREAD_CNT 16
+#define THREAD_CNT 15
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
 #define LOGGER_THREAD_CNT 3
 #define CORE_CNT 2
 // PART_CNT should be at least NODE_CNT
 #define PART_CNT NODE_CNT
-#define CLIENT_NODE_CNT 2
+#define CLIENT_NODE_CNT NODE_CNT
 #define CLIENT_THREAD_CNT 4
 #define CLIENT_REM_THREAD_CNT 2
 #define CLIENT_SEND_THREAD_CNT 2
@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB, TPCC, CHBENCHMARK, PPS, or BOMB
-#define WORKLOAD BOMB
+#define WORKLOAD YCSB
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -97,7 +97,7 @@
 
 #define PRIORITY_WORK_QUEUE false
 #define PRIORITY PRIORITY_ACTIVE
-#define MSG_SIZE_MAX 4194304
+#define MSG_SIZE_MAX 4096
 #define MSG_TIME_LIMIT 0
 
 /***********************************************/
@@ -200,6 +200,14 @@
 // declared read set, while cleanup remains the transaction commit point.
 // Currently instrumented by YCSB and static BoMB write paths.
 #define SDMVCC_EARLY_VERSION_PUBLISH false
+// YCSB-only blind-write experiment. A WR that has no read of the same key
+// skips predecessor intent/arming and starts from a zero-filled private row.
+// YCSB overwrites and observes field 0, so this is useful as a controlled
+// upper-bound measurement; it is not a general partial-row update protocol.
+#define SDMVCC_BLIND_WRITE false
+#if SDMVCC_BLIND_WRITE && (CC_ALG != SDMVCC || WORKLOAD != YCSB)
+#error "SDMVCC_BLIND_WRITE is restricted to the SDMVCC YCSB experiment"
+#endif
 // Per-transaction access metadata uses a compact linear vector for small
 // read/write sets.  Once the number of distinct keys exceeds this threshold,
 // SDMVCC builds a row-to-vector-index hash table for the rest of the txn.
@@ -242,7 +250,7 @@
 // Benchmark
 /***********************************************/
 // max number of rows touched per transaction
-#define MAX_ROW_PER_TXN 512
+#define MAX_ROW_PER_TXN 2048
 #define QUERY_INTVL         1UL
 #define MAX_TXN_PER_PART 500000
 #define FIRST_PART_LOCAL      true
@@ -251,7 +259,7 @@
 
 #define LONG_TXN_WORKLOAD false
 // #define LONG_TXN_SCHEDULE false
-#define SCHEDULER_CNT 6
+#define SCHEDULER_CNT 3
 
 #define OPEN_RANDOM_WAIT false
 #define RANDOM_WAIT_TIME 100000UL
@@ -265,9 +273,9 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 1048576*8
-#define ZIPF_THETA 0.7
-#define TXN_WRITE_PERC 1.0
+#define SYNTH_TABLE_SIZE 16777216
+#define ZIPF_THETA 1.5
+#define TXN_WRITE_PERC 1
 #define TUP_WRITE_PERC 0.2
 #define SCAN_PERC           0
 #define SCAN_LEN          20
@@ -477,7 +485,7 @@ enum PPSTxnType {
 //   issues one L1 every BOMB_L1_MIX_PERIOD transactions, without waiting for
 //   completion.  Several L1s from one source may be in flight; the L1 arrival
 //   rate is set by the mix period, not by L1 runtime.
-#define BOMB_L1_PERIODIC_MIX true
+#define BOMB_L1_PERIODIC_MIX false
 #define BOMB_L1_MIX_PERIOD 2048
 // Random-ratio mix: every client thread independently generates an L1 with
 // this percentage.  Selection uses a reproducible per-thread pseudo-random
@@ -503,7 +511,7 @@ enum PPSTxnType {
 #define BOMB_LONG_TX_GLOBAL 0
 #define BOMB_LONG_TX_PER_CLIENT 1
 #define BOMB_LONG_TX_MODE BOMB_LONG_TX_PER_CLIENT
-#define BOMB_SHORT_WORKERS 3
+#define BOMB_SHORT_WORKERS 4
 #define BOMB_QUERY_CACHE_SIZE 2048
 #define BOMB_FORCE_SHORT_TYPE -1
 #define BOMB_INJECT_STALE_PRESET false
@@ -588,8 +596,8 @@ enum PPSTxnType {
 #define PROG_TIMER 10 * BILLION // in s
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
-#define DONE_TIMER 30*BILLION
-#define WARMUP_TIMER 30*BILLION
+#define DONE_TIMER 1 * 20 * BILLION // ~1 minutes
+#define WARMUP_TIMER 1 * 20 * BILLION // ~1 minutes
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define ONE_MILLISECOND 1 * MILLION

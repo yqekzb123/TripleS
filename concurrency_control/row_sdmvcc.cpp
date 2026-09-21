@@ -38,6 +38,12 @@ std::atomic<uint64_t> g_long_guard_peak_active(0);
 std::atomic<uint64_t> g_unsafe_intent_skips(0);
 std::atomic<uint64_t> g_unsafe_reads(0);
 std::atomic<uint64_t> g_unsafe_fallback_reads(0);
+std::atomic<uint64_t> g_blind_writes_registered(0);
+std::atomic<uint64_t> g_active_read_intents(0);
+std::atomic<uint64_t> g_peak_active_read_intents(0);
+std::atomic<uint64_t> g_live_versions(0);
+std::atomic<uint64_t> g_tracked_rows(0);
+std::atomic<uint64_t> g_peak_version_chain(0);
 pthread_mutex_t g_snapshot_pin_latch = PTHREAD_MUTEX_INITIALIZER;
 std::multiset<uint64_t> g_snapshot_pins;
 std::atomic<uint64_t> g_oldest_pinned_snapshot(UINT64_MAX);
@@ -80,6 +86,13 @@ bool long_guard_maybe_contains(const SDMVCCLongReadGuard *guard, row_t *row) {
     }
     return true;
 }
+
+void update_peak(std::atomic<uint64_t> &peak, uint64_t value) {
+    uint64_t current = peak.load(std::memory_order_relaxed);
+    while (value > current &&
+           !peak.compare_exchange_weak(current, value,
+                                       std::memory_order_relaxed)) {}
+}
 }
 
 Row_sdmvcc::Row_sdmvcc()
@@ -91,6 +104,9 @@ Row_sdmvcc::Row_sdmvcc()
 void Row_sdmvcc::init(row_t *row) {
     _row = row;
     _versions.emplace_back(0, true, true);
+    g_tracked_rows.fetch_add(1, std::memory_order_relaxed);
+    g_live_versions.fetch_add(1, std::memory_order_relaxed);
+    update_peak(g_peak_version_chain, 1);
 }
 
 void Row_sdmvcc::ensure_initial_locked() {
@@ -101,6 +117,8 @@ void Row_sdmvcc::ensure_initial_locked() {
 }
 
 void Row_sdmvcc::add_read_intent_locked(uint64_t snapshot) {
+    uint64_t active = g_active_read_intents.fetch_add(1, std::memory_order_relaxed) + 1;
+    update_peak(g_peak_active_read_intents, active);
     if (_single_read_intent_count != 0) {
         assert(_read_intents.empty());
         if (_single_read_intent_sid == snapshot) {
@@ -120,6 +138,8 @@ void Row_sdmvcc::add_read_intent_locked(uint64_t snapshot) {
 }
 
 void Row_sdmvcc::remove_read_intent_locked(uint64_t snapshot) {
+    assert(_single_read_intent_count != 0 || !_read_intents.empty());
+    g_active_read_intents.fetch_sub(1, std::memory_order_relaxed);
     if (_single_read_intent_count != 0) {
         assert(_read_intents.empty());
         assert(_single_read_intent_sid == snapshot);
@@ -150,21 +170,24 @@ bool Row_sdmvcc::read_intent_covers_locked(uint64_t begin,
 
 std::vector<Row_sdmvcc::Version>::iterator
 Row_sdmvcc::find_version_locked(uint64_t sid) {
-    for (auto it = _versions.begin(); it != _versions.end(); ++it) {
-        if (it->sid == sid) return it;
-        if (it->sid > sid) break;
-    }
+    auto it = std::lower_bound(
+        _versions.begin(), _versions.end(), sid,
+        [](const Version &version, uint64_t target) {
+            return version.sid < target;
+        });
+    if (it != _versions.end() && it->sid == sid) return it;
     return _versions.end();
 }
 
 std::vector<Row_sdmvcc::Version>::iterator
 Row_sdmvcc::predecessor_locked(uint64_t snapshot) {
-    auto result = _versions.end();
-    for (auto it = _versions.begin(); it != _versions.end(); ++it) {
-        if (it->sid >= snapshot) break;
-        result = it;
-    }
-    return result;
+    auto it = std::lower_bound(
+        _versions.begin(), _versions.end(), snapshot,
+        [](const Version &version, uint64_t target) {
+            return version.sid < target;
+        });
+    if (it == _versions.begin()) return _versions.end();
+    return std::prev(it);
 }
 
 // Scheduling path:
@@ -175,6 +198,7 @@ RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
     const uint64_t sid = txn->sdmvcc_snapshot();
     const int registration = txn->register_sdmvcc_access(_row, type);
     if (registration == 0) return RCOK;
+    const bool blind_write = txn->is_sdmvcc_blind_write(_row, type);
     const bool long_guard = txn->uses_sdmvcc_long_read_guard();
     const bool unsafe_no_intent = txn->uses_sdmvcc_unsafe_l1_no_intent();
     if (registration == 1 && unsafe_no_intent)
@@ -184,7 +208,9 @@ RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
     if (type != WR && (long_guard || unsafe_no_intent)) return RCOK;
     pthread_mutex_lock(&_latch);
     ensure_initial_locked();
-    if (registration == 1 && !SDMVCC_LAZY_READ_INTENT && !long_guard &&
+    if (registration == 1 && blind_write) {
+        g_blind_writes_registered.fetch_add(1, std::memory_order_relaxed);
+    } else if (registration == 1 && !SDMVCC_LAZY_READ_INTENT && !long_guard &&
         !unsafe_no_intent) {
         add_read_intent_locked(sid);
         g_intents_registered.fetch_add(1, std::memory_order_relaxed);
@@ -193,11 +219,15 @@ RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
     }
 
     if (type == WR) {
-        auto existing = find_version_locked(sid);
-        if (existing == _versions.end()) {
-            auto pos = _versions.begin();
-            while (pos != _versions.end() && pos->sid < sid) ++pos;
+        auto pos = std::lower_bound(
+            _versions.begin(), _versions.end(), sid,
+            [](const Version &version, uint64_t target) {
+                return version.sid < target;
+            });
+        if (pos == _versions.end() || pos->sid != sid) {
             _versions.emplace(pos, sid, false);
+            g_live_versions.fetch_add(1, std::memory_order_relaxed);
+            update_peak(g_peak_version_chain, _versions.size());
             g_versions_created.fetch_add(1, std::memory_order_relaxed);
         }
     }
@@ -394,6 +424,7 @@ void Row_sdmvcc::set_creation_sid(uint64_t sid) {
         // the new row to its index. Drop the temporary base version; the
         // reserved version is staged and published by finish_sdmvcc().
         assert(_versions.front().ready && _versions.front().base_backed);
+        g_live_versions.fetch_sub(1, std::memory_order_relaxed);
         _versions.erase(_versions.begin());
     }
     pthread_mutex_unlock(&_latch);
@@ -451,6 +482,7 @@ void Row_sdmvcc::abort_write(uint64_t sid, uint64_t thd_id) {
         if (!version->data.empty()) {
             g_version_bytes.fetch_sub(version->data.size(), std::memory_order_relaxed);
         }
+        g_live_versions.fetch_sub(1, std::memory_order_relaxed);
         _versions.erase(version);
         for (TxnManager *txn : affected) {
             auto predecessor = predecessor_locked(txn->sdmvcc_snapshot());
@@ -483,22 +515,34 @@ void Row_sdmvcc::gc_locked(uint64_t watermark) {
     if (_versions.size() < 2) return;
     const uint64_t pinned = oldest_pinned_snapshot();
     if (pinned < watermark) watermark = pinned;
-    auto current = _versions.begin();
-    while (current != _versions.end()) {
-        auto next = std::next(current);
-        if (next == _versions.end()) break; // Always retain the newest version.
-        if (!current->ready || !next->ready || watermark <= next->sid) {
-            current = next;
-            continue;
-        }
-        if (read_intent_covers_locked(current->sid, next->sid) ||
-            long_read_guard_covers(_row, current->sid, next->sid)) {
-            current = next;
-            continue;
-        }
-        g_version_bytes.fetch_sub(current->data.size(), std::memory_order_relaxed);
-        g_versions_reclaimed.fetch_add(1, std::memory_order_relaxed);
-        current = _versions.erase(current);
+    // Decide against the original adjacent pairs first, then compact once.
+    // Erasing each reclaimable element from a vector shifts the whole suffix;
+    // on a hot key that turns one GC pass into quadratic work.
+    std::vector<uint8_t> reclaim(_versions.size(), 0);
+    uint64_t reclaimed_count = 0;
+    uint64_t reclaimed_bytes = 0;
+    for (size_t i = 0; i + 1 < _versions.size(); ++i) {
+        const Version &current = _versions[i];
+        const Version &next = _versions[i + 1];
+        if (!current.ready || !next.ready || watermark <= next.sid) continue;
+        if (read_intent_covers_locked(current.sid, next.sid) ||
+            long_read_guard_covers(_row, current.sid, next.sid)) continue;
+        reclaim[i] = 1;
+        ++reclaimed_count;
+        reclaimed_bytes += current.data.size();
+    }
+    if (reclaimed_count != 0) {
+        size_t index = 0;
+        auto new_end = std::remove_if(
+            _versions.begin(), _versions.end(),
+            [&reclaim, &index](const Version &) {
+                return reclaim[index++] != 0;
+            });
+        _versions.erase(new_end, _versions.end());
+        g_version_bytes.fetch_sub(reclaimed_bytes, std::memory_order_relaxed);
+        g_live_versions.fetch_sub(reclaimed_count, std::memory_order_relaxed);
+        g_versions_reclaimed.fetch_add(reclaimed_count,
+                                       std::memory_order_relaxed);
     }
 
     // Once no old snapshot needs the former base value, promote the sole
@@ -664,7 +708,15 @@ void Row_sdmvcc::print_stats(FILE *outf) {
             ",sdmvcc_unsafe_l1_no_intent=%d"
             ",sdmvcc_unsafe_intent_skips=%lu"
             ",sdmvcc_unsafe_reads=%lu"
-            ",sdmvcc_unsafe_fallback_reads=%lu",
+            ",sdmvcc_unsafe_fallback_reads=%lu"
+            ",sdmvcc_blind_write_enabled=%d"
+            ",sdmvcc_blind_writes_registered=%lu"
+            ",sdmvcc_active_intents=%lu"
+            ",sdmvcc_peak_active_intents=%lu"
+            ",sdmvcc_live_versions=%lu"
+            ",sdmvcc_tracked_rows=%lu"
+            ",sdmvcc_avg_version_chain=%f"
+            ",sdmvcc_peak_version_chain=%lu",
             SDMVCC_LAZY_READ_INTENT ? 1 : 0,
             g_lazy_registration_skips.load(), g_lazy_ready_reads.load(),
             g_lazy_waits.load(), SDMVCC_LONG_READ_GUARD ? 1 : 0,
@@ -680,7 +732,36 @@ void Row_sdmvcc::print_stats(FILE *outf) {
                 ((SDMVCC_LONG_READ_GUARD_BITS + 7) / 8),
             SDMVCC_UNSAFE_L1_NO_INTENT ? 1 : 0,
             g_unsafe_intent_skips.load(), g_unsafe_reads.load(),
-            g_unsafe_fallback_reads.load());
+            g_unsafe_fallback_reads.load(), SDMVCC_BLIND_WRITE ? 1 : 0,
+            g_blind_writes_registered.load(),
+            g_active_read_intents.load(std::memory_order_relaxed),
+            g_peak_active_read_intents.load(std::memory_order_relaxed),
+            g_live_versions.load(std::memory_order_relaxed),
+            g_tracked_rows.load(std::memory_order_relaxed),
+            g_tracked_rows.load(std::memory_order_relaxed) ?
+                static_cast<double>(g_live_versions.load(std::memory_order_relaxed)) /
+                g_tracked_rows.load(std::memory_order_relaxed) : 0.0,
+            g_peak_version_chain.load(std::memory_order_relaxed));
+}
+
+void Row_sdmvcc::print_timeseries(FILE *outf, uint64_t elapsed_ns) {
+    const uint64_t tracked = g_tracked_rows.load(std::memory_order_relaxed);
+    const uint64_t live = g_live_versions.load(std::memory_order_relaxed);
+    fprintf(outf,
+            "[timeseries] elapsed_ns=%lu"
+            ",sdmvcc_active_intents=%lu"
+            ",sdmvcc_peak_active_intents=%lu"
+            ",sdmvcc_live_versions=%lu"
+            ",sdmvcc_tracked_rows=%lu"
+            ",sdmvcc_avg_version_chain=%f"
+            ",sdmvcc_peak_version_chain=%lu\n",
+            elapsed_ns,
+            g_active_read_intents.load(std::memory_order_relaxed),
+            g_peak_active_read_intents.load(std::memory_order_relaxed),
+            live, tracked,
+            tracked ? static_cast<double>(live) / tracked : 0.0,
+            g_peak_version_chain.load(std::memory_order_relaxed));
+    fflush(outf);
 }
 
 #endif

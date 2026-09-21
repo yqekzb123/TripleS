@@ -1353,14 +1353,25 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 	if (existing != sdmvcc_accesses.size()) {
 		auto &entry = sdmvcc_accesses[existing];
 		entry.remaining_uses++;
+		// A later read makes an earlier nominal blind write non-blind. Install
+		// the normal snapshot protection when register_access() sees return 1.
+		if (entry.blind_write && type != WR) {
+			entry.blind_write = false;
+			entry.intent_registered =
+				!SDMVCC_LAZY_READ_INTENT && !uses_sdmvcc_long_read_guard() &&
+				!uses_sdmvcc_unsafe_l1_no_intent();
+			return 1;
+		}
 		if (entry.type == WR || type != WR) return 0;
 		entry.type = WR;
 		return 2;
 	}
+	const bool blind_write = SDMVCC_BLIND_WRITE && type == WR;
 	SDMVCCAccessRegistration entry = {
 		row, type, false, 1, false,
-		!SDMVCC_LAZY_READ_INTENT && !uses_sdmvcc_long_read_guard() &&
-		!uses_sdmvcc_unsafe_l1_no_intent(), false, false};
+		!blind_write && !SDMVCC_LAZY_READ_INTENT &&
+		!uses_sdmvcc_long_read_guard() &&
+		!uses_sdmvcc_unsafe_l1_no_intent(), false, false, blind_write};
 	sdmvcc_accesses.push_back(entry);
 	if (!sdmvcc_access_index.empty())
 		sdmvcc_access_index[row] = sdmvcc_accesses.size() - 1;
@@ -1369,6 +1380,13 @@ int TxnManager::register_sdmvcc_access(row_t *row, access_t type) {
 	if (uses_sdmvcc_long_read_guard())
 		Row_sdmvcc::add_long_read_guard_key(sdmvcc_long_read_guard, row);
 	return 1;
+}
+
+bool TxnManager::is_sdmvcc_blind_write(row_t *row, access_t type) const {
+	if (type != WR) return false;
+	const size_t existing = find_sdmvcc_access(row);
+	return existing != sdmvcc_accesses.size() &&
+		sdmvcc_accesses[existing].blind_write;
 }
 
 // Early-release hook. remaining_uses makes duplicate occurrences of a key
@@ -1425,6 +1443,10 @@ void TxnManager::arm_sdmvcc_intents() {
 #else
 	for (auto &entry : sdmvcc_accesses) {
 		if (entry.armed) continue;
+		if (entry.blind_write) {
+			entry.armed = true;
+			continue;
+		}
 		entry.row->manager->arm_read(this, sdmvcc_snapshot());
 		entry.armed = true;
 	}

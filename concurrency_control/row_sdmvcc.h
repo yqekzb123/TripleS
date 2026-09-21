@@ -80,6 +80,7 @@ public:
     bool has_write_lock() const { return false; }
 
     static void print_stats(FILE *outf);
+    static void print_timeseries(FILE *outf, uint64_t elapsed_ns);
     static void pin_snapshot(uint64_t snapshot);
     static void unpin_snapshot(uint64_t snapshot);
     static SDMVCCLongReadGuard *begin_long_read_guard(uint64_t snapshot);

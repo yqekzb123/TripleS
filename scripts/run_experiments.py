@@ -61,7 +61,7 @@ keywords += ['sdmvcc_intents_registered', 'sdmvcc_intents_released',
              'sdmvcc_gc_calls', 'sdmvcc_gc_disabled_calls',
              'sdmvcc_lazy_read_intent', 'sdmvcc_lazy_registration_skips',
              'sdmvcc_lazy_ready_reads', 'sdmvcc_lazy_waits']
-keywords_cal_type = (['sum'] * 6 + ['avg'] * 3 + ['sum'] * 12 +
+keywords_cal_type = (['sum'] * 4 + ['avg'] * 2 + ['avg'] * 3 + ['sum'] * 12 +
                      ['avg'] * 2 + ['sum', 'avg', 'sum', 'sum'] + ['sum'] * 7 +
                      ['avg', 'sum', 'sum', 'avg', 'sum', 'sum', 'sum'])
 keywords += ['sdmvcc_long_guard_enabled', 'sdmvcc_long_guards_registered',
@@ -75,6 +75,17 @@ keywords_cal_type += ['avg', 'sum', 'sum', 'sum', 'avg', 'sum', 'sum',
 keywords += ['sdmvcc_early_publish_enabled',
              'sdmvcc_early_versions_published']
 keywords_cal_type += ['avg', 'sum']
+keywords += ['sdmvcc_active_intents', 'sdmvcc_peak_active_intents',
+             'sdmvcc_live_versions', 'sdmvcc_tracked_rows',
+             'sdmvcc_avg_version_chain', 'sdmvcc_peak_version_chain']
+keywords_cal_type += ['sum', 'sum', 'sum', 'sum', 'avg', 'sum']
+ycsb_metrics = ['ycsb_short_committed', 'ycsb_short_aborted',
+                'ycsb_short_p50', 'ycsb_short_p99', 'ycsb_short_avg',
+                'ycsb_short_samples', 'ycsb_long_committed',
+                'ycsb_long_aborted', 'ycsb_long_p50', 'ycsb_long_p99',
+                'ycsb_long_avg', 'ycsb_long_samples']
+keywords += ycsb_metrics
+keywords_cal_type += ['sum', 'sum', 'avg', 'avg', 'avg', 'sum'] * 2
 # Idle-time metrics used to compare phased protocols with SDMVCC.  For Aria,
 # *_phase_idle_avg_time is the mean tail wait of one worker at one phase
 # barrier.  SDMVCC has no batch barrier, so its comparable scheduler metric is

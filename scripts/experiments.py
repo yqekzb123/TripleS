@@ -56,6 +56,7 @@ SHORTNAMES = {
     "BOMB_LONG_TX_MODE":"BLM",
     "BOMB_LONG_TX_SOURCES":"BLS",
     "BOMB_SHORT_WORKERS":"BSW",
+    "OPEN_DISTRIBUTED_WATERMARK":"DW",
     "SDMVCC_LAZY_READ_INTENT":"LRI",
     "SDMVCC_INTENT_GC":"IGC",
     "SDMVCC_LONG_READ_GUARD":"LRG",
@@ -165,12 +166,34 @@ def ycsb_skew_PCC():
     # scnt = [1]
     scnt = [3]
     # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    skew = [0.7]
+    skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
     # skew = [0.1]
     # skew = [1.5]
     fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
     exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
     return fmt,exp
+
+def ycsb_sdmvcc_vector_lookup():
+    """Focused rerun for the SDMVCC hot-key version-chain optimization."""
+    wl = 'YCSB'
+    algos = ['SDMVCC']
+    skew = [1.1, 1.3, 1.5]
+    nnodes = [2]
+    base_table_size = 1048576 * 8
+    txn_write_perc = [1]
+    tup_write_perc = [0.2]
+    load = [10000]
+    total_cnt = [15]
+    scnt = [3]
+    fmt = ["WORKLOAD", "CC_ALG", "ZIPF_THETA", "NODE_CNT",
+           "SYNTH_TABLE_SIZE", "TUP_WRITE_PERC", "TXN_WRITE_PERC",
+           "MAX_TXN_IN_FLIGHT", "THREAD_CNT", "SCHEDULER_CNT"]
+    exp = [[wl, algo, sk, n, base_table_size * n, tup_wr_perc,
+            txn_wr_perc, ld, t_cnt, s_cnt]
+           for t_cnt, s_cnt, txn_wr_perc, tup_wr_perc, ld, n, sk, algo
+           in itertools.product(total_cnt, scnt, txn_write_perc,
+                                tup_write_perc, load, nnodes, skew, algos)]
+    return fmt, exp
 
 def ycsb_skew_OCC():
     wl = 'YCSB'
@@ -651,6 +674,68 @@ def ycsb_sdmvcc_long():
            for perc, algo in itertools.product(long_percs, algos)]
     return fmt, exp
 
+def ycsb_sdmvcc_long_size():
+    """Short txns use 10 requests; long txns use 100/500/1000 requests.
+
+    The long transaction fraction is configurable with YCSB_LONG_PERC and
+    defaults to 0.05 so the script can be kept stable before the paper ratio
+    is finalized.
+    """
+    long_perc = float(os.environ.get("YCSB_LONG_PERC", "0.05"))
+    long_sizes = [100, 500, 1000]
+    fmt = ["WORKLOAD", "CC_ALG", "LONG_QUERY_PERC", "NODE_CNT",
+           "LONG_TXN_WORKLOAD", "REQ_PER_QUERY", "REQ_PER_SHORT_QUERY",
+           "MAX_ROW_PER_TXN", "MSG_SIZE_MAX", "OPEN_DISTRIBUTED_WATERMARK",
+           "THREAD_CNT", "SCHEDULER_CNT", "WARMUP_TIMER", "DONE_TIMER"]
+    exp = [["YCSB", algo, long_perc, 2, "true", long_size, 10,
+            2048, 131072, "false", 16, 3,
+            "30*BILLION", "30*BILLION"]
+           for algo in ["SDPCC", "SDMVCC"]
+           for long_size in long_sizes]
+    return fmt, exp
+
+
+def bomb_sdmvcc_gc_ablation():
+    """BoMB mixed workload: no reclamation versus read-intent GC."""
+    fmt, exp = _bomb_formal("false", ["SDMVCC"])
+    idx = fmt.index("SDMVCC_INTENT_GC")
+    base = list(exp[0])
+    gc_off = list(base)
+    gc_on = list(base)
+    gc_off[idx] = "false"
+    gc_on[idx] = "true"
+    variants = [gc_off, gc_on]
+    rotation = int(os.environ.get("SDMVCC_GC_ORDER", "0")) % 2
+    return fmt, variants[rotation:] + variants[:rotation]
+
+
+def ycsb_sdpcc_watermark_mode():
+    """YCSB comparison of local and distributed SDPCC watermark modes."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
+           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
+           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
+           "OPEN_DISTRIBUTED_WATERMARK", "WARMUP_TIMER", "DONE_TIMER"]
+    base = ["YCSB", "SDPCC", 2, 2,
+            16, 4, 3,
+            10000, 8 * 1024 * 1024, 10,
+            0.7, 0.2, 1.0, 0.2]
+    return fmt, [base + ["false", "30*BILLION", "30*BILLION"],
+                 base + ["true", "30*BILLION", "30*BILLION"]]
+
+
+def bomb_sdpcc_watermark_mode():
+    """BoMB comparison of local and distributed SDPCC watermark modes."""
+    fmt, exp = _bomb_formal("false", ["SDPCC"])
+    idx = fmt.index("OPEN_DISTRIBUTED_WATERMARK")
+    base = list(exp[0])
+    local = list(base)
+    distributed = list(base)
+    local[idx] = "false"
+    distributed[idx] = "true"
+    return fmt, [local, distributed]
+
+
 def chbenchmark_sdmvcc_test():
     """Small two-node CH-benCHmark correctness/performance smoke test.
 
@@ -772,6 +857,26 @@ def ycsb_sdmvcc_early_publish_ablation():
     return fmt, variants[rotation:] + variants[:rotation]
 
 
+def ycsb_sdmvcc_blind_write_ablation():
+    """Default YCSB: normal RMW writes versus the blind-write upper bound."""
+    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
+           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
+           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
+           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
+           "SDMVCC_BLIND_WRITE", "SDMVCC_EARLY_VERSION_PUBLISH",
+           "SDMVCC_LAZY_READ_INTENT", "SDMVCC_INTENT_GC",
+           "SDMVCC_LONG_READ_GUARD", "WARMUP_TIMER", "DONE_TIMER"]
+    base = ["YCSB", "SDMVCC", 2, 2,
+            16, 4, 3,
+            10000, 8 * 1024 * 1024, 10,
+            0.7, 0.2, 1.0, 0.2]
+    variants = [base + [blind, "false", "false", "true", "false",
+                        "30*BILLION", "30*BILLION"]
+                for blind in ["false", "true"]]
+    rotation = int(os.environ.get("SDMVCC_BLIND_WRITE_ORDER", "0")) % 2
+    return fmt, variants[rotation:] + variants[:rotation]
+
+
 def ycsb_sdmvcc_scheduler_sweep():
     """Two-node YCSB sweep for the SDMVCC scheduler count."""
     fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
@@ -783,12 +888,12 @@ def ycsb_sdmvcc_scheduler_sweep():
            "SDMVCC_LONG_READ_GUARD", "SDMVCC_UNSAFE_L1_NO_INTENT",
            "SDMVCC_EARLY_VERSION_PUBLISH", "WARMUP_TIMER", "DONE_TIMER"]
     return fmt, [["YCSB", "SDMVCC", 2, 2,
-                  16, 4, schedulers,
+                  15, 4, schedulers,
                   10000, 8 * 1024 * 1024, 10,
                   0.7, 0.2, 1.0, 0.2,
                   3000, "false", "false", "true", "false", "false",
                   "false", "30*BILLION", "30*BILLION"]
-                 for schedulers in range(2, 7)]
+                 for schedulers in range(1,15)]
 
 
 def bomb_sdmvcc_scheduler_sweep():
@@ -799,7 +904,7 @@ def bomb_sdmvcc_scheduler_sweep():
     early_at = fmt.index("WARMUP_TIMER")
     fmt.insert(early_at, "SDMVCC_EARLY_VERSION_PUBLISH")
     variants = []
-    for schedulers in range(2, 7):
+    for schedulers in range(1, 15):
         row = list(base[0])
         row.insert(insert_at, schedulers)
         row.insert(early_at, "false")
@@ -1570,11 +1675,17 @@ def bomb_sdmvcc_htap8_mix16_unsafe_rev():
 
 
 experiment_map = {
+    'ycsb_sdmvcc_vector_lookup': ycsb_sdmvcc_vector_lookup,
     'bomb_static': bomb_static,
     'bomb_dynamic': bomb_dynamic,
     'bomb_random_static': bomb_random_static,
     'bomb_sdmvcc_early_publish_ablation': bomb_sdmvcc_early_publish_ablation,
     'ycsb_sdmvcc_early_publish_ablation': ycsb_sdmvcc_early_publish_ablation,
+    'ycsb_sdmvcc_blind_write_ablation': ycsb_sdmvcc_blind_write_ablation,
+    'ycsb_sdmvcc_long_size': ycsb_sdmvcc_long_size,
+    'bomb_sdmvcc_gc_ablation': bomb_sdmvcc_gc_ablation,
+    'ycsb_sdpcc_watermark_mode': ycsb_sdpcc_watermark_mode,
+    'bomb_sdpcc_watermark_mode': bomb_sdpcc_watermark_mode,
     'ycsb_sdmvcc_scheduler_sweep': ycsb_sdmvcc_scheduler_sweep,
     'bomb_sdmvcc_scheduler_sweep': bomb_sdmvcc_scheduler_sweep,
     'ycsb_idle_default': ycsb_idle_default,
@@ -1690,31 +1801,69 @@ experiment_map = {
 }
 
 
+# Paper experiment thread policy.  Keep this at the experiment-map boundary so
+# every entry point, including smoke and legacy helpers, uses the same counts.
+_EXPERIMENT_THREAD_COUNT = {
+    "CARACAL": 16,
+    "ARIA": 16,
+    "CALVIN": 15,
+    "SDMVCC": 15,
+    "SDPCC": 15,
+}
+
+def _enforce_experiment_thread_count(fn):
+    def wrapped():
+        fmt, rows = fn()
+        if "THREAD_CNT" in fmt and "CC_ALG" in fmt:
+            ai = fmt.index("CC_ALG")
+            ti = fmt.index("THREAD_CNT")
+            for row in rows:
+                count = _EXPERIMENT_THREAD_COUNT.get(str(row[ai]))
+                if count is not None:
+                    row[ti] = count
+        return fmt, rows
+    return wrapped
+
+experiment_map = {name: _enforce_experiment_thread_count(fn)
+                  for name, fn in experiment_map.items()}
+
 # Default values for variable configurations
 configs = {
+    # 节点数
     "NODE_CNT" : 2,
-    "THREAD_CNT": 16,
+    # 线程数
+    "THREAD_CNT": 16, 
+    # 不用管
     "REPLICA_CNT": 0,
     "REPLICA_TYPE": "AP",
+
+    # 收发消息的线程数
     "REM_THREAD_CNT": 2,
     "SEND_THREAD_CNT": 2,
+    # 客户端方面的配置
     "CLIENT_NODE_CNT" : "NODE_CNT",
     "CLIENT_THREAD_CNT" : 4,
     "CLIENT_REM_THREAD_CNT" : 2,
     "CLIENT_SEND_THREAD_CNT" : 2,
+
     "MAX_TXN_PER_PART" : 500000,
     "WORKLOAD" : "YCSB",
     "CC_ALG" : "CNULL",
+
     "MPR" : 0.2,    #分布式事务比列
     "TPORT_TYPE":"TCP",
     "TPORT_PORT":"18000",
     "PART_CNT": "NODE_CNT",
+    # 默认2就行
     "PART_PER_TXN": 2,
+    # 默认10000
     "MAX_TXN_IN_FLIGHT": 10000,
     "NETWORK_DELAY": '0UL',
     "NETWORK_DELAY_TEST": 'false',
+    # 实验跑多长时间
     "DONE_TIMER": "1 * 20 * BILLION // ~1 minutes",
     "WARMUP_TIMER": "1 * 20 * BILLION // ~1 minutes",
+
     "SEQ_BATCH_TIMER": "5 * 1 * MILLION // ~5ms -- same as CALVIN paper",
     "BATCH_TIMER" : "0",
     "PROG_TIMER" : "10 * BILLION // in s",
@@ -1722,6 +1871,7 @@ configs = {
     "ABORT_PENALTY": "10 * 1000000UL   // in ns.",
     "ABORT_PENALTY_MAX": "5 * 100 * 1000000UL   // in ns.",
     "MSG_TIME_LIMIT": "0",
+    # 单个消息最大size，HTAP-BoMB需要改大
     "MSG_SIZE_MAX": 4096,
     "TXN_WRITE_PERC":1.0,
     "PRIORITY":"PRIORITY_ACTIVE",
@@ -1732,17 +1882,23 @@ configs = {
     "SDPCC_LONG_HOLE_MODE":"SDPCC_LONG_HOLE_DISABLED",
     "SDMVCC_LONG_READ_GUARD":"false",
     "SDMVCC_EARLY_VERSION_PUBLISH":"false",
+    "SDMVCC_BLIND_WRITE":"false",
     "SDMVCC_UNSAFE_L1_NO_INTENT":"false",
     "OPEN_RANDOM_WAIT":'false',
 #YCSB
     "INIT_PARALLELISM" : 8,
+    # 写比例
     "TUP_WRITE_PERC":0.2,
+    # 偏斜率
     "ZIPF_THETA":0.7,
+
     "ACCESS_PERC":0.03,
     "DATA_PERC": 100,
     "REQ_PER_QUERY": 10,
     "REQ_PER_SHORT_QUERY": 10,
+    # 数据量
     "SYNTH_TABLE_SIZE":"1048576*8",
+
     "RWSET_KNOWN_RATIO":1.0,
     "RWSET_KNOWN":"false",
     "RWSET_VARIABLE_RATIO":0.0,
@@ -1759,13 +1915,20 @@ configs = {
     "CH_QUERY_WAREHOUSE_PCT":100,
     "CH_SUPPLIER_COUNT":10000,
 #BoMB
+    # 动态的跑一个，静态的跑一个
     "BOMB_DYNAMIC_MODE":"false",
+    
     "BOMB_L1_PERIODIC_MIX":"false",
+    # 长事务，是什么模式，
+    # false：每台服务器，同时只跑一个。
+    # true，就是按照比例来，L1
     "BOMB_L1_RANDOM_MIX":"false",
     "BOMB_L1_RANDOM_PCT":10,
-    "BOMB_LONG_TX_MODE":"BOMB_LONG_TX_GLOBAL",
+    # 一台服务器跑一个L1
+    "BOMB_LONG_TX_MODE":"BOMB_LONG_TX_PER_CLIENT",
     "BOMB_LONG_TX_SOURCES":1,
     "BOMB_SHORT_WORKERS":4,
+    # 默认值
     "BOMB_FACTORY_COUNT":8,
     "BOMB_PRODUCT_TYPES":72000,
     "BOMB_MATERIAL_TYPES":198000,

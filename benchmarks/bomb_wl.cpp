@@ -41,6 +41,12 @@ void BombStats::record_submit(BombClientQueryMessage *msg, BombWorkload *wl,
                               uint64_t nodes) {
   const uint64_t type = msg->txn_type;
   assert(type < BOMB_TXN_TYPE_COUNT);
+  if (!simulation->is_warmup_done()) {
+    msg->measure = false;
+    return;
+  }
+  if (msg->measure) return;
+  msg->measure = true;
   uint64_t zero = 0;
   first_submit_time.compare_exchange_strong(zero, get_sys_clock());
   submitted[type].fetch_add(1);
@@ -73,6 +79,7 @@ void BombStats::record_complete(BombClientQueryMessage *msg, uint64_t latency,
                                 bool was_aborted) {
   const uint64_t type = msg->txn_type;
   assert(type < BOMB_TXN_TYPE_COUNT);
+  if (!msg->measure) return;
   if (was_aborted) aborted[type].fetch_add(1);
   else committed[type].fetch_add(1);
   {
@@ -89,11 +96,13 @@ void BombStats::record_complete(BombClientQueryMessage *msg, uint64_t latency,
 void BombStats::record_abort_attempt(BombClientQueryMessage *msg) {
   const uint64_t type = msg->txn_type;
   assert(type < BOMB_TXN_TYPE_COUNT);
+  if (!msg->measure) return;
   aborted[type].fetch_add(1);
 }
 
 void BombStats::record_exec(uint32_t type, bool write) {
   assert(type < BOMB_TXN_TYPE_COUNT);
+  if (!simulation->is_warmup_done()) return;
   if (write) exec_write_ops[type].fetch_add(1);
   else exec_read_ops[type].fetch_add(1);
 }
