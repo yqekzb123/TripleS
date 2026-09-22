@@ -52,7 +52,7 @@ void clone_requests(Array<BombRequest *> &dst,
 }
 }
 
-void BombClientQueryMessage::init() { ClientQueryMessage::init(); }
+void BombClientQueryMessage::init() { ClientQueryMessage::init(); measure = false; }
 
 void BombClientQueryMessage::release() {
   release_requests(requests);

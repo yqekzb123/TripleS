@@ -41,7 +41,7 @@ fromtimelist=[]
 totimelist=[]
 
 keywords = ['tput', 'seq_idle_time', 'sched_idle_time', 'worker_idle_time', 'fscl50', 'fscl99']
-keywords_cal_type = ['sum', 'sum', 'sum', 'sum', 'sum', 'sum']
+keywords_cal_type = ['sum', 'sum', 'sum', 'sum', 'avg', 'avg']
 # Per-phase tail wait at Caracal's logical barriers.  Each average is the mean
 # wait of one worker at one occurrence of that phase barrier.
 keywords += ['caracal_init_phase_idle_time', 'caracal_init_phase_idle_cnt',
@@ -52,6 +52,13 @@ keywords += ['caracal_init_phase_idle_time', 'caracal_init_phase_idle_cnt',
              'caracal_execution_phase_idle_cnt',
              'caracal_execution_phase_idle_avg_time', 'total_runtime']
 keywords_cal_type += ['sum', 'sum', 'avg'] * 3 + ['avg']
+ycsb_metrics = ['ycsb_short_committed', 'ycsb_short_aborted',
+                'ycsb_short_p50', 'ycsb_short_p99', 'ycsb_short_avg',
+                'ycsb_short_samples', 'ycsb_long_committed',
+                'ycsb_long_aborted', 'ycsb_long_p50', 'ycsb_long_p99',
+                'ycsb_long_avg', 'ycsb_long_samples']
+keywords += ycsb_metrics
+keywords_cal_type += ['sum', 'sum', 'avg', 'avg', 'avg', 'sum'] * 2
 draw_keywords = ['tput']
 
 if len(sys.argv) < 2:

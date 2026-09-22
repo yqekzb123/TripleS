@@ -27,6 +27,45 @@
 #include "work_queue.h"
 #include "bomb.h"
 
+std::atomic<uint64_t> YCSBStats::committed_[2] = {ATOMIC_VAR_INIT(0), ATOMIC_VAR_INIT(0)};
+std::atomic<uint64_t> YCSBStats::aborted_[2] = {ATOMIC_VAR_INIT(0), ATOMIC_VAR_INIT(0)};
+std::mutex YCSBStats::latency_mutex_;
+std::vector<uint64_t> YCSBStats::latencies_[2];
+
+void YCSBStats::record(bool is_long, bool committed, uint64_t latency_ns) {
+  if (!simulation->is_warmup_done()) return;
+  const uint64_t idx = is_long ? 1 : 0;
+  if (!committed) {
+    aborted_[idx].fetch_add(1, std::memory_order_relaxed);
+    return;
+  }
+  committed_[idx].fetch_add(1, std::memory_order_relaxed);
+  std::lock_guard<std::mutex> guard(latency_mutex_);
+  latencies_[idx].push_back(latency_ns);
+}
+
+void YCSBStats::print(FILE *out) {
+  static const char *names[2] = {"short", "long"};
+  for (uint64_t idx = 0; idx < 2; ++idx) {
+    std::vector<uint64_t> values;
+    { std::lock_guard<std::mutex> guard(latency_mutex_); values = latencies_[idx]; }
+    std::sort(values.begin(), values.end());
+    auto pct = [&values](double p) -> double {
+      if (values.empty()) return 0.0;
+      return static_cast<double>(values[static_cast<uint64_t>((values.size() - 1) * p)]) / BILLION;
+    };
+    double total = 0.0;
+    for (uint64_t value : values) total += value;
+    const char *name = names[idx];
+    fprintf(out, ",ycsb_%s_committed=%lu,ycsb_%s_aborted=%lu,ycsb_%s_p50=%f,ycsb_%s_p99=%f,ycsb_%s_avg=%f,ycsb_%s_samples=%lu",
+            name, committed_[idx].load(std::memory_order_relaxed),
+            name, aborted_[idx].load(std::memory_order_relaxed),
+            name, pct(0.50), name, pct(0.99),
+            name, values.empty() ? 0.0 : total / values.size() / BILLION,
+            name, values.size());
+  }
+}
+
 void Stats_thd::init(uint64_t thd_id) {
   DEBUG_M("Stats_thd::init part_cnt alloc\n");
   part_cnt = (uint64_t*) mem_allocator.align_alloc(sizeof(uint64_t)*g_part_cnt);
@@ -1733,6 +1772,9 @@ void Stats::print_client(bool prog) {
   else
 	  fprintf(outf, "[summary] ");
   totals->print_client(outf,prog);
+#if WORKLOAD == YCSB && LONG_TXN_WORKLOAD
+  if (!prog) YCSBStats::print(outf);
+#endif
   mem_util(outf);
   cpu_util(outf);
 
@@ -1818,6 +1860,9 @@ void Stats::print(bool prog) {
   totals->print(outf,prog);
 #if WORKLOAD == BOMB
   BombStats::print(outf);
+#endif
+#if WORKLOAD == YCSB && LONG_TXN_WORKLOAD
+  if (!prog) YCSBStats::print(outf);
 #endif
   mem_util(outf);
   cpu_util(outf);

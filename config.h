@@ -14,7 +14,7 @@
 // Simulation + Hardware
 /***********************************************/
 #define NODE_CNT 2
-#define THREAD_CNT 8
+#define THREAD_CNT 16
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
 #define LOGGER_THREAD_CNT 3
@@ -97,7 +97,7 @@
 
 #define PRIORITY_WORK_QUEUE false
 #define PRIORITY PRIORITY_ACTIVE
-#define MSG_SIZE_MAX 1048576
+#define MSG_SIZE_MAX 4194304
 #define MSG_TIME_LIMIT 0
 
 /***********************************************/
@@ -153,7 +153,7 @@
 #define DETERMINISTIC_ABORT_MODE false
 #define DETERMINISTIC_ABORT_RATIO 0.2
 // [ARIA], [CARACAL] and [SDOCC]
-#define ARIA_BATCH_SIZE 16
+#define ARIA_BATCH_SIZE 3000
 // [CARACAL]
 // 是否开启按需拆分，如果开启，当一个数据项的版本数量超过HOT_ITEM_THRESHOLD时，将被设置成热数据项，需要将对应操作拆分成子事务，交给第一个或者第二个线程来执行，以减少冲突和重试的开销
 #define OPEN_SPLIT_ON_DEMAND false
@@ -194,7 +194,7 @@
 // Benchmark
 /***********************************************/
 // max number of rows touched per transaction
-#define MAX_ROW_PER_TXN       64
+#define MAX_ROW_PER_TXN 8192
 #define QUERY_INTVL         1UL
 #define MAX_TXN_PER_PART 500000
 #define FIRST_PART_LOCAL      true
@@ -206,7 +206,7 @@
 #define SCHEDULER_CNT 3
 
 #define OPEN_RANDOM_WAIT false
-#define RANDOM_WAIT_TIME 100000UL
+#define RANDOM_WAIT_TIME 0UL
 
 // ==== [YCSB] ====
 // SKEW_METHOD:
@@ -396,10 +396,10 @@ enum PPSTxnType {
 
 // ==== [BoMB] ====
 // false: static L1/S1/S2; true: dynamic S1..S5 with topology guards.
-#define BOMB_DYNAMIC_MODE true
+#define BOMB_DYNAMIC_MODE false
 #define BOMB_LONG_TX_GLOBAL 0
 #define BOMB_LONG_TX_PER_CLIENT 1
-#define BOMB_LONG_TX_MODE BOMB_LONG_TX_GLOBAL
+#define BOMB_LONG_TX_MODE BOMB_LONG_TX_PER_CLIENT
 #define BOMB_LONG_TX_SOURCES 1
 
 // BoMB L1 issue policy.
@@ -407,26 +407,26 @@ enum PPSTxnType {
 // true: the source issues one L1 every BOMB_L1_MIX_PERIOD generated txns;
 // multiple L1 transactions may therefore be in flight concurrently.
 #define BOMB_L1_PERIODIC_MIX false
-#define BOMB_L1_MIX_PERIOD 256
+#define BOMB_L1_MIX_PERIOD 2048
 // Random-ratio mix: every client thread independently generates an L1 with
 // this percentage.  Selection uses a reproducible per-thread pseudo-random
 // sequence.  When enabled, the source/periodic policy above is ignored.
-#define BOMB_L1_RANDOM_MIX false
-#define BOMB_L1_RANDOM_PCT 0.1
+#define BOMB_L1_RANDOM_MIX true
+#define BOMB_L1_RANDOM_PCT 0.5
 
 #define BOMB_SHORT_WORKERS 3
 #define BOMB_QUERY_CACHE_SIZE 2048
 #define BOMB_FORCE_SHORT_TYPE -1
 #define BOMB_INJECT_STALE_PRESET false
 
-#define BOMB_FACTORY_COUNT 2
-#define BOMB_PRODUCT_TYPES 64
-#define BOMB_MATERIAL_TYPES 160
-#define BOMB_RAW_MATERIAL_TYPES 64
+#define BOMB_FACTORY_COUNT 8
+#define BOMB_PRODUCT_TYPES 72000
+#define BOMB_MATERIAL_TYPES 198000
+#define BOMB_RAW_MATERIAL_TYPES 75000
 #define BOMB_TREES_PER_PRODUCT 5
 #define BOMB_TREE_SIZE 10
 #define BOMB_RAW_MATERIALS_PER_LEAF 3
-#define BOMB_TARGET_PRODUCTS 4
+#define BOMB_TARGET_PRODUCTS 200
 #define BOMB_TARGET_MATERIALS 1
 
 #define BOMB_S1_PCT (BOMB_DYNAMIC_MODE ? 45 : 50)
@@ -495,8 +495,8 @@ enum PPSTxnType {
 #define PROG_TIMER 10 * BILLION // in s
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
-#define DONE_TIMER 3*BILLION
-#define WARMUP_TIMER 1*BILLION
+#define DONE_TIMER 30*BILLION
+#define WARMUP_TIMER 30*BILLION
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define ONE_MILLISECOND 1 * MILLION

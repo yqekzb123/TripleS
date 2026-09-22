@@ -98,7 +98,6 @@ public:
   }
   bool set_barrier(uint64_t node_id) {
     if (barriers[node_id]) {
-      assert(false);
       return false;
     } else {
       barriers[node_id] = true;

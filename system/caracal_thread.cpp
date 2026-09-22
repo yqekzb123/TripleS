@@ -64,14 +64,20 @@ void CaracalControlThread::setup() {}
 RC CaracalControlThread::process_caracal_txn_ack(Message * msg) {
   AckMessage * ack = (AckMessage *)msg;
 
-  assert(ack->batch_id >= simulation->current_batch_id);
-  assert(ack->caracal_phase >= simulation->caracal_phase.load());
-  
-  if (ack->batch_id != simulation->current_batch_id || 
-      ack->caracal_phase != simulation->caracal_phase.load()) {
-      // 说明不是当前阶段的，先assert阶段比当前大
+  const CARACAL_PHASE current_phase = simulation->caracal_phase.load();
+  // Drop ACKs for an already completed batch/phase.  Re-enqueue only
+  // genuinely future ACKs; otherwise a late ACK can spin forever in the
+  // control queue and prevent the current phase from making progress.
+  if (ack->batch_id < simulation->current_batch_id ||
+      (ack->batch_id == simulation->current_batch_id &&
+       ack->caracal_phase < current_phase)) {
+      msg->release();
+      delete msg;
+      return RCOK;
+  }
+  if (ack->batch_id != simulation->current_batch_id ||
+      ack->caracal_phase != current_phase) {
       work_queue.phase_ack_enqueue(get_thd_id(), msg);
-    //   DEBUG_SCH("CaracalControlThread %ld received future CARACAL_TXN_ACK for node %ld txn %ld,%ld phase %ld, current batch %ld phase %d, re-enqueue it\n", get_thd_id(), ack->get_return_id(), ack->batch_id, ack->txn_id, ack->caracal_phase, simulation->current_batch_id, simulation->caracal_phase);
       return RCOK;
   }
   
@@ -89,6 +95,20 @@ RC CaracalControlThread::process_caracal_phase_ack(Message * msg) {
   AckMessage * ack = (AckMessage *)msg;
   // 考虑几种情况吧，消息落后于当前阶段了，这个明显不对
 
+  // Phase ACKs name the phase being synchronized (INIT/APPEND/EXECUTION),
+  // not the current phase.  They are expected while the receiver is in the
+  // corresponding *_SYNC phase, so do not compare the ACK phase against the
+  // current phase here.
+  if (ack->batch_id < simulation->current_batch_id) {
+      msg->release();
+      delete msg;
+      return RCOK;
+  }
+  if (ack->batch_id != simulation->current_batch_id) {
+      work_queue.phase_ack_enqueue(get_thd_id(), msg);
+      return RCOK;
+  }
+
   int index = 0;
   if (ack->caracal_phase == CARACAL_INIT) {
     index = 0;
@@ -103,6 +123,11 @@ RC CaracalControlThread::process_caracal_phase_ack(Message * msg) {
     // assert(simulation->caracal_phase == CARACAL_EXECUTION || simulation->caracal_phase == CARACAL_EXECUTION_SYNC);
   } else {
     assert(false);
+  }
+  if (simulation->caracal_barrier[index].batch_id != ack->batch_id) {
+      msg->release();
+      delete msg;
+      return RCOK;
   }
   simulation->caracal_barrier[index].set_barrier(ack->get_return_id());
   std::string str = simulation->caracal_barrier[0].get_barrier_str("0") + simulation->caracal_barrier[1].get_barrier_str("1") + simulation->caracal_barrier[2].get_barrier_str("2");
@@ -137,7 +162,7 @@ RC CaracalControlThread::check_phase_end() {
         break;
     case CARACAL_INIT:
         /* code */
-        if (simulation->batch_process_count >= g_caracal_batch_size &&
+        if (caracal_seq.get_total_ack_count() > 0 &&
             simulation->batch_process_count >= caracal_seq.get_total_ack_count()) {
 
             if (g_mpr != 0) send_phase_sync_message(CARACAL_INIT);

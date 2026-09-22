@@ -186,6 +186,13 @@ void SimManager::next_caracal_phase() {
 		// caracal_barrier[0].init_batch(current_batch_id + 1);
 	}
 	CARACAL_PHASE new_phase = (CARACAL_PHASE)((caracal_phase.load() + 1) % (CARACAL_EXECUTION_SYNC + 1));
+	if (new_phase == CARACAL_COLLECT) {
+		send_txn_finish.store(false);
+	} else if (new_phase == CARACAL_APPEND) {
+		finish_append_cnt.store(0);
+	} else if (new_phase == CARACAL_EXECUTION) {
+		get_all_txn_finish.store(false);
+	}
 	caracal_phase.store(new_phase);
 	// caracal_phase = (CARACAL_PHASE)((caracal_phase + 1) % (CARACAL_EXECUTION_SYNC + 1));
 	printf("System moving to Caracal phase %d\n", caracal_phase.load());

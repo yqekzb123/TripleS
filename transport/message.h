@@ -407,6 +407,7 @@ public:
   void copy_to_txn(TxnManager *txn); uint64_t get_size();
   void init(); void release(); void materialize_requests();
   uint64_t txn_type, factory_id, ordinal, source_id, plan_epoch;
+  bool measure;
   Array<BombRequest *> requests;
 };
 

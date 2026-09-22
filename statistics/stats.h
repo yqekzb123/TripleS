@@ -18,6 +18,9 @@
 #define _STATS_H_
 #include <sys/times.h>
 #include <time.h>
+#include <atomic>
+#include <mutex>
+#include <vector>
 
 #include "../system/global.h"
 #include "stats_array.h"
@@ -398,6 +401,18 @@ public:
   double * mtx;
 
 	char _pad[CL_SIZE];
+};
+
+// Per-process, warmup-excluded latency tracking for YCSB short/long txns.
+class YCSBStats {
+public:
+  static void record(bool is_long, bool committed, uint64_t latency_ns);
+  static void print(FILE *out);
+private:
+  static std::atomic<uint64_t> committed_[2];
+  static std::atomic<uint64_t> aborted_[2];
+  static std::mutex latency_mutex_;
+  static std::vector<uint64_t> latencies_[2];
 };
 
 class Stats {
