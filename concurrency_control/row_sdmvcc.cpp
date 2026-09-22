@@ -321,7 +321,15 @@ SDMVCCEntry *Row_sdmvcc::find_version_locked(uint64_t sid) {
     SDMVCCEntry *tail = _sentinel.prevWrite;
     if (tail != &_sentinel && tail->sid == sid) return tail;
     auto n = _version_index.lower_bound(sid);
-    return n && n->key == sid ? from_version_index(n) : nullptr;
+    if (n && n->key == sid) return from_version_index(n);
+    // Keep the index as the fast path, but recover from an inconsistent or
+    // incompletely updated index.  The write chain is ascending, so once an
+    // entry with a smaller SID is seen, no equal SID can remain behind it.
+    for (SDMVCCEntry *e = _sentinel.prevWrite;
+         e != &_sentinel && e->sid >= sid; e = e->prevWrite) {
+        if (e->sid == sid) return e;
+    }
+    return nullptr;
 }
 
 SDMVCCEntry *Row_sdmvcc::predecessor_locked(uint64_t snapshot) {
@@ -344,22 +352,21 @@ SDMVCCEntry *Row_sdmvcc::read_version_locked(TxnManager *txn, uint64_t snapshot)
 void Row_sdmvcc::insert_intent_locked(SDMVCCEntry *intent,
                                       SDMVCCEntry *myVersion) {
     // Cache only at Arm, when admission has finalized the predecessor.
+    assert(myVersion != &_sentinel && myVersion->sid < intent->sid);
     intent->myVersion = nullptr;
     cancel_gc_locked(myVersion);
-    // Sorted spot inside the gap (myVersion, myVersion->nextWrite]. The gap
-    // end is the write successor, or the chain tail when the predecessor is
-    // the newest version — starting the backward walk from _sentinel itself
-    // (SID = UINT64_MAX) would wrap around to the head and land in front of
-    // the base version (SID = 0), so the tail must be the seed instead.
+    // Locate the insertion point forward from the version gap start.  This is
+    // equivalent to the old backward walk when the chain is healthy, but it
+    // never inserts before the base version when the predecessor is the
+    // newest version (whose nextWrite is the sentinel).
     SDMVCCEntry *gap_end = myVersion->nextWrite;
-    SDMVCCEntry *pos =
-        (gap_end == &_sentinel) ? _sentinel.prevAll : gap_end->prevAll;
-    // Walk back past every entry with a strictly larger SID. The walk stops
-    // at myVersion (new intent is the youngest in the gap), at the last entry
-    // with SID <= intent->sid, or at the sentinel (new head). In all three
-    // cases the node goes right AFTER pos.
-    while (pos != myVersion && pos != &_sentinel && pos->sid > intent->sid)
-        pos = pos->prevAll;
+    SDMVCCEntry *pos = myVersion;
+    for (SDMVCCEntry *cur = myVersion->nextAll; cur != gap_end;
+         cur = cur->nextAll) {
+        if (cur->sid > intent->sid ||
+            (cur->sid == intent->sid && cur->isVersion)) break;
+        pos = cur;
+    }
     intent->prevAll = pos;
     intent->nextAll = pos->nextAll;
     pos->nextAll->prevAll = intent;
@@ -369,15 +376,22 @@ void Row_sdmvcc::insert_intent_locked(SDMVCCEntry *intent,
 
 // First locate the version gap, then search only its read entries.
 // R(S) sorts before V(S). No reader retargeting during registration.
-void Row_sdmvcc::insert_version_locked(SDMVCCEntry *v) {
+SDMVCCEntry *Row_sdmvcc::insert_version_locked(SDMVCCEntry *v) {
+    // Never publish a second version with the same SID, even if the fast
+    // index was temporarily inconsistent while another thread was working.
+    SDMVCCEntry *existing = find_version_locked(v->sid);
+    if (existing) return existing;
+
     SDMVCCEntry *wp = predecessor_locked(v->sid);
     SDMVCCEntry *w = wp == &_sentinel ? _sentinel.nextWrite : wp->nextWrite;
     cancel_gc_locked(wp);
-    SDMVCCEntry *a = w;
-    while (a->prevAll != wp && a->prevAll != &_sentinel &&
-           a->prevAll->sid > v->sid) a = a->prevAll;
-    v->prevAll = a->prevAll; v->nextAll = a;
-    a->prevAll->nextAll = v; a->prevAll = v;
+    SDMVCCEntry *pos = wp;
+    for (SDMVCCEntry *cur = wp->nextAll; cur != w; cur = cur->nextAll) {
+        if (cur->sid > v->sid) break;
+        pos = cur;
+    }
+    v->prevAll = pos; v->nextAll = pos->nextAll;
+    pos->nextAll->prevAll = v; pos->nextAll = v;
     v->prevWrite = wp; v->nextWrite = w;
     wp->nextWrite = v; w->prevWrite = v;
     _version_index.insert(&v->versionIndex);
@@ -385,6 +399,7 @@ void Row_sdmvcc::insert_version_locked(SDMVCCEntry *v) {
     g_live_versions.fetch_add(1, std::memory_order_relaxed);
     g_versions_created.fetch_add(1, std::memory_order_relaxed);
     update_peak(g_peak_version_chain, _version_cnt);
+    return v;
 }
 
 void Row_sdmvcc::validate_locked(const char *where) {
@@ -481,7 +496,12 @@ RC Row_sdmvcc::register_access(access_t type, TxnManager *txn) {
     }
     if (reserved) {
         SDMVCCEntry *v = find_version_locked(sid);
-        if (!v) { v = reserved; reserved = nullptr; insert_version_locked(v); }
+        if (!v) {
+            SDMVCCEntry *candidate = reserved;
+            reserved = nullptr;
+            v = insert_version_locked(candidate);
+            if (v != candidate) free_entry(candidate);
+        }
         txn->sdmvcc_set_version_node(_row, v);
     }
     update_deferred_locked();

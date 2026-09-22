@@ -113,11 +113,16 @@ void BombStats::print(FILE *out) {
   const double seconds = start == 0 ? 0.0 :
       static_cast<double>(get_sys_clock() - start) / BILLION;
   uint64_t short_commits = 0;
+  uint64_t short_aborts = 0;
   for (uint64_t t = 1; t < BOMB_TXN_TYPE_COUNT; ++t)
     short_commits += committed[t].load();
+  for (uint64_t t = 1; t < BOMB_TXN_TYPE_COUNT; ++t)
+    short_aborts += aborted[t].load();
   fprintf(out, ",bomb_long_mode=%d,bomb_long_sources=%d,bomb_active_l1=%lu,bomb_peak_l1=%lu",
           BOMB_LONG_TX_MODE, BOMB_LONG_TX_SOURCES, active_l1.load(), peak_l1.load());
-  fprintf(out, ",bomb_short_tput=%f", seconds > 0 ? short_commits / seconds : 0.0);
+  fprintf(out, ",bomb_short_tput=%f,bomb_long_tput=%f",
+          seconds > 0 ? short_commits / seconds : 0.0,
+          seconds > 0 ? committed[BOMB_L1].load() / seconds : 0.0);
   uint64_t exec_rd_total = 0, exec_wr_total = 0;
   for (uint64_t t = 0; t < BOMB_TXN_TYPE_COUNT; ++t) {
     exec_rd_total += exec_read_ops[t].load();
@@ -127,6 +132,27 @@ void BombStats::print(FILE *out) {
           exec_rd_total, exec_wr_total,
           seconds > 0 ? (exec_rd_total + exec_wr_total) / seconds : 0.0);
   std::lock_guard<std::mutex> guard(latency_mutex);
+  std::vector<uint64_t> short_latencies;
+  for (uint64_t t = 1; t < BOMB_TXN_TYPE_COUNT; ++t)
+    short_latencies.insert(short_latencies.end(), latencies[t].begin(),
+                           latencies[t].end());
+  std::sort(short_latencies.begin(), short_latencies.end());
+  auto short_pct = [&short_latencies](double p) -> uint64_t {
+    if (short_latencies.empty()) return 0;
+    return short_latencies[static_cast<uint64_t>(
+        (short_latencies.size() - 1) * p)];
+  };
+  uint64_t short_latency_sum = 0;
+  for (uint64_t value : short_latencies) short_latency_sum += value;
+  fprintf(out,
+          ",bomb_short_committed=%lu,bomb_short_aborted=%lu"
+          ",bomb_short_samples=%lu,bomb_short_avg_latency_ns=%lu"
+          ",bomb_short_p50_ns=%lu,bomb_short_p99_ns=%lu",
+          short_commits, short_aborts,
+          static_cast<uint64_t>(short_latencies.size()),
+          short_latencies.empty() ? 0 :
+              short_latency_sum / short_latencies.size(),
+          short_pct(.50), short_pct(.99));
   for (uint64_t t = 0; t < BOMB_TXN_TYPE_COUNT; ++t) {
     const uint64_t sub = submitted[t].load();
     const uint64_t com = committed[t].load();

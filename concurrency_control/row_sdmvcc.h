@@ -105,7 +105,7 @@ private:
     SDMVCCEntry *find_version_locked(uint64_t sid);
     SDMVCCEntry *predecessor_locked(uint64_t snapshot);
     void insert_intent_locked(SDMVCCEntry *intent, SDMVCCEntry *myVersion);
-    void insert_version_locked(SDMVCCEntry *version);
+    SDMVCCEntry *insert_version_locked(SDMVCCEntry *version);
     void unlink_all_locked(SDMVCCEntry *entry);
     bool wait_for_predecessor_locked(TxnManager *txn, SDMVCCEntry *version,
                                      SDMVCCEntry *&spare);

@@ -1,1423 +1,459 @@
+"""Paper experiment configurations.
+
+Every public entry corresponds to one experiment group in PAPER_EXPERIMENTS.md.
+Temporary smoke tests and implementation probes deliberately live outside this
+registry so paper runs cannot accidentally select them.
+"""
+
 import itertools
-import os
-# Experiments to run and analyze
-# Go to end of file to fill in experiments
-SHORTNAMES = {
-    "CLIENT_NODE_CNT" : "CN",
-    "CLIENT_THREAD_CNT" : "CT",
-    "CLIENT_REM_THREAD_CNT" : "CRT",
-    "CLIENT_SEND_THREAD_CNT" : "CST",
-    "NODE_CNT" : "N",
-    "THREAD_CNT" : "T",
-    "SCHEDULER_CNT" : "SC",
-    "REM_THREAD_CNT" : "RT",
-    "SEND_THREAD_CNT" : "ST",
-    "CC_ALG" : "",
-    "WORKLOAD" : "",
-    "MAX_TXN_PER_PART" : "TXNS",
-    "MAX_TXN_IN_FLIGHT" : "TIF",
-    "PART_PER_TXN" : "PPT",
-    "TUP_READ_PERC" : "TRD",
-    "TUP_WRITE_PERC" : "TWR",
-    "TXN_READ_PERC" : "RD",
-    "TXN_WRITE_PERC" : "WR",
-    "ZIPF_THETA" : "SKEW",
-    "MSG_TIME_LIMIT" : "BT",
-    "MSG_SIZE_MAX" : "BS",
-    "DATA_PERC":"D",
-    "ACCESS_PERC":"A",
-    "PERC_PAYMENT":"PP",
-    "MPR":"MPR",
-    "PRORATE_RATIO":"PRORATE",
-    "REQ_PER_QUERY": "RPQ",
-    "REQ_PER_SHORT_QUERY": "SRPQ",
-    "LONG_QUERY_PERC": "LP",
-    "SDPCC_LONG_HOLE_MODE": "HOLE",
-    "MODE":"",
-    "PRIORITY":"",
-    "ABORT_PENALTY":"PENALTY",
-    "STRICT_PPT":"SPPT",
-    "NETWORK_DELAY":"NDLY",
-    "NETWORK_DELAY_TEST":"NDT",
-    "REPLICA_CNT":"RN",
-    "SYNTH_TABLE_SIZE":"TBL",
-    "RWSET_KNOWN_RATIO":"RWSET",
-    "ISOLATION_LEVEL":"LVL",
-    "YCSB_ABORT_MODE":"ABRTMODE",
-    "NUM_WH":"WH",
-    "MAX_ITEMS_NORM":"ITEMS",
-    "CUST_PER_DIST_NORM":"CUST",
-    "CH_OLAP_PERC":"OLAP",
-    "CH_QUERY_MIN":"QMIN",
-    "CH_QUERY_MAX":"QMAX",
-    "CH_QUERY_WAREHOUSE_PCT":"QWH",
-    "CH_SUPPLIER_COUNT":"SUPP",
-    "BOMB_TARGET_PRODUCTS":"BTP",
-    "BOMB_LONG_TX_MODE":"BLM",
-    "BOMB_LONG_TX_SOURCES":"BLS",
-    "BOMB_SHORT_WORKERS":"BSW",
-    "OPEN_DISTRIBUTED_WATERMARK":"DW",
-    "SDMVCC_LAZY_READ_INTENT":"LRI",
-    "SDMVCC_INTENT_GC":"IGC",
-    "SDMVCC_LONG_READ_GUARD":"LRG",
-    "SDMVCC_EARLY_VERSION_PUBLISH":"EVP",
-}
-
-fmt_title=["NODE_CNT","CC_ALG","ACCESS_PERC","TXN_WRITE_PERC","PERC_PAYMENT","MPR","MODE","MAX_TXN_IN_FLIGHT","SEND_THREAD_CNT","REM_THREAD_CNT","THREAD_CNT","SCHEDULER_CNT","TXN_WRITE_PERC","TUP_WRITE_PERC","ZIPF_THETA","LONG_QUERY_PERC","NUM_WH"]
-
-##############################
-# PLOTS
-##############################
-def ycsb_scaling_PCC():
-    wl = 'YCSB'
-    # nnodes = [2,4,6,8,10,12]
-    nnodes = [2,4]
-    # algos=['CALVIN','SDPCC']
-    algos=['SDPCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1]
-    tup_write_perc = [0.2]
-    load = [10000]
-    tcnt = [15]
-    ctcnt = [4]
-    scnt = [2]
-    rcnt = [2]
-    mpr = [0.2]
-    prorate = [0]
-    skew = [0.7]
-    fmt = ["WORKLOAD","CC_ALG","NODE_CNT","SYNTH_TABLE_SIZE","MPR","PRORATE_RATIO","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","CLIENT_THREAD_CNT","SEND_THREAD_CNT","REM_THREAD_CNT","CLIENT_SEND_THREAD_CNT","CLIENT_REM_THREAD_CNT"]
-    exp = [[wl,algo,n,base_table_size*n,mpr,prorate_rate,tup_wr_perc,txn_wr_perc,ld,sk,thr,cthr,sthr,rthr,sthr,rthr] for thr,cthr,sthr,rthr,txn_wr_perc,tup_wr_perc,sk,ld,mpr,prorate_rate,n,algo in itertools.product(tcnt,ctcnt,scnt,rcnt,txn_write_perc,tup_write_perc,skew,load,mpr,prorate,nnodes,algos)]
-    return fmt,exp
-
-def ycsb_scaling_OCC():
-    wl = 'YCSB'
-    nnodes = [2,4,6,8,10,12]
-    algos=['SDOCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1]
-    tup_write_perc = [0.2]
-    load = [10000]
-    tcnt = [16]
-    ctcnt = [4]
-    scnt = [2]
-    rcnt = [2]
-    mpr = [0.2]
-    prorate = [0]
-    skew = [0.7]
-    fmt = ["WORKLOAD","CC_ALG","NODE_CNT","SYNTH_TABLE_SIZE","MPR","PRORATE_RATIO","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","CLIENT_THREAD_CNT","SEND_THREAD_CNT","REM_THREAD_CNT","CLIENT_SEND_THREAD_CNT","CLIENT_REM_THREAD_CNT"]
-    exp = [[wl,algo,n,base_table_size*n,mpr,prorate_rate,tup_wr_perc,txn_wr_perc,ld,sk,thr,cthr,sthr,rthr,sthr,rthr] for thr,cthr,sthr,rthr,txn_wr_perc,tup_wr_perc,sk,ld,mpr,prorate_rate,n,algo in itertools.product(tcnt,ctcnt,scnt,rcnt,txn_write_perc,tup_write_perc,skew,load,mpr,prorate,nnodes,algos)]
-    return fmt,exp
-
-def ycsb_scaling_ARIA():
-    wl = 'YCSB'
-    nnodes = [2,4,6,8,10,12]
-    algos=['ARIA']
-    base_table_size=1048576*8
-    txn_write_perc = [1]
-    tup_write_perc = [0.2]
-    load = [10000]
-    tcnt = [16]
-    ctcnt = [4]
-    scnt = [2]
-    rcnt = [2]
-    mpr = [0.2]
-    prorate = [0]
-    skew = [0.7]
-    fmt = ["WORKLOAD","CC_ALG","NODE_CNT","SYNTH_TABLE_SIZE","MPR","PRORATE_RATIO","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","CLIENT_THREAD_CNT","SEND_THREAD_CNT","REM_THREAD_CNT","CLIENT_SEND_THREAD_CNT","CLIENT_REM_THREAD_CNT","ARIA_BATCH_SIZE"]
-    exp = [[wl,algo,n,base_table_size*n,mpr,prorate_rate,tup_wr_perc,txn_wr_perc,ld,sk,thr,cthr,sthr,rthr,sthr,rthr,100] for thr,cthr,sthr,rthr,txn_wr_perc,tup_wr_perc,sk,ld,mpr,prorate_rate,n,algo in itertools.product(tcnt,ctcnt,scnt,rcnt,txn_write_perc,tup_write_perc,skew,load,mpr,prorate,nnodes,algos)]
-    return fmt,exp
-
-# for test
-def ycsb_skew():
-    wl = 'YCSB'
-    nnodes = [2]
-    # algos=['CALVIN','ARIA','SDPCC','SDOCC']
-    # algos=['ARIA','SDPCC','SDOCC']
-    algos=['SDOCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    load = [10000]
-    # total_cnt=[15]
-    total_cnt=[16]
-    # scnt = [1]
-    scnt = [3]
-    # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    skew = [0.7]
-    # skew = [0.1]
-    # skew = [1.5]
-    fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
-    return fmt,exp
-
-def ycsb_skew_PCC():
-    wl = 'YCSB'
-    nnodes = [2]
-    # algos=['CALVIN','ARIA','SDPCC','SDOCC']
-    # algos=['ARIA','SDPCC','SDOCC']
-    algos=['SDMVCC']
-    # algos=['CALVIN','SDPCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1]
-    tup_write_perc = [0.2]
-    load = [10000]
-    total_cnt=[15]
-    # total_cnt=[16]
-    # scnt = [1]
-    scnt = [3]
-    # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    # skew = [0.1]
-    # skew = [1.5]
-    fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
-    return fmt,exp
-
-def ycsb_sdmvcc_vector_lookup():
-    """Focused rerun for the SDMVCC hot-key version-chain optimization."""
-    wl = 'YCSB'
-    algos = ['SDMVCC']
-    skew = [1.1, 1.3, 1.5]
-    nnodes = [2]
-    base_table_size = 1048576 * 8
-    txn_write_perc = [1]
-    tup_write_perc = [0.2]
-    load = [10000]
-    total_cnt = [15]
-    scnt = [3]
-    fmt = ["WORKLOAD", "CC_ALG", "ZIPF_THETA", "NODE_CNT",
-           "SYNTH_TABLE_SIZE", "TUP_WRITE_PERC", "TXN_WRITE_PERC",
-           "MAX_TXN_IN_FLIGHT", "THREAD_CNT", "SCHEDULER_CNT"]
-    exp = [[wl, algo, sk, n, base_table_size * n, tup_wr_perc,
-            txn_wr_perc, ld, t_cnt, s_cnt]
-           for t_cnt, s_cnt, txn_wr_perc, tup_wr_perc, ld, n, sk, algo
-           in itertools.product(total_cnt, scnt, txn_write_perc,
-                                tup_write_perc, load, nnodes, skew, algos)]
-    return fmt, exp
-
-def ycsb_skew_cc_comparison():
-    """Two-node YCSB skew comparison for ARIA, CALVIN and SDMVCC."""
-    algos = ["ARIA", "CALVIN", "SDMVCC"]
-    skew = [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5]
-    fmt = ["WORKLOAD", "CC_ALG", "ARIA_BATCH_SIZE", "ZIPF_THETA",
-           "NODE_CNT", "SYNTH_TABLE_SIZE", "TUP_WRITE_PERC",
-           "TXN_WRITE_PERC", "MAX_TXN_IN_FLIGHT", "THREAD_CNT",
-           "SCHEDULER_CNT"]
-    exp = [["YCSB", algo, 3000, sk, 2, 1048576 * 8 * 2, 0.2, 1,
-            10000, 15, 3]
-           for algo in algos for sk in skew]
-    return fmt, exp
-
-
-def ycsb_skew_OCC():
-    wl = 'YCSB'
-    nnodes = [2]
-    # algos=['CALVIN','ARIA','SDPCC','SDOCC']
-    # algos=['ARIA','SDPCC','SDOCC']
-    algos=['SDOCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    load = [10000]
-    total_cnt=[16]
-    # scnt = [1]
-    scnt = [3]
-    skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    # skew = [0.3]
-    # skew = [0.1]
-    # skew = [1.5]
-    fmt = ["WORKLOAD","CC_ALG","ZIPF_THETA","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,sk,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,t_cnt,s_cnt] for t_cnt,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
-    return fmt,exp
-
-def ycsb_writes_PCC():
-    wl = 'YCSB'
-    # nnodes = [4]
-    nnodes = [2]
-    algos=['CALVIN','SDPCC']
-    # algos=['CALVIN']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    # tup_write_perc = [0.2]
-    tup_write_perc = [0.0,0.2,0.4,0.6,0.8,1.0]
-    load = [10000]
-    total_cnt=[15]
-    scnt = [3]
-    skew = [0.7]
-    fmt = ["WORKLOAD","CC_ALG","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,thr,s_cnt] for thr,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
-    return fmt,exp
-
-def ycsb_writes_OCC():
-    wl = 'YCSB'
-    # nnodes = [4]
-    nnodes = [2]
-    algos=['SDOCC']
-    # algos=['ARIA','SDOCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    # tup_write_perc = [0.2]
-    tup_write_perc = [0.0,0.2,0.4,0.6,0.8,1.0]
-    load = [10000]
-    total_cnt=[16]
-    scnt = [3]
-    skew = [0.7]
-    fmt = ["WORKLOAD","CC_ALG","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,thr,s_cnt] for thr,s_cnt,txn_wr_perc,tup_wr_perc,ld,n,sk,algo in itertools.product(total_cnt,scnt,txn_write_perc,tup_write_perc,load,nnodes,skew,algos)]
-    return fmt,exp
-
-def ycsb_random_idle_PCC():
-    wl = 'YCSB'
-    nnodes = [2]
-    # algos=['CALVIN']
-    algos=['CALVIN','SDPCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    random_wait = 'true'
-    # 0.0001ms, 0.001ms, 0.01ms, 0.1ms, 1ms
-    # wait_time=['100000UL']
-    wait_time=['0UL','100000UL']
-    # wait_time=['100UL','1000UL','10000UL','100000UL','1000000UL']
-    load = [10000]
-    total_cnt=[15]
-    skew = [0.0]
-    # skew = [0.9]
-    fmt = ["WORKLOAD","CC_ALG","RANDOM_WAIT_TIME","OPEN_RANDOM_WAIT","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT"]
-    exp = [[wl,algo,wait,random_wait,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,t_cnt] for t_cnt,txn_wr_perc,tup_wr_perc,wait,ld,n,sk,algo in itertools.product(total_cnt,txn_write_perc,tup_write_perc,wait_time,load,nnodes,skew,algos)]
-    return fmt,exp
-
-def ycsb_random_idle_OCC():
-    wl = 'YCSB'
-    nnodes = [2]
-    algos=['SDOCC']
-    # algos=['ARIA','SDOCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    random_wait = 'true'
-    # 0.0001ms, 0.001ms, 0.01ms, 0.1ms, 1ms
-    # wait_time=['100000UL']
-    wait_time=['0UL','100000UL']
-    # wait_time=['100UL','1000UL','10000UL','100000UL','1000000UL']
-    load = [10000]
-    total_cnt=[16]
-    skew = [0.0]
-    # skew = [0.9]
-    fmt = ["WORKLOAD","CC_ALG","RANDOM_WAIT_TIME","OPEN_RANDOM_WAIT","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT"]
-    exp = [[wl,algo,wait,random_wait,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,t_cnt] for t_cnt,txn_wr_perc,tup_wr_perc,wait,ld,n,sk,algo in itertools.product(total_cnt,txn_write_perc,tup_write_perc,wait_time,load,nnodes,skew,algos)]
-    return fmt,exp
-
-def ycsb_random_idle_ARIA():
-    wl = 'YCSB'
-    nnodes = [2]
-    algos=['ARIA']
-    # algos=['ARIA','SDOCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    random_wait = 'true'
-    # 0.0001ms, 0.001ms, 0.01ms, 0.1ms, 1ms
-    # wait_time=['100000UL']
-    wait_time=['0UL','100000UL']
-    # wait_time=['100UL','1000UL','10000UL','100000UL','1000000UL']
-    load = [10000]
-    total_cnt=[16]
-    skew = [0.0]
-    # skew = [0.9]
-    fmt = ["WORKLOAD","CC_ALG","RANDOM_WAIT_TIME","OPEN_RANDOM_WAIT","TUP_WRITE_PERC","NODE_CNT","SYNTH_TABLE_SIZE","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","ARIA_BATCH_SIZE"]
-    exp = [[wl,algo,wait,random_wait,tup_wr_perc,n,base_table_size*n,txn_wr_perc,ld,sk,t_cnt,3000] for t_cnt,txn_wr_perc,tup_wr_perc,wait,ld,n,sk,algo in itertools.product(total_cnt,txn_write_perc,tup_write_perc,wait_time,load,nnodes,skew,algos)]
-    return fmt,exp
-
-def ycsb_dist_ratio_PCC():
-    wl = 'YCSB'
-    nnodes = [2]
-    algos=['CALVIN','SDPCC']
-    # algos=['CALVIN']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    load = [10000]
-    # mpr=[0.0]
-    mpr=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
-    total_cnt=[15]
-    scnt = [3]
-    fmt = ["WORKLOAD","CC_ALG","MPR","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,mpr,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,thr,s_cnt] for thr,s_cnt,ld,tup_wr_perc,txn_wr_perc,n,mpr,algo in itertools.product(total_cnt,scnt,load,tup_write_perc,txn_write_perc,nnodes,mpr,algos)]
-    return fmt,exp
-
-def ycsb_dist_ratio_OCC():
-    wl = 'YCSB'
-    nnodes = [2]
-    # algos=['ARIA','SDOCC']
-    algos=['SDOCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    load = [10000]
-    # mpr=[0.0]
-    mpr=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
-    total_cnt=[16]
-    scnt = [3]
-    fmt = ["WORKLOAD","CC_ALG","MPR","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,mpr,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,thr,s_cnt] for thr,s_cnt,ld,tup_wr_perc,txn_wr_perc,n,mpr,algo in itertools.product(total_cnt,scnt,load,tup_write_perc,txn_write_perc,nnodes,mpr,algos)]
-    return fmt,exp
-
-def ycsb_rwset_ratio():
-    wl = 'YCSB'
-    nnodes = [2]
-    algos=['SDOCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    load = [10000]
-    # rwset = [1.0]
-    rwset = [0.0,0.2,0.4,0.6,0.8,1.0]
-    # rwset = [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
-    total_cnt=[16]
-    scnt = [3]
-    fmt = ["WORKLOAD","CC_ALG","RWSET_KNOWN_RATIO","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,rwset,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,thr,s_cnt] for thr,s_cnt,ld,tup_wr_perc,txn_wr_perc,n,rwset,algo in itertools.product(total_cnt,scnt,load,tup_write_perc,txn_write_perc,nnodes,rwset,algos)]
-    return fmt,exp
-
-def ycsb_rwset_variable_ratio():
-    wl = 'YCSB'
-    nnodes = [2]
-    algos=['SDOCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    load = [10000]
-    # rwset = [1.0]
-    rwset = [0.0,0.2,0.4,0.6,0.8,1.0]
-    total_cnt=[16]
-    scnt = [3]
-    skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    # skew = [0.9,1.1]
-    fmt = ["WORKLOAD","CC_ALG","RWSET_VARIABLE_RATIO","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","ZIPF_THETA","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,rwset,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,sk,thr,s_cnt] for thr,s_cnt,ld,tup_wr_perc,txn_wr_perc,n,rwset,algo,sk in itertools.product(total_cnt,scnt,load,tup_write_perc,txn_write_perc,nnodes,rwset,algos,skew)]
-    return fmt,exp
-
-# for sdpcc
-def ycsb_sch_cnt():
-    wl = 'YCSB'
-    nnodes = [2]
-    algos=['SDPCC']
-    base_table_size=1048576*8
-    txn_write_perc = [1.0]
-    tup_write_perc = [0.2]
-    load = [10000]
-    # rwset = [1.0]
-    # rwset = [0.0,0.2,0.4,0.6,0.8,1.0]
-    # rwset = [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
-    total_cnt=[15]
-    # scnt = [15,16]
-    # scnt = [9,10,11,12,13,14]
-    scnt = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
-    fmt = ["WORKLOAD","CC_ALG","NODE_CNT","SYNTH_TABLE_SIZE","TUP_WRITE_PERC","TXN_WRITE_PERC","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT"]
-    exp = [[wl,algo,n,base_table_size*n,tup_wr_perc,txn_wr_perc,ld,thr,s_cnt] for thr,s_cnt,ld,tup_wr_perc,txn_wr_perc,n,algo in itertools.product(total_cnt,scnt,load,tup_write_perc,txn_write_perc,nnodes,algos)]
-    return fmt,exp
-
-def ycsb_batch_size_PCC():
-    wl = 'YCSB'
-    algos=['CALVIN','SDPCC']
-    # algos=['CALVIN']
-    aria_batch_size=[50,100,500,1000,2000,3000,5000,9000]
-    # aria_batch_size=[9999]
-    # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    total_cnt=[15]
-    skew = [0.3,0.7]
-    fmt = ["WORKLOAD","ARIA_BATCH_SIZE","ZIPF_THETA","THREAD_CNT","CC_ALG"]
-    exp = [[wl,bs,sk,thr,algo] for algo,sk,bs,thr in itertools.product(algos,skew,aria_batch_size,total_cnt)]
-    return fmt,exp
-
-def ycsb_batch_size_OCC():
-    wl = 'YCSB'
-    algos=['SDOCC']
-    # algos=['ARIA']
-    aria_batch_size=[50,100,500,1000,2000,3000,5000,9000]
-    # aria_batch_size=[9999]
-    # skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    total_cnt=[16]
-    skew = [0.3,0.7]
-    fmt = ["WORKLOAD","ARIA_BATCH_SIZE","ZIPF_THETA","THREAD_CNT","CC_ALG"]
-    exp = [[wl,bs,sk,thr,algo] for algo,sk,bs,thr in itertools.product(algos,skew,aria_batch_size,total_cnt)]
-    return fmt,exp
-
-# for SKEW
-def ycsb_aria_batch():
-    wl = 'YCSB'
-    # algos=['CALVIN','ARIA','SDPCC','SDOCC']
-    algos=['ARIA']
-    # aria_batch_size=[50,100,500,1000,2000,3000,5000,9000]
-    aria_batch_size=[50,100,500,1000,2000,3000]
-    skew = [0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5]
-    # skew = [0.3]
-    fmt = ["WORKLOAD","ARIA_BATCH_SIZE","ZIPF_THETA","CC_ALG"]
-    exp = [[wl,bs,sk,algo] for algo,sk,bs in itertools.product(algos,skew,aria_batch_size)]
-    return fmt,exp
-
-# for dist
-def ycsb_aria_batch2():
-    wl = 'YCSB'
-    algos=['ARIA']
-    aria_batch_size=[50,100,500,1000,2000]
-    mpr=[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
-    skew = 0.7
-    fmt = ["WORKLOAD","ARIA_BATCH_SIZE","MPR","CC_ALG","ZIPF_THETA"]
-    exp = [[wl,bs,m,algo,skew] for algo,m,bs in itertools.product(algos,mpr,aria_batch_size)]
-    return fmt,exp
-
-# for write
-def ycsb_aria_batch3():
-    wl = 'YCSB'
-    algos=['ARIA']
-    aria_batch_size=[50,100,500]
-    tup_write_perc = [0.0,0.2,0.4,0.6,0.8,1.0]
-    skew = 0.7
-    fmt = ["WORKLOAD","ARIA_BATCH_SIZE","TXN_WRITE_PERC","CC_ALG","ZIPF_THETA"]
-    exp = [[wl,bs,tup_w,algo,skew] for algo,tup_w,bs in itertools.product(algos,tup_write_perc,aria_batch_size)]
-    return fmt,exp
-
-def tpcc_scaling_PCC():
-    wl = 'TPCC'
-    nnodes = [2,4,6,8,10,12]
-    # algos=['ARIA']
-    # algos=['SDOCC']
-    algos=['CALVIN','SDPCC']
-    npercpay=[0.489]
-    num_wh=[32]
-    load = [10000]
-    tcnt = [15]
-    ctcnt = [4]
-    prorate = [0]
-    mpr = [0.15]
-    mpr_neworder = [0.1]
-    fmt = ["WORKLOAD","CC_ALG","NODE_CNT","PERC_PAYMENT","PRORATE_RATIO","NUM_WH","MAX_TXN_IN_FLIGHT","THREAD_CNT","CLIENT_THREAD_CNT","MPR","MPR_NEWORDER"]
-    exp = [[wl,algo,n,pp,prorate_rate,wh*n,tif,thr,cthr,m,mn] for thr,cthr,tif,pp,prorate_rate,n,m,mn,wh,algo in itertools.product(tcnt,ctcnt,load,npercpay,prorate,nnodes,mpr,mpr_neworder,num_wh,algos)]
-    return fmt,exp
-
-def tpcc_scaling_OCC():
-    wl = 'TPCC'
-    nnodes = [2,4,6,8,10,12]
-    # algos=['ARIA']
-    algos=['SDOCC']
-    # algos=['CALVIN','ARIA','SDPCC','SDOCC']
-    npercpay=[0.489]
-    num_wh=[32]
-    load = [10000]
-    tcnt = [16]
-    ctcnt = [4]
-    prorate = [0]
-    mpr = [0.15]
-    mpr_neworder = [0.1]
-    fmt = ["WORKLOAD","CC_ALG","NODE_CNT","PERC_PAYMENT","PRORATE_RATIO","NUM_WH","MAX_TXN_IN_FLIGHT","THREAD_CNT","CLIENT_THREAD_CNT","MPR","MPR_NEWORDER"]
-    exp = [[wl,algo,n,pp,prorate_rate,wh*n,tif,thr,cthr,m,mn] for thr,cthr,tif,pp,prorate_rate,n,m,mn,wh,algo in itertools.product(tcnt,ctcnt,load,npercpay,prorate,nnodes,mpr,mpr_neworder,num_wh,algos)]
-    return fmt,exp
-
-def tpcc_scaling_ARIA():
-    wl = 'TPCC'
-    nnodes = [2,4,6,8,10,12]
-    algos=['ARIA']
-    # npercpay=[0.0]
-    npercpay=[0.489]
-    num_wh=[32]
-    load = [10000]
-    tcnt = [16]
-    ctcnt = [2]
-    prorate = [0]
-    mpr = [0.15]
-    mpr_neworder = [0.1]
-    fmt = ["WORKLOAD","CC_ALG","NODE_CNT","PERC_PAYMENT","PRORATE_RATIO","NUM_WH","MAX_TXN_IN_FLIGHT","THREAD_CNT","CLIENT_THREAD_CNT","MPR","MPR_NEWORDER","ARIA_BATCH_SIZE"]
-    exp = [[wl,algo,n,pp,prorate_rate,wh*n,tif,thr,cthr,m,mn,500] for thr,cthr,tif,pp,prorate_rate,n,m,mn,wh,algo in itertools.product(tcnt,ctcnt,load,npercpay,prorate,nnodes,mpr,mpr_neworder,num_wh,algos)]
-    return fmt,exp
-
-def tpcc_wh_PCC():
-    wl = 'TPCC'
-    nnodes = [2]
-    algos=['CALVIN','SDPCC']
-    # algos=['CALVIN']
-    # npercpay=[0.0]
-    npercpay=[0.489]
-    # num_wh=[32]
-    num_wh=[128,64,32,16,8]
-    # num_wh=[64,32,16,8]
-    # num_wh=[256,128,64,32,16,8]
-    load = [10000]
-    total_cnt=[15]
-    scnt = [3]
-    ctcnt = [4]
-    prorate = [0]
-    # mpr = [1.0]
-    # mpr_neworder = [1.0]
-    mpr = [0.15]
-    mpr_neworder = [0.1]
-    fmt = ["WORKLOAD","CC_ALG","NUM_WH","NODE_CNT","PERC_PAYMENT","PRORATE_RATIO","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT","CLIENT_THREAD_CNT","MPR","MPR_NEWORDER"]
-    exp = [[wl,algo,wh*n,n,pp,prorate_rate,tif,thr,s_cnt,cthr,m,mn] for thr,s_cnt,cthr,tif,pp,prorate_rate,n,m,mn,wh,algo in itertools.product(total_cnt,scnt,ctcnt,load,npercpay,prorate,nnodes,mpr,mpr_neworder,num_wh,algos)]
-    return fmt,exp
-
-def tpcc_sdmvcc_smoke():
-    """Two-node full-mix TPC-C smoke test for SDMVCC."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
-           "NUM_WH", "MAX_TXN_IN_FLIGHT", "MPR", "MPR_NEWORDER",
-           "SDMVCC_EARLY_VERSION_PUBLISH", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["TPCC", "SDMVCC", 2, 2,
-            8, 2, 3,
-            16, 10000, 0.15, 0.10,
-            "false", "0*BILLION", "10*BILLION"]]
-    return fmt, exp
-
-
-def tpcc_wh_OCC():
-    wl = 'TPCC'
-    nnodes = [2]
-    algos=['SDOCC']
-    # algos=['CALVIN']
-    # algos=['CALVIN','ARIA','SDOCC']
-    # algos=['CALVIN','ARIA','SDPCC','SDOCC']
-    # npercpay=[0.0]
-    npercpay=[0.489]
-    # num_wh=[32]
-    num_wh=[128,64,32,16,8]
-    # num_wh=[64,32,16,8]
-    # num_wh=[256,128,64,32,16,8]
-    load = [10000]
-    total_cnt=[16]
-    scnt = [3]
-    ctcnt = [4]
-    prorate = [0]
-    # mpr = [1.0]
-    # mpr_neworder = [1.0]
-    mpr = [0.15]
-    mpr_neworder = [0.1]
-    fmt = ["WORKLOAD","CC_ALG","NUM_WH","NODE_CNT","PERC_PAYMENT","PRORATE_RATIO","MAX_TXN_IN_FLIGHT","THREAD_CNT","SCHEDULER_CNT","CLIENT_THREAD_CNT","MPR","MPR_NEWORDER"]
-    exp = [[wl,algo,wh*n,n,pp,prorate_rate,tif,thr,s_cnt,cthr,m,mn] for thr,s_cnt,cthr,tif,pp,prorate_rate,n,m,mn,wh,algo in itertools.product(total_cnt,scnt,ctcnt,load,npercpay,prorate,nnodes,mpr,mpr_neworder,num_wh,algos)]
-    return fmt,exp
-
-def tpcc_dist_ratio():
-    wl = 'TPCC'
-    algos=['CALVIN','ARIA','SDPCC','SDOCC']
-    # algos=['CNULL']
-    mpr=[0,0.2,0.4,0.6,0.8,1]
-    nnodes = [2]
-    npercpay=[0.489]
-    wh = 32
-    load = [10000]
-    fmt = ["WORKLOAD","CC_ALG","MPR","NODE_CNT","PERC_PAYMENT","NUM_WH","MAX_TXN_IN_FLIGHT"]
-    exp = [[wl,algo,mpr,n,pp,wh*n,tif] for tif,pp,n,mpr,algo in itertools.product(load,npercpay,nnodes,mpr,algos)]
-    return fmt,exp
-
-# for wh
-def tpcc_aria_batch():
-    wl = 'TPCC'
-    nnodes = 2
-    algos=['ARIA']
-    aria_batch_size=[50,100,500,1000]
-    num_wh=[128,64,32,16,8]
-    fmt = ["WORKLOAD","ARIA_BATCH_SIZE","NUM_WH","CC_ALG"]
-    exp = [[wl,bs,wh*nnodes,algo] for algo,wh,bs in itertools.product(algos,num_wh,aria_batch_size)]
-    return fmt,exp
-
-# for tpcc dist
-def tpcc_aria_batch2():
-    wl = 'TPCC'
-    algos=['ARIA']
-    aria_batch_size=[16,100,500,2000]
-    mpr=[0,0.2,0.4,0.6,0.8,1]
-    fmt=["WORKLOAD","ARIA_BATCH_SIZE","MPR","CC_ALG"]
-    exp = [[wl,bs,m,algo] for algo,m,bs in itertools.product(algos,mpr,aria_batch_size)]
-    return fmt,exp
-
-def ycsb_sdpcc_long_hole():
-    """Compare pure watermark, exact sets, and Bloom filters on YCSB long txns."""
-    modes = ["SDPCC_LONG_HOLE_DISABLED", "SDPCC_LONG_HOLE_BLOOM"]
-    # modes = ["SDPCC_LONG_HOLE_DISABLED", "SDPCC_LONG_HOLE_EXACT", "SDPCC_LONG_HOLE_BLOOM"]
-    long_percs = [0.01, 0.05, 0.10]
-    fmt = ["WORKLOAD", "SDPCC_LONG_HOLE_MODE", "LONG_QUERY_PERC", "CC_ALG",
-           "NODE_CNT", "LONG_TXN_WORKLOAD", "REQ_PER_QUERY", "REQ_PER_SHORT_QUERY",
-           "OPEN_DISTRIBUTED_WATERMARK", "THREAD_CNT", "SCHEDULER_CNT"]
-    exp = [["YCSB", mode, perc, "SDPCC", 2, "true", 50, 10, "false", 16, 3]
-           for perc, mode in itertools.product(long_percs, modes)]
-    return fmt, exp
-
-def ycsb_sdpcc_long_hole_adaptive():
-    """Legacy entry point: compare pure watermark and fixed Bloom only."""
-    variants = [
-        ("SDPCC_LONG_HOLE_DISABLED", "false"),
-        ("SDPCC_LONG_HOLE_BLOOM", "false"),
-    ]
-    rotation = int(os.environ.get("SDPCC_ADAPTIVE_ORDER", "0")) % len(variants)
-    variants = variants[rotation:] + variants[:rotation]
-    long_percs = [0.01, 0.05, 0.10]
-    fmt = ["WORKLOAD", "SDPCC_LONG_HOLE_MODE", "SDPCC_LONG_HOLE_ADAPTIVE",
-           "LONG_QUERY_PERC", "CC_ALG", "NODE_CNT", "LONG_TXN_WORKLOAD",
-           "REQ_PER_QUERY", "REQ_PER_SHORT_QUERY", "OPEN_DISTRIBUTED_WATERMARK",
-           "THREAD_CNT", "SCHEDULER_CNT"]
-    exp = [["YCSB", mode, adaptive, perc, "SDPCC", 2, "true", 50, 10,
-            "false", 16, 3]
-           for perc, (mode, adaptive) in itertools.product(long_percs, variants)]
-    return fmt, exp
-
-def ycsb_sdpcc_long_hole_size():
-    """Compare pure watermark and fixed Bloom for 100/500-op long txns."""
-    modes = ["SDPCC_LONG_HOLE_DISABLED", "SDPCC_LONG_HOLE_BLOOM"]
-    long_percs = [0.05, 0.10]
-    long_sizes = [(100, 128), (500, 512)]
-    fmt = ["WORKLOAD", "SDPCC_LONG_HOLE_MODE", "LONG_QUERY_PERC", "CC_ALG",
-           "NODE_CNT", "LONG_TXN_WORKLOAD", "REQ_PER_QUERY", "REQ_PER_SHORT_QUERY",
-           "MAX_ROW_PER_TXN", "MSG_SIZE_MAX", "SDPCC_LONG_HOLE_ADAPTIVE",
-           "SDPCC_LONG_BLOOM_BITS", "SDPCC_LONG_BLOOM_HASHES",
-           "OPEN_DISTRIBUTED_WATERMARK", "THREAD_CNT", "SCHEDULER_CNT"]
-    exp = [["YCSB", mode, perc, "SDPCC", 2, "true", long_size, 10,
-            max_rows, 16384, "false", 8192, 4, "false", 16, 3]
-           for long_size, max_rows in long_sizes
-           for perc, mode in itertools.product(long_percs, modes)]
-    return fmt, exp
-
-def ycsb_sdmvcc_long():
-    """Compare original SDPCC and SDMVCC with 100-op YCSB long txns."""
-    algos = ["SDPCC", "SDMVCC"]
-    long_percs = [0.01, 0.05, 0.10]
-    fmt = ["WORKLOAD", "CC_ALG", "LONG_QUERY_PERC", "NODE_CNT",
-           "LONG_TXN_WORKLOAD", "REQ_PER_QUERY", "REQ_PER_SHORT_QUERY",
-           "MAX_ROW_PER_TXN", "MSG_SIZE_MAX", "OPEN_DISTRIBUTED_WATERMARK",
-           "SDPCC_LONG_HOLE_MODE", "THREAD_CNT", "SCHEDULER_CNT"]
-    exp = [["YCSB", algo, perc, 2, "true", 100, 10, 128, 16384, "false",
-            "SDPCC_LONG_HOLE_DISABLED", 16, 3]
-           for perc, algo in itertools.product(long_percs, algos)]
-    return fmt, exp
-
-def ycsb_sdmvcc_long_size():
-    """Short txns use 10 requests; long txns use 100/500/1000 requests.
-
-    The long transaction fraction is configurable with YCSB_LONG_PERC and
-    defaults to 0.05 so the script can be kept stable before the paper ratio
-    is finalized.
-    """
-    long_perc = float(os.environ.get("YCSB_LONG_PERC", "0.05"))
-    long_sizes = [100, 500, 1000]
-    fmt = ["WORKLOAD", "CC_ALG", "LONG_QUERY_PERC", "NODE_CNT",
-           "LONG_TXN_WORKLOAD", "REQ_PER_QUERY", "REQ_PER_SHORT_QUERY",
-           "MAX_ROW_PER_TXN", "MSG_SIZE_MAX", "OPEN_DISTRIBUTED_WATERMARK",
-           "THREAD_CNT", "SCHEDULER_CNT", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["YCSB", algo, long_perc, 2, "true", long_size, 10,
-            2048, 131072, "false", 16, 3,
-            "30*BILLION", "30*BILLION"]
-           for algo in ["SDPCC", "SDMVCC"]
-           for long_size in long_sizes]
-    return fmt, exp
-
-
-def bomb_sdmvcc_gc_ablation():
-    """BoMB mixed workload: no reclamation versus read-intent GC."""
-    fmt, exp = _bomb_formal("false", ["SDMVCC"])
-    idx = fmt.index("SDMVCC_INTENT_GC")
-    base = list(exp[0])
-    gc_off = list(base)
-    gc_on = list(base)
-    gc_off[idx] = "false"
-    gc_on[idx] = "true"
-    variants = [gc_off, gc_on]
-    rotation = int(os.environ.get("SDMVCC_GC_ORDER", "0")) % 2
-    return fmt, variants[rotation:] + variants[:rotation]
-
-
-def ycsb_sdpcc_watermark_mode():
-    """YCSB comparison of local and distributed SDPCC watermark modes."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
-           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
-           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
-           "OPEN_DISTRIBUTED_WATERMARK", "WARMUP_TIMER", "DONE_TIMER"]
-    base = ["YCSB", "SDPCC", 2, 2,
-            16, 4, 3,
-            10000, 8 * 1024 * 1024, 10,
-            0.7, 0.2, 1.0, 0.2]
-    return fmt, [base + ["false", "30*BILLION", "30*BILLION"],
-                 base + ["true", "30*BILLION", "30*BILLION"]]
-
-
-def bomb_sdpcc_watermark_mode():
-    """BoMB comparison of local and distributed SDPCC watermark modes."""
-    fmt, exp = _bomb_formal("false", ["SDPCC"])
-    idx = fmt.index("OPEN_DISTRIBUTED_WATERMARK")
-    base = list(exp[0])
-    local = list(base)
-    distributed = list(base)
-    local[idx] = "false"
-    distributed[idx] = "true"
-    return fmt, [local, distributed]
-
-
-def chbenchmark_sdmvcc_test():
-    """Small two-node CH-benCHmark correctness/performance smoke test.
-
-    The analytical stream cycles deterministically through Q1..Q22.  Change
-    olap_percs or warehouse_pcts below to sweep the HTAP mix or query range.
-    """
-    olap_percs = [0.10]
-    warehouse_pcts = [100]
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "NUM_WH",
-           "MAX_ITEMS_NORM", "CUST_PER_DIST_NORM", "CH_SUPPLIER_COUNT",
-           "CH_OLAP_PERC", "CH_QUERY_MIN", "CH_QUERY_MAX",
-           "CH_QUERY_WAREHOUSE_PCT", "MAX_TXN_IN_FLIGHT",
-           "MAX_TXN_PER_PART", "THREAD_CNT", "SCHEDULER_CNT",
-           "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["CHBENCHMARK", "SDMVCC", 2, 2, 1000, 1000, 1000,
-            olap, 1, 22, warehouse_pct, 100, 10000, 16, 3,
-            "0*BILLION", "30*BILLION"]
-           for olap, warehouse_pct in itertools.product(
-               olap_percs, warehouse_pcts)]
-    return fmt, exp
-
-##############################
-# END PLOTS
-##############################
-
-def _bomb_formal(dynamic_mode, algos):
-    """Full-size two-node BoMB configuration used for paper experiments."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "ARIA_BATCH_SIZE", "BOMB_DYNAMIC_MODE",
-           "BOMB_L1_PERIODIC_MIX", "BOMB_L1_MIX_PERIOD",
-           "BOMB_L1_RANDOM_MIX", "BOMB_L1_RANDOM_PCT",
-           "BOMB_LONG_TX_MODE",
-           "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TREES_PER_PRODUCT", "BOMB_TREE_SIZE",
-           "BOMB_RAW_MATERIALS_PER_LEAF", "BOMB_TARGET_PRODUCTS",
-           "BOMB_TARGET_MATERIALS", "BOMB_QUERY_CACHE_SIZE",
-           "BOMB_FORCE_SHORT_TYPE", "BOMB_INJECT_STALE_PRESET",
-           "MSG_SIZE_MAX", "OPEN_DISTRIBUTED_WATERMARK",
-           "SDPCC_LONG_HOLE_MODE", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC", "SDMVCC_LONG_READ_GUARD",
-           "SDMVCC_UNSAFE_L1_NO_INTENT", "BOMB_L1_ACQUIRE_ONLY_WRITES",
-           "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", algo, 2, 2,
-            16, 4, 10000,
-            3000, dynamic_mode,
-            "true", 2048, "false", 10,
-            "BOMB_LONG_TX_PER_CLIENT",
-            1, 3,
-            8, 72000,
-            198000, 75000,
-            5, 10,
-            3, 100,
-            1, 2048,
-            -1, "false",
-            4194304, "false",
-            "SDPCC_LONG_HOLE_DISABLED", "false",
-            "true", "false",
-            "false", "false",
-            "30*BILLION", "30*BILLION"]
-           for algo in algos]
-    return fmt, exp
-
-
-def bomb_static():
-    """Formal static BoMB (L1/S1/S2), not a smoke test."""
-    return _bomb_formal("false", ["CALVIN", "ARIA", "SDMVCC"])
-
-
-def bomb_dynamic():
-    """Formal dynamic BoMB (L1/S1/S2/S3/S4/S5), not a smoke test."""
-    return _bomb_formal("true", ["CALVIN", "ARIA", "SDMVCC"])
-
-
-def bomb_random_static():
-    """Static BoMB with every client thread sampling L1 at 0.1%."""
-    fmt, base = _bomb_formal("false", ["CALVIN", "ARIA", "SDMVCC"])
-    periodic_idx = fmt.index("BOMB_L1_PERIODIC_MIX")
-    random_idx = fmt.index("BOMB_L1_RANDOM_MIX")
-    pct_idx = fmt.index("BOMB_L1_RANDOM_PCT")
-    exp = []
-    for pct in [0.1]:
-        for template in base:
-            row = list(template)
-            row[periodic_idx] = "false"
-            row[random_idx] = "true"
-            row[pct_idx] = pct
-            exp.append(row)
-    return fmt, exp
-
-
-def bomb_sdmvcc_early_publish_ablation():
-    """Static BoMB: transaction-end publication versus per-row production."""
-    fmt, base = _bomb_formal("false", ["SDMVCC"])
-    fmt.append("SDMVCC_EARLY_VERSION_PUBLISH")
-    baseline = list(base[0]) + ["false"]
-    early = list(base[0]) + ["true"]
-    variants = [baseline, early]
-    rotation = int(os.environ.get("SDMVCC_EARLY_PUBLISH_ORDER", "0")) % 2
-    return fmt, variants[rotation:] + variants[:rotation]
-
-
-def ycsb_sdmvcc_early_publish_ablation():
-    """YCSB: transaction-end publication versus per-row production."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
-           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
-           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
-           "SDMVCC_EARLY_VERSION_PUBLISH", "WARMUP_TIMER", "DONE_TIMER"]
-    base = ["YCSB", "SDMVCC", 2, 2,
-            16, 4, 3,
-            10000, 8 * 1024 * 1024, 10,
-            0.7, 0.2, 1.0, 0.2]
-    variants = [base + ["false", "30*BILLION", "30*BILLION"],
-                base + ["true", "30*BILLION", "30*BILLION"]]
-    rotation = int(os.environ.get("SDMVCC_EARLY_PUBLISH_ORDER", "0")) % 2
-    return fmt, variants[rotation:] + variants[:rotation]
-
-
-def ycsb_sdmvcc_blind_write_ablation():
-    """Default YCSB: normal RMW writes versus the blind-write upper bound."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
-           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
-           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
-           "SDMVCC_BLIND_WRITE", "SDMVCC_EARLY_VERSION_PUBLISH",
-           "SDMVCC_LAZY_READ_INTENT", "SDMVCC_INTENT_GC",
-           "SDMVCC_LONG_READ_GUARD", "WARMUP_TIMER", "DONE_TIMER"]
-    base = ["YCSB", "SDMVCC", 2, 2,
-            16, 4, 3,
-            10000, 8 * 1024 * 1024, 10,
-            0.7, 0.2, 1.0, 0.2]
-    variants = [base + [blind, "false", "false", "true", "false",
-                        "30*BILLION", "30*BILLION"]
-                for blind in ["false", "true"]]
-    rotation = int(os.environ.get("SDMVCC_BLIND_WRITE_ORDER", "0")) % 2
-    return fmt, variants[rotation:] + variants[:rotation]
-
-
-def ycsb_sdmvcc_scheduler_sweep():
-    """Two-node YCSB sweep for the SDMVCC scheduler count."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
-           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
-           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
-           "ARIA_BATCH_SIZE", "OPEN_DISTRIBUTED_WATERMARK",
-           "SDMVCC_LAZY_READ_INTENT", "SDMVCC_INTENT_GC",
-           "SDMVCC_LONG_READ_GUARD", "SDMVCC_UNSAFE_L1_NO_INTENT",
-           "SDMVCC_EARLY_VERSION_PUBLISH", "WARMUP_TIMER", "DONE_TIMER"]
-    return fmt, [["YCSB", "SDMVCC", 2, 2,
-                  15, 4, schedulers,
-                  10000, 8 * 1024 * 1024, 10,
-                  0.7, 0.2, 1.0, 0.2,
-                  3000, "false", "false", "true", "false", "false",
-                  "false", "30*BILLION", "30*BILLION"]
-                 for schedulers in range(5,7)]
-                #  for schedulers in range(1,15)]
-
-
-def bomb_sdmvcc_scheduler_sweep():
-    """Two-node static BoMB sweep for the SDMVCC scheduler count."""
-    fmt, base = _bomb_formal("false", ["SDMVCC"])
-    insert_at = fmt.index("MAX_TXN_IN_FLIGHT")
-    fmt.insert(insert_at, "SCHEDULER_CNT")
-    early_at = fmt.index("WARMUP_TIMER")
-    fmt.insert(early_at, "SDMVCC_EARLY_VERSION_PUBLISH")
-    variants = []
-    for schedulers in range(1, 15):
-        row = list(base[0])
-        row.insert(insert_at, schedulers)
-        row.insert(early_at, "false")
-        variants.append(row)
-    return fmt, variants
-
-
-def ycsb_idle_default():
-    """Two-node default YCSB used for the Aria/SDMVCC idle comparison."""
-    algos = ["SDPCC", "SDMVCC"]
-    # algos = ["ARIA", "SDMVCC","CALVIN"]
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "SCHEDULER_CNT",
-           "MAX_TXN_IN_FLIGHT", "SYNTH_TABLE_SIZE", "REQ_PER_QUERY",
-           "ZIPF_THETA", "TUP_WRITE_PERC", "TXN_WRITE_PERC", "MPR",
-           "ARIA_BATCH_SIZE", "OPEN_DISTRIBUTED_WATERMARK",
-           "SDMVCC_LAZY_READ_INTENT", "SDMVCC_INTENT_GC",
-           "SDMVCC_LONG_READ_GUARD", "SDMVCC_UNSAFE_L1_NO_INTENT",
-           "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["YCSB", algo, 2, 2,
-            16, 4, 3,
-            10000, 8 * 1024 * 1024, 10,
-            0.7, 0.2, 1.0, 0.2,
-            3000, "false",
-            "false", "true",
-            "false", "false",
-            "30*BILLION", "30*BILLION"]
-           for algo in algos]
-    return fmt, exp
-
-def bomb_calvin_smoke():
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
-           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
-           "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "CALVIN", 2, 2, 8, 3, 10000,
-            2, 64, 160, 64, 4,
-            "BOMB_LONG_TX_GLOBAL", 1, 2,
-            1048576, "20*BILLION", "30*BILLION"]]
-    return fmt, exp
-
-
-def bomb_sdmvcc_smoke():
-    """Two-node SDMVCC + BoMB static-mode smoke test.  SDMVCC shares the
-    SDPCC scheduler plumbing with CALVIN, so the plan mirrors
-    bomb_calvin_smoke with CC_ALG switched to SDMVCC."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
-           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
-           "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", 2, 2, 8, 4, 10000,
-            2, 64, 160, 64, 4,
-            "BOMB_LONG_TX_GLOBAL", 1, 3,
-            1048576, "20*BILLION", "20*BILLION"]]
-    return fmt, exp
-
-def bomb_sdmvcc_lazy_intent_ablation():
-    """Paired 2-node eager-vs-execution-time read-intent comparison."""
-    fmt = ["WORKLOAD", "CC_ALG", "SDMVCC_LAZY_READ_INTENT",
-           "SDMVCC_INTENT_GC",
-           "NODE_CNT", "CLIENT_NODE_CNT", "THREAD_CNT",
-           "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES",
-           "BOMB_MATERIAL_TYPES", "BOMB_RAW_MATERIAL_TYPES",
-           "BOMB_TARGET_PRODUCTS", "BOMB_LONG_TX_MODE",
-           "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX",
-           "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", lazy, "false", 2, 2, 15, 4, 10000,
-            8, 72000, 198000, 75000, 100, "BOMB_LONG_TX_PER_CLIENT", 1, 3, 4194304,
-            "20*BILLION", "20*BILLION"]
-        #    for lazy in ["false"]]
-           for lazy in ["false", "true"]]
-    return fmt, exp
-
-def bomb_sdmvcc_dynamic_smoke():
-    """Two-node SDMVCC + BoMB dynamic-mode (adds S3/S4/S5 with topology-version
-    guards and replan-retry).  Mirrors bomb_aria_dynamic_smoke with CC_ALG
-    switched to SDMVCC and no ARIA_BATCH_SIZE knob."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
-           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
-           "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "SDMVCC", 2, 2, 16, 4, 10000,
-            8, 72000, 198000, 75000, 100, "true",
-            "BOMB_LONG_TX_PER_CLIENT", 1, 3, 1048576,
-            "20*BILLION", "20*BILLION"]]
-    return fmt, exp
-
-
-def bomb_aria_dynamic_hif():
-    """Control for bomb_sdmvcc_dynamic_smoke: same dynamic-mode config but
-    ARIA, with MAX_TXN_IN_FLIGHT raised to 10000 to match the SDMVCC run."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "ARIA_BATCH_SIZE",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
-           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
-           "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "ARIA", 2, 2, 8, 4, 10000, 16,
-            2, 64, 160, 64, 4, "true",
-            "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
-            "2*BILLION", "5*BILLION"]]
-    return fmt, exp
-
-def bomb_calvin_baseline():
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_TARGET_PRODUCTS", "BOMB_LONG_TX_MODE",
-           "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX"]
-    exp = [["BOMB", "CALVIN", 2, 2, 16, 5, 256, target,
-            "BOMB_LONG_TX_GLOBAL", 1, 4, 4194304]
-           for target in [10, 50, 100]]
-    return fmt, exp
-
-
-def bomb_calvin_dynamic_smoke():
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
-           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
-           "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "CALVIN", 2, 2, 8, 4, 32,
-            2, 64, 160, 64, 4, "true",
-            "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
-            "2*BILLION", "5*BILLION"]]
-    return fmt, exp
-
-
-def bomb_aria_smoke():
-    """Two-node Aria + BoMB static-mode (L1/S1/S2) correctness/performance
-    smoke test.  Every Aria server owns a sequencer that must fill a
-    same-sized batch, so each client node provisions BOMB_SHORT_WORKERS local
-    short sources plus the globally unique long source."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "ARIA_BATCH_SIZE",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
-           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
-           "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES", "BOMB_SHORT_WORKERS",
-           "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "ARIA", 2, 2, 8, 4, 10000, 16,
-            2, 64, 160, 64, 4,
-            "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
-            "2*BILLION", "5*BILLION"]]
-    return fmt, exp
-
-
-def bomb_aria_dynamic_smoke():
-    """Two-node Aria + BoMB dynamic-mode (adds S3/S4/S5 with topology-version
-    guards and replan-retry)."""
-    fmt = ["WORKLOAD", "CC_ALG", "NODE_CNT", "CLIENT_NODE_CNT",
-           "THREAD_CNT", "CLIENT_THREAD_CNT", "MAX_TXN_IN_FLIGHT",
-           "ARIA_BATCH_SIZE",
-           "BOMB_FACTORY_COUNT", "BOMB_PRODUCT_TYPES", "BOMB_MATERIAL_TYPES",
-           "BOMB_RAW_MATERIAL_TYPES", "BOMB_TARGET_PRODUCTS",
-           "BOMB_DYNAMIC_MODE", "BOMB_LONG_TX_MODE", "BOMB_LONG_TX_SOURCES",
-           "BOMB_SHORT_WORKERS", "MSG_SIZE_MAX", "WARMUP_TIMER", "DONE_TIMER"]
-    exp = [["BOMB", "ARIA", 2, 2, 8, 4, 64, 16,
-            2, 64, 160, 64, 4, "true",
-            "BOMB_LONG_TX_GLOBAL", 1, 3, 1048576,
-            "2*BILLION", "5*BILLION"]]
-    return fmt, exp
-
-
-def _ycsb_sdmvcc_skew(skews):
-    """YCSB SDMVCC skew sweep; parameters copied from ycsb_skew_PCC."""
-    wl = 'YCSB'
-    nnodes = [2]
-    algos = ['SDMVCC']
-    base_table_size = 1048576 * 8
-    txn_write_perc = [1]
-    tup_write_perc = [0.2]
-    load = [10000]
-    total_cnt = [15]
-    scnt = [5]
-    fmt = ["WORKLOAD", "CC_ALG", "ZIPF_THETA", "NODE_CNT",
-           "SYNTH_TABLE_SIZE", "TUP_WRITE_PERC", "TXN_WRITE_PERC",
-           "MAX_TXN_IN_FLIGHT", "THREAD_CNT", "SCHEDULER_CNT"]
-    exp = [[wl, algo, sk, n, base_table_size * n, tup_wr_perc,
-            txn_wr_perc, ld, t_cnt, s_cnt]
-           for t_cnt, s_cnt, txn_wr_perc, tup_wr_perc, ld, n, sk, algo
-           in itertools.product(total_cnt, scnt, txn_write_perc,
-                                tup_write_perc, load, nnodes, skews, algos)]
-    return fmt, exp
-
-
-def ycsb_sdmvcc_skew_chain():
-    """YCSB SDMVCC skew 0.0 vs 1.3, for the version-chain change."""
-    return _ycsb_sdmvcc_skew([0.0])
-    # return _ycsb_sdmvcc_skew([0.0, 1.3])
-
-
-def ycsb_sdmvcc_scan_probe():
-    """Skew 1.3 only: measure how far the chain lookups scan."""
-    return _ycsb_sdmvcc_skew([1.3])
-
-
-def bomb_sdmvcc_chain():
-    """Static BoMB, SDMVCC only, for the version-chain change."""
-    return _bomb_formal("false", ["SDMVCC"])
-
-
-def ycsb_sdmvcc_nogc_skew():
-    """Ablation: SDMVCC at hot skew with INTENT_GC off + LAZY_READ_INTENT on."""
-    wl = 'YCSB'
-    algos = ['SDMVCC']
-    skew = [1.3]
-    nnodes = [2]
-    base_table_size = 1048576 * 8
-    txn_write_perc = [1]
-    tup_write_perc = [0.2]
-    load = [10000]
-    total_cnt = [15]
-    scnt = [3]
-    fmt = ["WORKLOAD", "CC_ALG", "ZIPF_THETA", "NODE_CNT",
-           "SYNTH_TABLE_SIZE", "TUP_WRITE_PERC", "TXN_WRITE_PERC",
-           "MAX_TXN_IN_FLIGHT", "THREAD_CNT", "SCHEDULER_CNT"]
-    exp = [[wl, algo, sk, n, base_table_size * n, tup_wr_perc,
-            txn_wr_perc, ld, t_cnt, s_cnt]
-           for t_cnt, s_cnt, txn_wr_perc, tup_wr_perc, ld, n, sk, algo
-           in itertools.product(total_cnt, scnt, txn_write_perc, tup_write_perc,
-                                load, nnodes, skew, algos)]
-    return fmt, exp
-
-
-def ycsb_sdmvcc_entry_chain():
-    """Entry-chain SDMVCC (intent-in-version-list + O(1) watermark GC)."""
-    wl = 'YCSB'
-    algos = ['SDMVCC']
-    skew = [1.3]
-    nnodes = [2]
-    base_table_size = 1048576 * 8
-    txn_write_perc = [1]
-    tup_write_perc = [0.2]
-    load = [10000]
-    total_cnt = [15]
-    scnt = [3]
-    fmt = ["WORKLOAD", "CC_ALG", "ZIPF_THETA", "NODE_CNT",
-           "SYNTH_TABLE_SIZE", "TUP_WRITE_PERC", "TXN_WRITE_PERC",
-           "MAX_TXN_IN_FLIGHT", "THREAD_CNT", "SCHEDULER_CNT"]
-    exp = [[wl, algo, sk, n, base_table_size * n, tup_wr_perc,
-            txn_write_perc, ld, t_cnt, s_cnt]
-           for t_cnt, s_cnt, txn_write_perc, tup_wr_perc, ld, n, sk, algo
-           in itertools.product(total_cnt, scnt, txn_write_perc, tup_write_perc,
-                                load, nnodes, skew, algos)]
-    return fmt, exp
+
+
+PAPER_ALGOS = ("CALVIN", "ARIA", "SDMVCC")
+WARMUP = "30*BILLION"
+MEASURE = "30*BILLION"
+BASE_NODES = 2
+BASE_TABLE_PER_NODE = 8 * 1024 * 1024
+BASE_THD_CNT = 15  # THD_CNT + 1 is the fixed scheduler + executor budget (16)
+
+
+def _workers(algo):
+    return 16 if algo == "ARIA" else 15
+
+
+def _rows(fmt, records):
+    return fmt, [[record[key] for key in fmt] for record in records]
+
+
+def _ycsb(algo="SDMVCC", nodes=BASE_NODES):
+    return {
+        "WORKLOAD": "YCSB", "CC_ALG": algo,
+        "NODE_CNT": nodes, "CLIENT_NODE_CNT": nodes,
+        "THREAD_CNT": _workers(algo), "CLIENT_THREAD_CNT": 4,
+        "SCHEDULER_CNT": 3, "MAX_TXN_IN_FLIGHT": 10000,
+        "SYNTH_TABLE_SIZE": BASE_TABLE_PER_NODE,
+        #  * nodes,
+        "REQ_PER_QUERY": 10, "REQ_PER_SHORT_QUERY": 10,
+        "MAX_ROW_PER_TXN": 2048,
+        "ZIPF_THETA": 0.7, "TUP_WRITE_PERC": 0.2,
+        "TXN_WRITE_PERC": 1.0, "MPR": 0.2,
+        "ARIA_BATCH_SIZE": 3000, "LONG_TXN_WORKLOAD": "false",
+        "LONG_QUERY_PERC": 0.0, "MSG_SIZE_MAX": 4096,
+        "OPEN_DISTRIBUTED_WATERMARK": "false",
+        "SDMVCC_LAZY_READ_INTENT": "false",
+        "SDMVCC_INTENT_GC": "true",
+        "SDMVCC_LONG_READ_GUARD": "false",
+        "WARMUP_TIMER": WARMUP, "DONE_TIMER": MEASURE,
+    }
+
+
+def _tpcc(algo="SDMVCC", nodes=BASE_NODES):
+    return {
+        "WORKLOAD": "TPCC", "CC_ALG": algo,
+        "NODE_CNT": nodes, "CLIENT_NODE_CNT": nodes,
+        "THREAD_CNT": _workers(algo), "CLIENT_THREAD_CNT": 4,
+        "SCHEDULER_CNT": 3, "MAX_TXN_IN_FLIGHT": 10000,
+        "NUM_WH": 32,
+        #  * nodes, 
+        "PERC_PAYMENT": 0.489,
+        "PRORATE_RATIO": 0, "MPR": 0.15, "MPR_NEWORDER": 0.10,
+        "ARIA_BATCH_SIZE": 3000,
+        "OPEN_DISTRIBUTED_WATERMARK": "false",
+        "SDMVCC_LAZY_READ_INTENT": "false",
+        "SDMVCC_INTENT_GC": "true",
+        "WARMUP_TIMER": WARMUP, "DONE_TIMER": MEASURE,
+    }
+
+
+def _bomb(algo="SDMVCC", nodes=BASE_NODES):
+    return {
+        "WORKLOAD": "BOMB", "CC_ALG": algo,
+        "NODE_CNT": nodes, "CLIENT_NODE_CNT": nodes,
+        "THREAD_CNT": _workers(algo), "CLIENT_THREAD_CNT": 4,
+        "SCHEDULER_CNT": 3, "MAX_TXN_IN_FLIGHT": 10000,
+        "ARIA_BATCH_SIZE": 3000, "BOMB_DYNAMIC_MODE": "false",
+        "BOMB_L1_PERIODIC_MIX": "true", "BOMB_L1_MIX_PERIOD": 2048,
+        "BOMB_L1_RANDOM_MIX": "false", "BOMB_L1_RANDOM_PCT": 0.1,
+        "BOMB_LONG_TX_MODE": "BOMB_LONG_TX_PER_CLIENT",
+        "BOMB_LONG_TX_SOURCES": 1, "BOMB_SHORT_WORKERS": 3,
+        "BOMB_FACTORY_COUNT": 8, "BOMB_PRODUCT_TYPES": 72000,
+        "BOMB_MATERIAL_TYPES": 198000, "BOMB_RAW_MATERIAL_TYPES": 75000,
+        "BOMB_TREES_PER_PRODUCT": 5, "BOMB_TREE_SIZE": 10,
+        "BOMB_RAW_MATERIALS_PER_LEAF": 3,
+        "BOMB_TARGET_PRODUCTS": 100, "BOMB_TARGET_MATERIALS": 1,
+        "BOMB_QUERY_CACHE_SIZE": 2048, "BOMB_FORCE_SHORT_TYPE": -1,
+        "BOMB_INJECT_STALE_PRESET": "false", "MSG_SIZE_MAX": 4194304,
+        "OPEN_DISTRIBUTED_WATERMARK": "false",
+        "SDPCC_LONG_HOLE_MODE": "SDPCC_LONG_HOLE_DISABLED",
+        "SDMVCC_LAZY_READ_INTENT": "false", "SDMVCC_INTENT_GC": "true",
+        "SDMVCC_LONG_READ_GUARD": "false",
+        "SDMVCC_UNSAFE_L1_NO_INTENT": "false",
+        "BOMB_L1_ACQUIRE_ONLY_WRITES": "false",
+        "WARMUP_TIMER": WARMUP, "DONE_TIMER": MEASURE,
+    }
+
+
+YCSB_FMT = list(_ycsb().keys())
+TPCC_FMT = list(_tpcc().keys())
+BOMB_FMT = list(_bomb().keys())
+
+
+def paper_t1_ycsb_skew():
+    records = []
+    for algo, skew in itertools.product(PAPER_ALGOS,
+                                         (0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5)):
+        row = _ycsb(algo); row["ZIPF_THETA"] = skew; records.append(row)
+    return _rows(YCSB_FMT, records)
+
+
+def paper_t2_ycsb_write():
+    records = []
+    for algo, ratio in itertools.product(PAPER_ALGOS,
+                                          (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)):
+        row = _ycsb(algo); row["TUP_WRITE_PERC"] = ratio; records.append(row)
+    return _rows(YCSB_FMT, records)
+
+
+def paper_t3_ycsb_dist():
+    records = []
+    for algo, ratio in itertools.product(PAPER_ALGOS,
+                                          (0.1, 0.2, 0.3, 0.4, 0.5,
+                                           0.6, 0.7, 0.8, 0.9, 1.0)):
+        row = _ycsb(algo); row["MPR"] = ratio; records.append(row)
+    return _rows(YCSB_FMT, records)
+
+
+def paper_t4_tpcc_warehouses():
+    records = []
+    for algo, per_node in itertools.product(PAPER_ALGOS, (8, 16, 32, 64, 128)):
+        row = _tpcc(algo); row["NUM_WH"] = per_node * row["NODE_CNT"]
+        records.append(row)
+    return _rows(TPCC_FMT, records)
+
+
+def paper_h0_motivation():
+    # Pure short YCSB and the fixed mixed BoMB point used by H3/H4.
+    fmt = list(dict.fromkeys(YCSB_FMT + BOMB_FMT))
+    records = []
+    for algo in PAPER_ALGOS:
+        ycsb = _ycsb(algo)
+        ycsb["ZIPF_THETA"] = 0.0
+        records.extend((ycsb, _bomb(algo)))
+    # Fill keys irrelevant to one workload from repository defaults.
+    defaults = _ycsb(); defaults.update(_bomb())
+    return fmt, [[record.get(key, defaults.get(key, configs.get(key))) for key in fmt]
+                 for record in records]
+
+
+def paper_h1_ycsb_long_ratio():
+    records = []
+    for algo, ratio in itertools.product(PAPER_ALGOS, (0.01, 0.05, 0.10, 0.20)):
+        row = _ycsb(algo); row.update({
+            "LONG_TXN_WORKLOAD": "true", "LONG_QUERY_PERC": ratio,
+            "REQ_PER_QUERY": 1000, "REQ_PER_SHORT_QUERY": 10,
+            "MAX_ROW_PER_TXN": 2048, "MSG_SIZE_MAX": 1048576})
+        records.append(row)
+    return _rows(YCSB_FMT, records)
+
+
+def paper_h2_ycsb_long_size():
+    records = []
+    for algo, size in itertools.product(PAPER_ALGOS, (100, 500, 1000, 5000)):
+        row = _ycsb(algo); row.update({
+            "LONG_TXN_WORKLOAD": "true", "LONG_QUERY_PERC": 0.05,
+            "REQ_PER_QUERY": size, "REQ_PER_SHORT_QUERY": 10,
+            "MAX_ROW_PER_TXN": 8192, "MSG_SIZE_MAX": 4194304})
+        records.append(row)
+    return _rows(YCSB_FMT, records)
+
+def paper_h3_bomb_long_ratio():
+    records = []
+    for algo, dynamic, pct in itertools.product(PAPER_ALGOS, ("false", "true"), (0.1, 0.5, 1.0, 5.0, 10.0)):
+        row = _bomb(algo)
+        row.update({
+            "BOMB_DYNAMIC_MODE": dynamic,
+            "BOMB_L1_PERIODIC_MIX": "false",
+            "BOMB_L1_RANDOM_MIX": "true",
+            "BOMB_L1_RANDOM_PCT": pct
+        })
+        records.append(row)
+    return _rows(BOMB_FMT, records)
+
+
+def paper_h4_bomb_long_size():
+    records = []
+    for algo, dynamic, products in itertools.product(PAPER_ALGOS, ("false", "true"), (50, 75, 100, 150, 200)):
+        row = _bomb(algo)
+        row.update({
+            "BOMB_DYNAMIC_MODE": dynamic,
+            "BOMB_L1_PERIODIC_MIX": "false",
+            "BOMB_L1_RANDOM_MIX": "false",
+            "BOMB_L1_RANDOM_PCT": 0.5,
+            "BOMB_TARGET_PRODUCTS": products
+        })
+        records.append(row)
+
+    return _rows(BOMB_FMT, records)
+
+
+# def paper_h4_bomb_long_size():
+#     records = []
+#     for algo, products in itertools.product(PAPER_ALGOS, (10, 25, 50, 100, 200)):
+#         row = _bomb(algo); row.update({
+#             "BOMB_L1_PERIODIC_MIX": "false", "BOMB_L1_RANDOM_MIX": "false",
+#             "BOMB_L1_RANDOM_PCT": 0.5, "BOMB_TARGET_PRODUCTS": products})
+#         records.append(row)
+#     return _rows(BOMB_FMT, records)
+
+
+def paper_a1_scheduler_ycsb():
+    records = []
+    for algo, schedulers in itertools.product(("CALVIN", "SDMVCC"), range(1, 16)):
+        row = _ycsb(algo); row["SCHEDULER_CNT"] = schedulers
+        row["THREAD_CNT"] = BASE_THD_CNT
+        records.append(row)
+    return _rows(YCSB_FMT, records)
+
+
+def paper_a1_scheduler_bomb():
+    records = []
+    for algo, schedulers in itertools.product(("CALVIN", "SDMVCC"), range(1, 16)):
+        row = _bomb(algo); row["SCHEDULER_CNT"] = schedulers
+        row["THREAD_CNT"] = BASE_THD_CNT
+        records.append(row)
+    return _rows(BOMB_FMT, records)
+
+
+def paper_a2_read_intent_ycsb():
+    records = []
+    for lazy in ("false", "true"):
+        row = _ycsb(); row["SDMVCC_LAZY_READ_INTENT"] = lazy; records.append(row)
+    return _rows(YCSB_FMT, records)
+
+
+def paper_a2_read_intent_bomb():
+    records = []
+    for lazy in ("false", "true"):
+        row = _bomb(); row["SDMVCC_LAZY_READ_INTENT"] = lazy; records.append(row)
+    return _rows(BOMB_FMT, records)
+
+
+def paper_a3_gc():
+    # false is an explicit no-reclamation baseline, not a conventional GC.
+    records = []
+    for gc, products in itertools.product(("false", "true"),
+                                           (10, 25, 50, 100, 200)):
+        row = _bomb(); row.update({
+            "BOMB_L1_PERIODIC_MIX": "false", "BOMB_L1_RANDOM_MIX": "true",
+            "BOMB_L1_RANDOM_PCT": 0.5, "BOMB_TARGET_PRODUCTS": products,
+            "SDMVCC_INTENT_GC": gc})
+        records.append(row)
+    return _rows(BOMB_FMT, records)
+
+
+def paper_a4_coalescing_ycsb():
+    records = []
+    for distributed in ("false", "true"):
+        row = _ycsb(); row["OPEN_DISTRIBUTED_WATERMARK"] = distributed
+        records.append(row)
+    return _rows(YCSB_FMT, records)
+
+
+def paper_a4_coalescing_bomb():
+    records = []
+    for distributed in ("false", "true"):
+        row = _bomb(); row["OPEN_DISTRIBUTED_WATERMARK"] = distributed
+        records.append(row)
+    return _rows(BOMB_FMT, records)
+
+
+def paper_s1_scaling_ycsb():
+    records = []
+    for nodes in (2, 4, 6, 8): records.append(_ycsb(nodes=nodes))
+    return _rows(YCSB_FMT, records)
+
+
+def paper_s1_scaling_bomb():
+    records = []
+    for nodes in (2, 4, 6, 8): records.append(_bomb(nodes=nodes))
+    return _rows(BOMB_FMT, records)
+
 
 experiment_map = {
-    'ycsb_sdmvcc_vector_lookup': ycsb_sdmvcc_vector_lookup,
-    'ycsb_sdmvcc_skew_chain': ycsb_sdmvcc_skew_chain,
-    'ycsb_sdmvcc_scan_probe': ycsb_sdmvcc_scan_probe,
-    'bomb_sdmvcc_chain': bomb_sdmvcc_chain,
-    'bomb_static': bomb_static,
-    'bomb_dynamic': bomb_dynamic,
-    'bomb_random_static': bomb_random_static,
-    'bomb_sdmvcc_early_publish_ablation': bomb_sdmvcc_early_publish_ablation,
-    'ycsb_sdmvcc_early_publish_ablation': ycsb_sdmvcc_early_publish_ablation,
-    'ycsb_sdmvcc_blind_write_ablation': ycsb_sdmvcc_blind_write_ablation,
-    'ycsb_sdmvcc_long_size': ycsb_sdmvcc_long_size,
-    'bomb_sdmvcc_gc_ablation': bomb_sdmvcc_gc_ablation,
-    'ycsb_sdpcc_watermark_mode': ycsb_sdpcc_watermark_mode,
-    'bomb_sdpcc_watermark_mode': bomb_sdpcc_watermark_mode,
-    'ycsb_sdmvcc_scheduler_sweep': ycsb_sdmvcc_scheduler_sweep,
-    'bomb_sdmvcc_scheduler_sweep': bomb_sdmvcc_scheduler_sweep,
-    'ycsb_idle_default': ycsb_idle_default,
-    # for test
-    'ycsb_skew' : ycsb_skew,
-    # YCSB_WRITE
-    'ycsb_writes_PCC': ycsb_writes_PCC, # calvin sdpcc
-    'ycsb_writes_OCC': ycsb_writes_OCC, # sdocc
-    'ycsb_aria_batch3': ycsb_aria_batch3, # Aria的write
-
-    # YCSB_SKEW:
-    'ycsb_skew_PCC': ycsb_skew_PCC, # calvin sdpcc
-    'ycsb_skew_cc_comparison': ycsb_skew_cc_comparison,
-    'ycsb_skew_OCC': ycsb_skew_OCC, # sdocc
-    'ycsb_aria_batch': ycsb_aria_batch, # Aria的skew
-
-    # YCSB_DIST:
-    'ycsb_dist_ratio_PCC': ycsb_dist_ratio_PCC, # calvin sdpcc
-    'ycsb_dist_ratio_OCC': ycsb_dist_ratio_OCC, # sdocc
-    'ycsb_aria_batch2': ycsb_aria_batch2,  # Aria的dist
-
-    # 随机等待
-    'ycsb_random_idle_PCC': ycsb_random_idle_PCC, # calvin sdpcc
-    'ycsb_random_idle_OCC': ycsb_random_idle_OCC, # sdocc
-    'ycsb_random_idle_ARIA':ycsb_random_idle_ARIA, # Aria
-
-    # batch size
-    'ycsb_batch_size_PCC' : ycsb_batch_size_PCC, # calvin sdpcc
-    'ycsb_batch_size_OCC' : ycsb_batch_size_OCC, # sdocc Aria
-
-    # TPCC_WH
-    'tpcc_wh_PCC': tpcc_wh_PCC,
-	'tpcc_sdmvcc_smoke': tpcc_sdmvcc_smoke,
-    'tpcc_wh_OCC': tpcc_wh_OCC,
-    'tpcc_aria_batch': tpcc_aria_batch, # Aria的TPCC WH
-
-    # 下面是优化测试
-    # SDOCC的优化测试
-    'ycsb_rwset_variable_ratio': ycsb_rwset_variable_ratio,
-    # SDPCC的优化测试
-    'ycsb_sch_cnt': ycsb_sch_cnt,
-    'ycsb_sdpcc_long_hole': ycsb_sdpcc_long_hole,
-    'ycsb_sdpcc_long_hole_adaptive': ycsb_sdpcc_long_hole_adaptive,
-    'ycsb_sdpcc_long_hole_size': ycsb_sdpcc_long_hole_size,
-    'ycsb_sdmvcc_long': ycsb_sdmvcc_long,
-    'chbenchmark_sdmvcc_test': chbenchmark_sdmvcc_test,
-    'bomb_calvin_smoke': bomb_calvin_smoke,
-    'bomb_calvin_baseline': bomb_calvin_baseline,
-    'bomb_calvin_dynamic_smoke': bomb_calvin_dynamic_smoke,
-    'bomb_aria_smoke': bomb_aria_smoke,
-    'bomb_aria_dynamic_smoke': bomb_aria_dynamic_smoke,
-    'bomb_aria_dynamic_hif': bomb_aria_dynamic_hif,
-    'bomb_sdmvcc_smoke': bomb_sdmvcc_smoke,
-    'bomb_sdmvcc_lazy_intent_ablation': bomb_sdmvcc_lazy_intent_ablation,
-    'bomb_sdmvcc_dynamic_smoke': bomb_sdmvcc_dynamic_smoke,
-
-    # Scaling
-    'ycsb_scaling_PCC': ycsb_scaling_PCC, # calvin sdpcc
-    'ycsb_scaling_OCC': ycsb_scaling_OCC, # sdocc
-    'ycsb_scaling_ARIA': ycsb_scaling_ARIA, # Aria
-
-    'tpcc_scaling_PCC': tpcc_scaling_PCC, # calvin sdpcc
-    'tpcc_scaling_OCC': tpcc_scaling_OCC, # sdocc
-    'tpcc_scaling_ARIA': tpcc_scaling_ARIA, # Aria
-
-    # 下面是没跑的实验
-    'ycsb_rwset_ratio': ycsb_rwset_ratio,
-    'tpcc_dist_ratio': tpcc_dist_ratio,
-    'tpcc_aria_batch2': tpcc_aria_batch2,
+    "paper_t1_ycsb_skew": paper_t1_ycsb_skew,
+    "paper_t2_ycsb_write": paper_t2_ycsb_write,
+    "paper_t3_ycsb_dist": paper_t3_ycsb_dist,
+    "paper_t4_tpcc_warehouses": paper_t4_tpcc_warehouses,
+    "paper_h0_motivation": paper_h0_motivation,
+    "paper_h1_ycsb_long_ratio": paper_h1_ycsb_long_ratio,
+    "paper_h2_ycsb_long_size": paper_h2_ycsb_long_size,
+    "paper_h3_bomb_long_ratio": paper_h3_bomb_long_ratio,
+    "paper_h4_bomb_long_size": paper_h4_bomb_long_size,
+    "paper_a1_scheduler_ycsb": paper_a1_scheduler_ycsb,
+    "paper_a1_scheduler_bomb": paper_a1_scheduler_bomb,
+    "paper_a2_read_intent_ycsb": paper_a2_read_intent_ycsb,
+    "paper_a2_read_intent_bomb": paper_a2_read_intent_bomb,
+    "paper_a3_gc": paper_a3_gc,
+    "paper_a4_coalescing_ycsb": paper_a4_coalescing_ycsb,
+    "paper_a4_coalescing_bomb": paper_a4_coalescing_bomb,
+    "paper_s1_scaling_ycsb": paper_s1_scaling_ycsb,
+    "paper_s1_scaling_bomb": paper_s1_scaling_bomb,
 }
 
 
-# Paper experiment thread policy.  Keep this at the experiment-map boundary so
-# every entry point, including smoke and legacy helpers, uses the same counts.
-_EXPERIMENT_THREAD_COUNT = {
-    "CARACAL": 16,
-    "ARIA": 16,
-    "CALVIN": 15,
-    "SDMVCC": 15,
-    "SDPCC": 15,
-}
+SHORTNAMES = {'ABORT_PENALTY': 'PENALTY',
+ 'ACCESS_PERC': 'A',
+ 'BOMB_L1_MIX_PERIOD': 'BLP',
+ 'BOMB_L1_RANDOM_MIX': 'BLR',
+ 'BOMB_L1_RANDOM_PCT': 'BLRP',
+ 'BOMB_LONG_TX_MODE': 'BLM',
+ 'BOMB_LONG_TX_SOURCES': 'BLS',
+ 'BOMB_SHORT_WORKERS': 'BSW',
+ 'BOMB_TARGET_PRODUCTS': 'BTP',
+ 'CC_ALG': '',
+ 'CH_OLAP_PERC': 'OLAP',
+ 'CH_QUERY_MAX': 'QMAX',
+ 'CH_QUERY_MIN': 'QMIN',
+ 'CH_QUERY_WAREHOUSE_PCT': 'QWH',
+ 'CH_SUPPLIER_COUNT': 'SUPP',
+ 'CLIENT_NODE_CNT': 'CN',
+ 'CLIENT_REM_THREAD_CNT': 'CRT',
+ 'CLIENT_SEND_THREAD_CNT': 'CST',
+ 'CLIENT_THREAD_CNT': 'CT',
+ 'CUST_PER_DIST_NORM': 'CUST',
+ 'DATA_PERC': 'D',
+ 'ISOLATION_LEVEL': 'LVL',
+ 'LONG_QUERY_PERC': 'LP',
+ 'MAX_ITEMS_NORM': 'ITEMS',
+ 'MAX_ROW_PER_TXN': 'MRT',
+ 'MAX_TXN_IN_FLIGHT': 'TIF',
+ 'MAX_TXN_PER_PART': 'TXNS',
+ 'MODE': '',
+ 'MPR': 'MPR',
+ 'MSG_SIZE_MAX': 'BS',
+ 'MSG_TIME_LIMIT': 'BT',
+ 'NETWORK_DELAY': 'NDLY',
+ 'NETWORK_DELAY_TEST': 'NDT',
+ 'NODE_CNT': 'N',
+ 'NUM_WH': 'WH',
+ 'OPEN_DISTRIBUTED_WATERMARK': 'DW',
+ 'PART_PER_TXN': 'PPT',
+ 'PERC_PAYMENT': 'PP',
+ 'PRIORITY': '',
+ 'PRORATE_RATIO': 'PRORATE',
+ 'REM_THREAD_CNT': 'RT',
+ 'REPLICA_CNT': 'RN',
+ 'REQ_PER_QUERY': 'RPQ',
+ 'REQ_PER_SHORT_QUERY': 'SRPQ',
+ 'RWSET_KNOWN_RATIO': 'RWSET',
+ 'SCHEDULER_CNT': 'SC',
+ 'SDMVCC_EARLY_VERSION_PUBLISH': 'EVP',
+ 'SDMVCC_INTENT_GC': 'IGC',
+ 'SDMVCC_LAZY_READ_INTENT': 'LRI',
+ 'SDMVCC_LONG_READ_GUARD': 'LRG',
+ 'SDPCC_LONG_HOLE_MODE': 'HOLE',
+ 'SEND_THREAD_CNT': 'ST',
+ 'STRICT_PPT': 'SPPT',
+ 'SYNTH_TABLE_SIZE': 'TBL',
+ 'THREAD_CNT': 'T',
+ 'TUP_READ_PERC': 'TRD',
+ 'TUP_WRITE_PERC': 'TWR',
+ 'TXN_READ_PERC': 'RD',
+ 'TXN_WRITE_PERC': 'WR',
+ 'WORKLOAD': '',
+ 'YCSB_ABORT_MODE': 'ABRTMODE',
+ 'ZIPF_THETA': 'SKEW'}
 
-def _enforce_experiment_thread_count(fn):
-    def wrapped():
-        fmt, rows = fn()
-        if "THREAD_CNT" in fmt and "CC_ALG" in fmt:
-            ai = fmt.index("CC_ALG")
-            ti = fmt.index("THREAD_CNT")
-            for row in rows:
-                count = _EXPERIMENT_THREAD_COUNT.get(str(row[ai]))
-                if count is not None:
-                    row[ti] = count
-        return fmt, rows
-    return wrapped
-
-experiment_map['ycsb_sdmvcc_nogc_skew'] = ycsb_sdmvcc_nogc_skew
-experiment_map['ycsb_sdmvcc_entry_chain'] = ycsb_sdmvcc_entry_chain
-experiment_map = {name: _enforce_experiment_thread_count(fn)
-                  for name, fn in experiment_map.items()}
-
-# Default values for variable configurations
-configs = {
-    # 节点数
-    "NODE_CNT" : 2,
-    # 线程数
-    "THREAD_CNT": 16, 
-    # 不用管
-    "REPLICA_CNT": 0,
-    "REPLICA_TYPE": "AP",
-
-    # 收发消息的线程数
-    "REM_THREAD_CNT": 2,
-    "SEND_THREAD_CNT": 2,
-    # 客户端方面的配置
-    "CLIENT_NODE_CNT" : "NODE_CNT",
-    "CLIENT_THREAD_CNT" : 4,
-    "CLIENT_REM_THREAD_CNT" : 2,
-    "CLIENT_SEND_THREAD_CNT" : 2,
-
-    "MAX_TXN_PER_PART" : 500000,
-    "WORKLOAD" : "YCSB",
-    "CC_ALG" : "CNULL",
-
-    "MPR" : 0.2,    #分布式事务比列
-    "TPORT_TYPE":"TCP",
-    "TPORT_PORT":"18000",
-    "PART_CNT": "NODE_CNT",
-    # 默认2就行
-    "PART_PER_TXN": 2,
-    # 默认10000
-    "MAX_TXN_IN_FLIGHT": 10000,
-    "NETWORK_DELAY": '0UL',
-    "NETWORK_DELAY_TEST": 'false',
-    # 实验跑多长时间
-    "DONE_TIMER": "1 * 20 * BILLION // ~1 minutes",
-    "WARMUP_TIMER": "1 * 20 * BILLION // ~1 minutes",
-
-    "SEQ_BATCH_TIMER": "5 * 1 * MILLION // ~5ms -- same as CALVIN paper",
-    "BATCH_TIMER" : "0",
-    "PROG_TIMER" : "10 * BILLION // in s",
-    "NETWORK_TEST" : "false",
-    "ABORT_PENALTY": "10 * 1000000UL   // in ns.",
-    "ABORT_PENALTY_MAX": "5 * 100 * 1000000UL   // in ns.",
-    "MSG_TIME_LIMIT": "0",
-    # 单个消息最大size，HTAP-BoMB需要改大
-    "MSG_SIZE_MAX": 4096,
-    "TXN_WRITE_PERC":1.0,
-    "PRIORITY":"PRIORITY_ACTIVE",
-    "TWOPL_LITE":"false",
-    "LONG_TXN_WORKLOAD":'false',
-    "LONG_QUERY_PERC":0.0,
-    "OPEN_DISTRIBUTED_WATERMARK":'false',
-    "SDPCC_LONG_HOLE_MODE":"SDPCC_LONG_HOLE_DISABLED",
-    "SDMVCC_LONG_READ_GUARD":"false",
-    "SDMVCC_EARLY_VERSION_PUBLISH":"false",
-    "SDMVCC_BLIND_WRITE":"false",
-    "SDMVCC_UNSAFE_L1_NO_INTENT":"false",
-    "OPEN_RANDOM_WAIT":'false',
-#YCSB
-    "INIT_PARALLELISM" : 8,
-    # 写比例
-    "TUP_WRITE_PERC":0.2,
-    # 偏斜率
-    "ZIPF_THETA":0.7,
-
-    "ACCESS_PERC":0.03,
-    "DATA_PERC": 100,
-    "REQ_PER_QUERY": 10,
-    "REQ_PER_SHORT_QUERY": 10,
-    # 数据量
-    "SYNTH_TABLE_SIZE":"1048576*8",
-
-    "RWSET_KNOWN_RATIO":1.0,
-    "RWSET_KNOWN":"false",
-    "RWSET_VARIABLE_RATIO":0.0,
-#TPCC
-    "NUM_WH":32,
-    "PERC_PAYMENT":0.489,
-    "MPR_NEWORDER":"MPR",
-    "MAX_ITEMS_NORM":100000,
-    "CUST_PER_DIST_NORM":3000,
-#CH-benCHmark
-    "CH_OLAP_PERC":0.10,
-    "CH_QUERY_MIN":1,
-    "CH_QUERY_MAX":22,
-    "CH_QUERY_WAREHOUSE_PCT":100,
-    "CH_SUPPLIER_COUNT":10000,
-#BoMB
-    # 动态的跑一个，静态的跑一个
-    "BOMB_DYNAMIC_MODE":"false",
-    
-    "BOMB_L1_PERIODIC_MIX":"false",
-    # 长事务，是什么模式，
-    # false：每台服务器，同时只跑一个。
-    # true，就是按照比例来，L1
-    "BOMB_L1_RANDOM_MIX":"false",
-    "BOMB_L1_RANDOM_PCT":10,
-    # 一台服务器跑一个L1
-    "BOMB_LONG_TX_MODE":"BOMB_LONG_TX_PER_CLIENT",
-    "BOMB_LONG_TX_SOURCES":1,
-    "BOMB_SHORT_WORKERS":4,
-    # 默认值
-    "BOMB_FACTORY_COUNT":8,
-    "BOMB_PRODUCT_TYPES":72000,
-    "BOMB_MATERIAL_TYPES":198000,
-    "BOMB_RAW_MATERIAL_TYPES":75000,
-    "BOMB_TREES_PER_PRODUCT":5,
-    "BOMB_TREE_SIZE":10,
-    "BOMB_RAW_MATERIALS_PER_LEAF":3,
-    "BOMB_TARGET_PRODUCTS":100,
-    "BOMB_TARGET_MATERIALS":1,
-#TXN
-    "PRORATE_RATIO":0,
-    "ARIA_BATCH_SIZE":3000,
-    "LOGGING":"false",
-    "SCHEDULER_CNT": 5,
-#OTHERS
-    # "DEBUG_DISTR":"false",
-    # "DEBUG_ALLOC":"false",
-    # "DEBUG_RACE":"false",
-    "MODE":"NORMAL_MODE",
-    "SHMEM_ENV":"false",
-    "STRICT_PPT":0,
-    "SET_AFFINITY":"true",
-    "SERVER_GENERATE_QUERIES":"false",
-    "SKEW_METHOD":"ZIPF",
-    "ENVIRONMENT_EC2":"false",
-    "YCSB_ABORT_MODE":"false",
-    "LOAD_METHOD": "LOAD_MAX",
-    "ISOLATION_LEVEL":"SERIALIZABLE"
-}
+configs = {'ABORT_PENALTY': '10 * 1000000UL   // in ns.',
+ 'ABORT_PENALTY_MAX': '5 * 100 * 1000000UL   // in ns.',
+ 'ACCESS_PERC': 0.03,
+ 'ARIA_BATCH_SIZE': 3000,
+ 'BATCH_TIMER': '0',
+ 'BOMB_DYNAMIC_MODE': 'false',
+ 'BOMB_FACTORY_COUNT': 8,
+ 'BOMB_L1_PERIODIC_MIX': 'false',
+ 'BOMB_L1_RANDOM_MIX': 'false',
+ 'BOMB_L1_RANDOM_PCT': 10,
+ 'BOMB_LONG_TX_MODE': 'BOMB_LONG_TX_PER_CLIENT',
+ 'BOMB_LONG_TX_SOURCES': 1,
+ 'BOMB_MATERIAL_TYPES': 198000,
+ 'BOMB_PRODUCT_TYPES': 72000,
+ 'BOMB_RAW_MATERIALS_PER_LEAF': 3,
+ 'BOMB_RAW_MATERIAL_TYPES': 75000,
+ 'BOMB_SHORT_WORKERS': 4,
+ 'BOMB_TARGET_MATERIALS': 1,
+ 'BOMB_TARGET_PRODUCTS': 100,
+ 'BOMB_TREES_PER_PRODUCT': 5,
+ 'BOMB_TREE_SIZE': 10,
+ 'CC_ALG': 'CNULL',
+ 'CH_OLAP_PERC': 0.1,
+ 'CH_QUERY_MAX': 22,
+ 'CH_QUERY_MIN': 1,
+ 'CH_QUERY_WAREHOUSE_PCT': 100,
+ 'CH_SUPPLIER_COUNT': 10000,
+ 'CLIENT_NODE_CNT': 'NODE_CNT',
+ 'CLIENT_REM_THREAD_CNT': 2,
+ 'CLIENT_SEND_THREAD_CNT': 2,
+ 'CLIENT_THREAD_CNT': 4,
+ 'CUST_PER_DIST_NORM': 3000,
+ 'DATA_PERC': 100,
+ 'DONE_TIMER': '1 * 20 * BILLION // ~1 minutes',
+ 'ENVIRONMENT_EC2': 'false',
+ 'INIT_PARALLELISM': 8,
+ 'ISOLATION_LEVEL': 'SERIALIZABLE',
+ 'LOAD_METHOD': 'LOAD_MAX',
+ 'LOGGING': 'false',
+ 'LONG_QUERY_PERC': 0.0,
+ 'LONG_TXN_WORKLOAD': 'false',
+ 'MAX_ITEMS_NORM': 100000,
+ 'MAX_TXN_IN_FLIGHT': 10000,
+ 'MAX_TXN_PER_PART': 500000,
+ 'MODE': 'NORMAL_MODE',
+ 'MPR': 0.2,
+ 'MPR_NEWORDER': 'MPR',
+ 'MSG_SIZE_MAX': 4096,
+ 'MSG_TIME_LIMIT': '0',
+ 'NETWORK_DELAY': '0UL',
+ 'NETWORK_DELAY_TEST': 'false',
+ 'NETWORK_TEST': 'false',
+ 'NODE_CNT': 2,
+ 'NUM_WH': 32,
+ 'OPEN_DISTRIBUTED_WATERMARK': 'false',
+ 'OPEN_RANDOM_WAIT': 'false',
+ 'PART_CNT': 'NODE_CNT',
+ 'PART_PER_TXN': 2,
+ 'PERC_PAYMENT': 0.489,
+ 'PRIORITY': 'PRIORITY_ACTIVE',
+ 'PROG_TIMER': '10 * BILLION // in s',
+ 'PRORATE_RATIO': 0,
+ 'REM_THREAD_CNT': 2,
+ 'REPLICA_CNT': 0,
+ 'REPLICA_TYPE': 'AP',
+ 'REQ_PER_QUERY': 10,
+ 'REQ_PER_SHORT_QUERY': 10,
+ 'RWSET_KNOWN': 'false',
+ 'RWSET_KNOWN_RATIO': 1.0,
+ 'RWSET_VARIABLE_RATIO': 0.0,
+ 'SCHEDULER_CNT': 5,
+ 'SDMVCC_BLIND_WRITE': 'false',
+ 'SDMVCC_EARLY_VERSION_PUBLISH': 'false',
+ 'SDMVCC_LONG_READ_GUARD': 'false',
+ 'SDMVCC_UNSAFE_L1_NO_INTENT': 'false',
+ 'SDPCC_LONG_HOLE_MODE': 'SDPCC_LONG_HOLE_DISABLED',
+ 'SEND_THREAD_CNT': 2,
+ 'SEQ_BATCH_TIMER': '5 * 1 * MILLION // ~5ms -- same as CALVIN paper',
+ 'SERVER_GENERATE_QUERIES': 'false',
+ 'SET_AFFINITY': 'true',
+ 'SHMEM_ENV': 'false',
+ 'SKEW_METHOD': 'ZIPF',
+ 'STRICT_PPT': 0,
+ 'SYNTH_TABLE_SIZE': '1048576*8',
+ 'THREAD_CNT': 16,
+ 'TPORT_PORT': '18000',
+ 'TPORT_TYPE': 'TCP',
+ 'TUP_WRITE_PERC': 0.2,
+ 'TWOPL_LITE': 'false',
+ 'TXN_WRITE_PERC': 1.0,
+ 'WARMUP_TIMER': '1 * 20 * BILLION // ~1 minutes',
+ 'WORKLOAD': 'YCSB',
+ 'YCSB_ABORT_MODE': 'false',
+ 'ZIPF_THETA': 0.7}
