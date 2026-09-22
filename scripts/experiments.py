@@ -207,8 +207,9 @@ def paper_h4_bomb_long_size():
 
 def paper_a1_scheduler_ycsb():
     records = []
-    for algo, schedulers in itertools.product(("CALVIN", "SDMVCC"), range(1, 16)):
-        row = _ycsb(algo); row["SCHEDULER_CNT"] = schedulers
+    for schedulers in range(1, 16):
+        row = _ycsb("SDMVCC")
+        row["SCHEDULER_CNT"] = schedulers
         row["THREAD_CNT"] = BASE_THD_CNT
         records.append(row)
     return _rows(YCSB_FMT, records)
@@ -216,8 +217,9 @@ def paper_a1_scheduler_ycsb():
 
 def paper_a1_scheduler_bomb():
     records = []
-    for algo, schedulers in itertools.product(("CALVIN", "SDMVCC"), range(1, 16)):
-        row = _bomb(algo); row["SCHEDULER_CNT"] = schedulers
+    for schedulers in range(1, 16):
+        row = _bomb("SDMVCC")
+        row["SCHEDULER_CNT"] = schedulers
         row["THREAD_CNT"] = BASE_THD_CNT
         records.append(row)
     return _rows(BOMB_FMT, records)
@@ -241,7 +243,7 @@ def paper_a3_gc():
     # false is an explicit no-reclamation baseline, not a conventional GC.
     records = []
     for gc, products in itertools.product(("false", "true"),
-                                           (10, 25, 50, 100, 200)):
+                                           (50, 75, 100, 150, 200)):
         row = _bomb(); row.update({
             "BOMB_L1_PERIODIC_MIX": "false", "BOMB_L1_RANDOM_MIX": "true",
             "BOMB_L1_RANDOM_PCT": 0.5, "BOMB_TARGET_PRODUCTS": products,
