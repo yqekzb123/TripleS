@@ -160,7 +160,7 @@ int main(int argc, char *argv[]) {
 	sdpcc_long_hole_man->init(g_scheduler_thread_cnt);
 	#endif
 	#endif
-	#if (CC_ALG == SDPCC && OPEN_DISTRIBUTED_WATERMARK)
+	#if (SDPCC_FAMILY && OPEN_DISTRIBUTED_WATERMARK)
 	check_water_mark = new WaterMarkList(g_scheduler_thread_cnt);
 	#endif
 

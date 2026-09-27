@@ -9,7 +9,7 @@ import itertools
 
 
 PAPER_ALGOS = ("CALVIN", "ARIA", "SDMVCC")
-WARMUP = "30*BILLION"
+WARMUP = "60*BILLION"
 MEASURE = "30*BILLION"
 BASE_NODES = 2
 BASE_TABLE_PER_NODE = 8 * 1024 * 1024
@@ -29,7 +29,7 @@ def _ycsb(algo="SDMVCC", nodes=BASE_NODES):
         "WORKLOAD": "YCSB", "CC_ALG": algo,
         "NODE_CNT": nodes, "CLIENT_NODE_CNT": nodes,
         "THREAD_CNT": _workers(algo), "CLIENT_THREAD_CNT": 4,
-        "SCHEDULER_CNT": 3, "MAX_TXN_IN_FLIGHT": 10000,
+        "SCHEDULER_CNT": 7, "MAX_TXN_IN_FLIGHT": 10000,
         "SYNTH_TABLE_SIZE": BASE_TABLE_PER_NODE,
         #  * nodes,
         "REQ_PER_QUERY": 10, "REQ_PER_SHORT_QUERY": 10,
@@ -40,7 +40,7 @@ def _ycsb(algo="SDMVCC", nodes=BASE_NODES):
         "LONG_QUERY_PERC": 0.0, "MSG_SIZE_MAX": 4096,
         "OPEN_DISTRIBUTED_WATERMARK": "false",
         "SDMVCC_LAZY_READ_INTENT": "false",
-        "SDMVCC_INTENT_GC": "true",
+        "SDMVCC_GC_MODE": "SDMVCC_GC_READ_INTENT",
         "SDMVCC_LONG_READ_GUARD": "false",
         "WARMUP_TIMER": WARMUP, "DONE_TIMER": MEASURE,
     }
@@ -49,9 +49,10 @@ def _ycsb(algo="SDMVCC", nodes=BASE_NODES):
 def _tpcc(algo="SDMVCC", nodes=BASE_NODES):
     return {
         "WORKLOAD": "TPCC", "CC_ALG": algo,
+        "TXN_TYPE": "TPCC_DIST",
         "NODE_CNT": nodes, "CLIENT_NODE_CNT": nodes,
         "THREAD_CNT": _workers(algo), "CLIENT_THREAD_CNT": 4,
-        "SCHEDULER_CNT": 3, "MAX_TXN_IN_FLIGHT": 10000,
+        "SCHEDULER_CNT": 7, "MAX_TXN_IN_FLIGHT": 10000,
         "NUM_WH": 32,
         #  * nodes, 
         "PERC_PAYMENT": 0.489,
@@ -59,7 +60,7 @@ def _tpcc(algo="SDMVCC", nodes=BASE_NODES):
         "ARIA_BATCH_SIZE": 3000,
         "OPEN_DISTRIBUTED_WATERMARK": "false",
         "SDMVCC_LAZY_READ_INTENT": "false",
-        "SDMVCC_INTENT_GC": "true",
+        "SDMVCC_GC_MODE": "SDMVCC_GC_READ_INTENT",
         "WARMUP_TIMER": WARMUP, "DONE_TIMER": MEASURE,
     }
 
@@ -69,9 +70,9 @@ def _bomb(algo="SDMVCC", nodes=BASE_NODES):
         "WORKLOAD": "BOMB", "CC_ALG": algo,
         "NODE_CNT": nodes, "CLIENT_NODE_CNT": nodes,
         "THREAD_CNT": _workers(algo), "CLIENT_THREAD_CNT": 4,
-        "SCHEDULER_CNT": 3, "MAX_TXN_IN_FLIGHT": 10000,
+        "SCHEDULER_CNT": 7, "MAX_TXN_IN_FLIGHT": 10000,
         "ARIA_BATCH_SIZE": 3000, "BOMB_DYNAMIC_MODE": "false",
-        "BOMB_L1_PERIODIC_MIX": "true", "BOMB_L1_MIX_PERIOD": 2048,
+        "BOMB_L1_PERIODIC_MIX": "false", "BOMB_L1_MIX_PERIOD": 2048,
         "BOMB_L1_RANDOM_MIX": "false", "BOMB_L1_RANDOM_PCT": 0.1,
         "BOMB_LONG_TX_MODE": "BOMB_LONG_TX_PER_CLIENT",
         "BOMB_LONG_TX_SOURCES": 1, "BOMB_SHORT_WORKERS": 3,
@@ -84,7 +85,8 @@ def _bomb(algo="SDMVCC", nodes=BASE_NODES):
         "BOMB_INJECT_STALE_PRESET": "false", "MSG_SIZE_MAX": 4194304,
         "OPEN_DISTRIBUTED_WATERMARK": "false",
         "SDPCC_LONG_HOLE_MODE": "SDPCC_LONG_HOLE_DISABLED",
-        "SDMVCC_LAZY_READ_INTENT": "false", "SDMVCC_INTENT_GC": "true",
+        "SDMVCC_LAZY_READ_INTENT": "false",
+        "SDMVCC_GC_MODE": "SDMVCC_GC_READ_INTENT",
         "SDMVCC_LONG_READ_GUARD": "false",
         "SDMVCC_UNSAFE_L1_NO_INTENT": "false",
         "BOMB_L1_ACQUIRE_ONLY_WRITES": "false",
@@ -239,17 +241,41 @@ def paper_a2_read_intent_bomb():
     return _rows(BOMB_FMT, records)
 
 
+_A3_STAGES = (
+    # Baseline: defer read-intent registration and use active-snapshot GC.
+    ("true", "SDMVCC_GC_CONVENTIONAL"),
+    # Add early read-intent registration while retaining the same GC.
+    ("false", "SDMVCC_GC_CONVENTIONAL"),
+    # Add read-intent-aware local GC to the early-registration design.
+    ("false", "SDMVCC_GC_READ_INTENT"),
+)
+
+
+def _set_a3_stage(row, lazy, gc_mode):
+    row.update({
+        "SCHEDULER_CNT": 7,
+        "OPEN_DISTRIBUTED_WATERMARK": "false",
+        "SDMVCC_LAZY_READ_INTENT": lazy,
+        "SDMVCC_GC_MODE": gc_mode,
+    })
+    return row
+
+
 def paper_a3_gc():
-    # false is an explicit no-reclamation baseline, not a conventional GC.
+    """A3 BoMB: three cumulative stages at static and dynamic defaults."""
     records = []
-    for gc, products in itertools.product(("false", "true"),
-                                           (50, 75, 100, 150, 200)):
-        row = _bomb(); row.update({
-            "BOMB_L1_PERIODIC_MIX": "false", "BOMB_L1_RANDOM_MIX": "true",
-            "BOMB_L1_RANDOM_PCT": 0.5, "BOMB_TARGET_PRODUCTS": products,
-            "SDMVCC_INTENT_GC": gc})
-        records.append(row)
+    for lazy, gc_mode in _A3_STAGES:
+        for dynamic in ("false", "true"):
+            row = _set_a3_stage(_bomb(), lazy, gc_mode)
+            row["BOMB_DYNAMIC_MODE"] = dynamic
+            records.append(row)
     return _rows(BOMB_FMT, records)
+
+def paper_a3_gc_ycsb():
+    """A3 YCSB: three cumulative stages at the default workload point."""
+    records = [_set_a3_stage(_ycsb(), lazy, gc_mode)
+               for lazy, gc_mode in _A3_STAGES]
+    return _rows(YCSB_FMT, records)
 
 
 def paper_a4_coalescing_ycsb():
@@ -295,6 +321,7 @@ experiment_map = {
     "paper_a2_read_intent_ycsb": paper_a2_read_intent_ycsb,
     "paper_a2_read_intent_bomb": paper_a2_read_intent_bomb,
     "paper_a3_gc": paper_a3_gc,
+    "paper_a3_gc_ycsb":paper_a3_gc_ycsb,
     "paper_a4_coalescing_ycsb": paper_a4_coalescing_ycsb,
     "paper_a4_coalescing_bomb": paper_a4_coalescing_bomb,
     "paper_s1_scaling_ycsb": paper_s1_scaling_ycsb,
@@ -349,7 +376,7 @@ SHORTNAMES = {'ABORT_PENALTY': 'PENALTY',
  'RWSET_KNOWN_RATIO': 'RWSET',
  'SCHEDULER_CNT': 'SC',
  'SDMVCC_EARLY_VERSION_PUBLISH': 'EVP',
- 'SDMVCC_INTENT_GC': 'IGC',
+ 'SDMVCC_GC_MODE': 'GCM',
  'SDMVCC_LAZY_READ_INTENT': 'LRI',
  'SDMVCC_LONG_READ_GUARD': 'LRG',
  'SDPCC_LONG_HOLE_MODE': 'HOLE',

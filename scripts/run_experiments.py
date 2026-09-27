@@ -75,6 +75,16 @@ keywords_cal_type += ['avg', 'sum', 'sum', 'sum', 'avg', 'sum', 'sum',
 keywords += ['sdmvcc_early_publish_enabled',
              'sdmvcc_early_versions_published']
 keywords_cal_type += ['avg', 'sum']
+keywords += ['sdmvcc_gc_mode', 'sdmvcc_conventional_registered',
+             'sdmvcc_conventional_unregistered',
+             'sdmvcc_conventional_active',
+             'sdmvcc_conventional_peak_active',
+             'sdmvcc_conventional_min_active_ts',
+             'sdmvcc_conventional_min_queries',
+             'sdmvcc_conventional_min_avg_ns',
+             'sdmvcc_conventional_versions_reclaimed']
+keywords_cal_type += ['avg', 'sum', 'sum', 'sum', 'sum', 'avg', 'sum',
+                      'avg', 'sum']
 keywords += ['sdmvcc_active_intents', 'sdmvcc_peak_active_intents',
              'sdmvcc_live_versions', 'sdmvcc_tracked_rows',
              'sdmvcc_avg_version_chain', 'sdmvcc_peak_version_chain']
@@ -86,6 +96,12 @@ ycsb_metrics = ['ycsb_short_committed', 'ycsb_short_aborted',
                 'ycsb_long_avg', 'ycsb_long_samples']
 keywords += ycsb_metrics
 keywords_cal_type += ['sum', 'sum', 'avg', 'avg', 'avg', 'sum'] * 2
+bomb_metrics = ['bomb_short_committed', 'bomb_short_samples',
+                'bomb_short_p50_ns', 'bomb_short_p99_ns',
+                'bomb_l1_committed', 'bomb_l1_p50_ns',
+                'bomb_l1_p99_ns']
+keywords += bomb_metrics
+keywords_cal_type += ['sum', 'sum', 'avg', 'avg', 'sum', 'avg', 'avg']
 # Idle-time metrics used to compare phased protocols with SDMVCC.  For Aria,
 # *_phase_idle_avg_time is the mean tail wait of one worker at one phase
 # barrier.  SDMVCC has no batch barrier, so its comparable scheduler metric is
@@ -250,6 +266,9 @@ for exp in exps:
         simple_f.write('nodes: ' + str(machines[:cfgs['NODE_CNT']]) + '\n')
         simple_f.write(str(fmt) + '\n')
         simple_f.write(str(e) + '\n')
+        if cfgs['WORKLOAD'] == 'BOMB':
+            simple_f.write('bomb_dynamic_mode = ' +
+                           str(cfgs.get('BOMB_DYNAMIC_MODE', 'MISSING')) + '\n')
         calculate = {}
         for i in range(cfgs['NODE_CNT']):
             searchfile = str(i) + '_' + output_f + '.out'
@@ -284,6 +303,24 @@ for exp in exps:
         # SCHEDULER_CNT are per-node counts, so no extra NODE_CNT factor is
         # needed in these denominators.
         runtime_sum = calculate.get('total_runtime', 0.0)
+        measurement_s = (runtime_sum / cfgs['NODE_CNT']
+                         if cfgs['NODE_CNT'] > 0 else 0.0)
+        if measurement_s > 0:
+            if cfgs['WORKLOAD'] == 'BOMB' and 'bomb_short_committed' in calculate:
+                short_tput = calculate['bomb_short_committed'] / measurement_s
+                simple_f.write('short_throughput_txn_s = ' + str(short_tput) + '\n')
+            elif cfgs['WORKLOAD'] == 'YCSB' and 'ycsb_short_committed' in calculate:
+                short_tput = calculate['ycsb_short_committed'] / measurement_s
+                simple_f.write('short_throughput_txn_s = ' + str(short_tput) + '\n')
+
+        if cfgs['WORKLOAD'] == 'BOMB' and 'bomb_l1_p99_ns' in calculate:
+            long_p99_s = (calculate['bomb_l1_p99_ns'] /
+                          cfgs['NODE_CNT'] / 1e9)
+            simple_f.write('long_p99_s = ' + str(long_p99_s) + '\n')
+        elif cfgs['WORKLOAD'] == 'YCSB' and 'ycsb_long_p99' in calculate:
+            long_p99_s = calculate['ycsb_long_p99'] / cfgs['NODE_CNT']
+            simple_f.write('long_p99_s = ' + str(long_p99_s) + '\n')
+
         worker_capacity = runtime_sum * cfgs['THREAD_CNT']
         if worker_capacity > 0:
             worker_idle_ratio = calculate.get('worker_idle_time', 0.0) / worker_capacity

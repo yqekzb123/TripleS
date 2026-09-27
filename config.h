@@ -187,10 +187,15 @@
 #define SDPCC_LONG_HOLE_DISABLE_PCT 4
 #define SDPCC_LONG_BLOOM_BITS 262144
 #define SDPCC_LONG_BLOOM_HASHES 4
-// Safe SDMVCC GC: reclaim an old version only after the watermark passes its
-// successor and no per-key read intent (or pinned scan) can still select it.
-// Disable only for short correctness-preserving GC ablation runs.
-#define SDMVCC_INTENT_GC true
+// SDMVCC version reclamation modes. Conventional GC protects every active
+// transaction snapshot with one process-wide low watermark. Read-intent GC
+// uses exact per-row intents and can reclaim unrelated rows past a long txn.
+#define SDMVCC_GC_DISABLED 0
+#define SDMVCC_GC_CONVENTIONAL 1
+#define SDMVCC_GC_READ_INTENT 2
+#define SDMVCC_GC_MODE SDMVCC_GC_READ_INTENT
+// Compatibility predicate for existing implementation guards and metrics.
+#define SDMVCC_INTENT_GC (SDMVCC_GC_MODE == SDMVCC_GC_READ_INTENT)
 // Experimental execution-time intent mode. When enabled, scheduling only
 // reserves write versions. Reads that encounter an unfinished predecessor
 // attach a temporary intent/waiter and resume after its publish notification.
@@ -250,7 +255,7 @@
 // Benchmark
 /***********************************************/
 // max number of rows touched per transaction
-#define MAX_ROW_PER_TXN 8192
+#define MAX_ROW_PER_TXN 2048
 #define QUERY_INTVL         1UL
 #define MAX_TXN_PER_PART 500000
 #define FIRST_PART_LOCAL      true
@@ -259,7 +264,7 @@
 
 #define LONG_TXN_WORKLOAD false
 // #define LONG_TXN_SCHEDULE false
-#define SCHEDULER_CNT 3
+#define SCHEDULER_CNT 7
 
 #define OPEN_RANDOM_WAIT false
 #define RANDOM_WAIT_TIME 100000UL
@@ -351,7 +356,7 @@ enum DATxnType {
 #define MAX_DA_TABLE_SIZE 10000
 
 
-#define TXN_TYPE          TPCC_ALL
+#define TXN_TYPE TPCC_DIST
 #define PERC_PAYMENT 0.489
 #define FIRSTNAME_MINLEN      8
 #define FIRSTNAME_LEN         16
@@ -471,7 +476,7 @@ enum PPSTxnType {
 // ==== [BoMB] ====
 // 0 = static BoM (L1/S1/S2), 1 = dynamic BoM (adds S3/S4/S5 and
 // topology-plan validation).  The first Calvin milestone uses static mode.
-#define BOMB_DYNAMIC_MODE false
+#define BOMB_DYNAMIC_MODE true
 #if SDMVCC_EARLY_VERSION_PUBLISH && WORKLOAD == BOMB && BOMB_DYNAMIC_MODE
 #error "Early version publication currently supports static BoMB only"
 #endif
@@ -490,8 +495,8 @@ enum PPSTxnType {
 // Random-ratio mix: every client thread independently generates an L1 with
 // this percentage.  Selection uses a reproducible per-thread pseudo-random
 // sequence.  When enabled, the source/periodic policy above is ignored.
-#define BOMB_L1_RANDOM_MIX true
-#define BOMB_L1_RANDOM_PCT 0.5
+#define BOMB_L1_RANDOM_MIX false
+#define BOMB_L1_RANDOM_PCT 0.1
 
 // L1 acquire-locks scale ablation (upper bound).  When enabled, an L1 txn
 // registers only its write set (~100 rows) in acquire_locks(); every read row
@@ -524,7 +529,7 @@ enum PPSTxnType {
 #define BOMB_TREES_PER_PRODUCT 5
 #define BOMB_TREE_SIZE 10
 #define BOMB_RAW_MATERIALS_PER_LEAF 3
-#define BOMB_TARGET_PRODUCTS 200
+#define BOMB_TARGET_PRODUCTS 100
 #define BOMB_TARGET_MATERIALS 1
 
 // Static short mix: S1/S2 = 50/50. Dynamic: S1..S5 = 45/45/1/1/8.
@@ -597,7 +602,7 @@ enum PPSTxnType {
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
 #define DONE_TIMER 30*BILLION
-#define WARMUP_TIMER 30*BILLION
+#define WARMUP_TIMER 60*BILLION
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define ONE_MILLISECOND 1 * MILLION

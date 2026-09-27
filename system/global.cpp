@@ -140,7 +140,7 @@ uint64_t * sids;
 uint64_t minSid = 0;
 SDPCCLongHoleManager * sdpcc_long_hole_man;
 
-#if CC_ALG == SDPCC
+#if OPEN_DISTRIBUTED_WATERMARK
 WaterMarkList* check_water_mark;
 #endif
 #else

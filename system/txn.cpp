@@ -368,6 +368,7 @@ void TxnManager::init(uint64_t thd_id, Workload * h_wl) {
 	sdmvcc_accesses.clear();
 	sdmvcc_access_index.clear();
 	sdmvcc_snapshot_pinned = false;
+	sdmvcc_conventional_registered = false;
 	sdmvcc_long_read_guard = nullptr;
 #endif
 #if CC_ALG == SILO
@@ -444,6 +445,7 @@ void TxnManager::reset() {
 	sdmvcc_accesses.clear();
 	sdmvcc_access_index.clear();
 	assert(!sdmvcc_snapshot_pinned);
+	assert(!sdmvcc_conventional_registered);
 	assert(sdmvcc_long_read_guard == nullptr);
 #endif
 #if CC_ALG == ARIA
@@ -1577,12 +1579,21 @@ void TxnManager::finish_sdmvcc(RC rc) {
 		Row_sdmvcc::unpin_snapshot(sid);
 		sdmvcc_snapshot_pinned = false;
 	}
+	sdmvcc_conventional_registered = false;
 }
 
 void TxnManager::pin_sdmvcc_snapshot() {
 	if (sdmvcc_snapshot_pinned) return;
 	Row_sdmvcc::pin_snapshot(sdmvcc_snapshot());
 	sdmvcc_snapshot_pinned = true;
+}
+
+void TxnManager::register_sdmvcc_active_snapshot() {
+#if SDMVCC_GC_MODE == SDMVCC_GC_CONVENTIONAL
+	if (sdmvcc_conventional_registered) return;
+	pin_sdmvcc_snapshot();
+	sdmvcc_conventional_registered = true;
+#endif
 }
 
 bool TxnManager::should_use_sdmvcc_long_read_guard() const {

@@ -111,6 +111,9 @@ RC SDPCCLockThread::run() {
 		#endif
 		if (!txn_man->isRecon()) {
 			#if CC_ALG == SDMVCC
+			// Conventional GC must publish the snapshot before any row metadata
+			// can be installed and before this scheduler advances its frontier.
+			txn_man->register_sdmvcc_active_snapshot();
 			// Install a BUILDING guard before enumerating L1's local read set.
 			// During construction GC conservatively treats every row at this
 			// snapshot as protected, closing the registration/GC race.

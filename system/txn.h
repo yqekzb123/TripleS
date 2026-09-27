@@ -246,6 +246,7 @@ public:
 	std::vector<SDMVCCAccessRegistration> sdmvcc_accesses;
 	std::unordered_map<row_t *, size_t> sdmvcc_access_index;
 	bool sdmvcc_snapshot_pinned;
+	bool sdmvcc_conventional_registered;
 	SDMVCCLongReadGuard *sdmvcc_long_read_guard;
 	uint64_t sdmvcc_snapshot() const;
 	size_t find_sdmvcc_access(row_t *row) const;
@@ -263,6 +264,7 @@ public:
 	void publish_sdmvcc_write(row_t *row, row_t *local_row);
 	void finish_sdmvcc(RC rc);
 	void pin_sdmvcc_snapshot();
+	void register_sdmvcc_active_snapshot();
 	bool should_use_sdmvcc_long_read_guard() const;
 	bool uses_sdmvcc_long_read_guard() const {
 		return sdmvcc_long_read_guard != nullptr;

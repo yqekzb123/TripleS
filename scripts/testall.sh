@@ -1,26 +1,21 @@
-# python3 run_experiments.py ycsb_skew_pip ycsb_writes ycsb_dist_ratio tpcc_wh ycsb_rwset_variable_ratio
-# python3 run_experiments.py ycsb_writes
-# python3 run_experiments.py ycsb_dist_ratio
-# python3 run_experiments.py tpcc_wh
+python3 run_experiments.py paper_t1_ycsb_skew
+python3 run_experiments.py paper_t2_ycsb_write
+python3 run_experiments.py paper_t3_ycsb_dist
+python3 run_experiments.py paper_t4_tpcc_warehouses
 
-# python3 run_experiments.py ycsb_rwset_ratio
-# python3 run_experiments.py ycsb_sch_cnt
+python3 run_experiments.py paper_h0_motivation
+# python3 run_experiments.py paper_h1_ycsb_long_ratio
+# python3 run_experiments.py paper_h2_ycsb_long_size
+python3 run_experiments.py paper_h3_bomb_long_ratio
+python3 run_experiments.py paper_h4_bomb_long_size
 
-# python3 run_experiments.py ycsb_writes ycsb_dist_ratio tpcc_wh ycsb_rwset_ratio
+python3 run_experiments.py paper_a1_scheduler_ycsb
+python3 run_experiments.py paper_a1_scheduler_bomb
+python3 run_experiments.py paper_a2_read_intent_ycsb
+python3 run_experiments.py paper_a2_read_intent_bomb
+python3 run_experiments.py paper_a3_gc
+python3 run_experiments.py paper_a4_coalescing_ycsb
+python3 run_experiments.py paper_a4_coalescing_bomb
 
-python3 run_experiments.py  ycsb_writes_PCC ycsb_writes_OCC \
-                            ycsb_skew_PCC ycsb_skew_OCC \
-                            ycsb_dist_ratio_PCC ycsb_dist_ratio_OCC \
-                            ycsb_random_idle_PCC ycsb_random_idle_OCC\
-                            ycsb_batch_size_PCC ycsb_batch_size_OCC\
-                            tpcc_wh_PCC tpcc_wh_OCC\
-                            ycsb_sch_cnt
-# 还差一个SDPCC的本地水印更新优化，得跨节点跑
-
-python3 run_experiments.py  ycsb_writes_PCC ycsb_writes_OCC \
-                            ycsb_skew_PCC ycsb_skew_OCC \
-                            ycsb_dist_ratio_PCC ycsb_dist_ratio_OCC \
-                            ycsb_random_idle_PCC ycsb_random_idle_OCC\
-                            ycsb_batch_size_PCC ycsb_batch_size_OCC\
-                            tpcc_wh_PCC tpcc_wh_OCC\
-                            ycsb_sch_cnt
+# python3 run_experiments.py paper_s1_scaling_ycsb
+# python3 run_experiments.py paper_s1_scaling_bomb

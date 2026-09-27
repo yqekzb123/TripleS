@@ -89,9 +89,14 @@ Socket * Transport::get_socket() {
   new(socket) Socket();
 	int timeo = 1000; // timeout in ms
 	int stimeo = 1000; // timeout in ms
+  int recv_max_size = static_cast<int>(g_msg_size);
   int opt = 0;
   socket->sock.setsockopt(NN_SOL_SOCKET,NN_RCVTIMEO,&timeo,sizeof(timeo));
   socket->sock.setsockopt(NN_SOL_SOCKET,NN_SNDTIMEO,&stimeo,sizeof(stimeo));
+  // Match nanomsg's receive limit to the application message buffer.
+  // BoMB's expanded Aria messages can exceed nanomsg's 1 MiB default.
+  socket->sock.setsockopt(NN_SOL_SOCKET,NN_RCVMAXSIZE,
+                          &recv_max_size,sizeof(recv_max_size));
   // NN_TCP_NODELAY doesn't cause TCP_NODELAY to be set -- nanomsg issue #118
   socket->sock.setsockopt(NN_SOL_SOCKET,NN_TCP_NODELAY,&opt,sizeof(opt));
   return socket;

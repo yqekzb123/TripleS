@@ -171,7 +171,7 @@ extern uint64_t the_first_scheduler_id;
 extern uint64_t * sids;   // 优化后的单机水印
 extern SDPCCLongHoleManager * sdpcc_long_hole_man;
 
-#if CC_ALG == SDPCC
+#if OPEN_DISTRIBUTED_WATERMARK
 extern WaterMarkList* check_water_mark;  // 没优化的全局水印
 #endif
 #endif

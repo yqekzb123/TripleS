@@ -117,6 +117,14 @@ StripedCounter g_tracked_rows;
 std::atomic<uint64_t> g_peak_version_chain(0);
 StripedCounter g_gc_candidates_processed;
 StripedCounter g_gc_local_checks;
+StripedCounter g_conventional_registered;
+StripedCounter g_conventional_unregistered;
+StripedCounter g_conventional_min_queries;
+StripedCounter g_conventional_min_query_ns;
+StripedCounter g_conventional_versions_reclaimed;
+StripedGauge g_conventional_active;
+std::atomic<uint64_t> g_conventional_peak_active(0);
+std::atomic<uint64_t> g_conventional_min_active_ts(UINT64_MAX);
 struct DeferredShard {
     pthread_mutex_t latch;
     SDMVCCIndex rows;
@@ -902,9 +910,9 @@ void Row_sdmvcc::cancel_gc_locked(SDMVCCEntry *v) {
 // O(1) eligibility; only this pair is examined. Index removal/deferred
 // insertion are O(log V), never a sweep through unrelated versions/readers.
 void Row_sdmvcc::check_gc_locked(SDMVCCEntry *cur, uint64_t watermark) {
-    // return;
     g_gc_calls.fetch_add(1, std::memory_order_relaxed);
-#if !SDMVCC_INTENT_GC || SDMVCC_LAZY_READ_INTENT
+#if SDMVCC_GC_MODE == SDMVCC_GC_DISABLED || \
+    (SDMVCC_GC_MODE == SDMVCC_GC_READ_INTENT && SDMVCC_LAZY_READ_INTENT)
     g_gc_disabled_calls.fetch_add(1, std::memory_order_relaxed);
     return;
 #endif
@@ -912,10 +920,18 @@ void Row_sdmvcc::check_gc_locked(SDMVCCEntry *cur, uint64_t watermark) {
     cancel_gc_locked(cur);
     SDMVCCEntry *next = cur->nextWrite;
     g_gc_local_checks.fetch_add(1, std::memory_order_relaxed);
-    if (next == &_sentinel || !cur->ready || !next->ready ||
-        cur->nextAll != next) return;
+    if (next == &_sentinel || !cur->ready || !next->ready) return;
+#if SDMVCC_GC_MODE == SDMVCC_GC_READ_INTENT
+    // Exact GC may pass the global oldest transaction, but only after every
+    // reader in this version gap has consumed and unlinked its intent.
+    if (cur->nextAll != next) return;
+#endif
     watermark = std::min(watermark, oldest_pinned_snapshot());
-    if (watermark <= next->sid || long_guard_covers(_row, cur->sid, next->sid)) {
+    bool protected_by_guard = false;
+#if SDMVCC_GC_MODE == SDMVCC_GC_READ_INTENT
+    protected_by_guard = long_guard_covers(_row, cur->sid, next->sid);
+#endif
+    if (watermark <= next->sid || protected_by_guard) {
         // Keep the established conservative watermark convention (W > next).
         cur->gcIndex.key = next->sid + 1;
         _gc_candidates.insert(&cur->gcIndex);
@@ -930,12 +946,16 @@ void Row_sdmvcc::check_gc_locked(SDMVCCEntry *cur, uint64_t watermark) {
     --_version_cnt;
     g_live_versions.fetch_sub(1, std::memory_order_relaxed);
     g_versions_reclaimed.fetch_add(1, std::memory_order_relaxed);
+#if SDMVCC_GC_MODE == SDMVCC_GC_CONVENTIONAL
+    g_conventional_versions_reclaimed.fetch_add(1, std::memory_order_relaxed);
+#endif
 }
 
 // One intrusive, stable row handle per queue. No queued raw version pointers:
 // a version can be removed safely while a polling scheduler is in flight.
 void Row_sdmvcc::update_deferred_locked(bool force) {
-#if SDMVCC_INTENT_GC && !SDMVCC_LAZY_READ_INTENT
+#if SDMVCC_GC_MODE == SDMVCC_GC_CONVENTIONAL || \
+    (SDMVCC_GC_MODE == SDMVCC_GC_READ_INTENT && !SDMVCC_LAZY_READ_INTENT)
     auto first = _gc_candidates.first();
     const uint64_t threshold = first ? first->key : UINT64_MAX;
     // Most row events have no deferred work; do not acquire a shared queue
@@ -975,7 +995,8 @@ void Row_sdmvcc::process_deferred_locked(uint64_t watermark, unsigned budget) {
 }
 
 void Row_sdmvcc::poll_gc(uint64_t watermark, uint64_t shard) {
-#if SDMVCC_INTENT_GC && !SDMVCC_LAZY_READ_INTENT
+#if SDMVCC_GC_MODE == SDMVCC_GC_CONVENTIONAL || \
+    (SDMVCC_GC_MODE == SDMVCC_GC_READ_INTENT && !SDMVCC_LAZY_READ_INTENT)
     DeferredShard &q = g_deferred[shard % kGcShards];
     const uint64_t effective = std::min(watermark, oldest_pinned_snapshot());
     if (q.first_threshold.load(std::memory_order_acquire) > effective) return;
@@ -1077,14 +1098,28 @@ void Row_sdmvcc::remove_long_read_guard(SDMVCCLongReadGuard *guard) {
 }
 
 void Row_sdmvcc::pin_snapshot(uint64_t snapshot) {
+#if SDMVCC_GC_MODE == SDMVCC_GC_CONVENTIONAL
+    const uint64_t start = get_sys_clock();
+#endif
     pthread_mutex_lock(&g_snapshot_pin_latch);
     g_snapshot_pins.insert(snapshot);
-    g_oldest_pinned_snapshot.store(*g_snapshot_pins.begin(),
-                                   std::memory_order_release);
+    const uint64_t oldest = *g_snapshot_pins.begin();
+    g_oldest_pinned_snapshot.store(oldest, std::memory_order_release);
     pthread_mutex_unlock(&g_snapshot_pin_latch);
+#if SDMVCC_GC_MODE == SDMVCC_GC_CONVENTIONAL
+    g_conventional_registered.fetch_add(1);
+    g_conventional_active.fetch_add(1);
+    update_peak(g_conventional_peak_active, g_conventional_active.load());
+    g_conventional_min_active_ts.store(oldest, std::memory_order_release);
+    g_conventional_min_queries.fetch_add(1);
+    g_conventional_min_query_ns.fetch_add(get_sys_clock() - start);
+#endif
 }
 
 void Row_sdmvcc::unpin_snapshot(uint64_t snapshot) {
+#if SDMVCC_GC_MODE == SDMVCC_GC_CONVENTIONAL
+    const uint64_t start = get_sys_clock();
+#endif
     pthread_mutex_lock(&g_snapshot_pin_latch);
     auto it = g_snapshot_pins.find(snapshot);
     assert(it != g_snapshot_pins.end());
@@ -1093,6 +1128,13 @@ void Row_sdmvcc::unpin_snapshot(uint64_t snapshot) {
         ? UINT64_MAX : *g_snapshot_pins.begin();
     g_oldest_pinned_snapshot.store(oldest, std::memory_order_release);
     pthread_mutex_unlock(&g_snapshot_pin_latch);
+#if SDMVCC_GC_MODE == SDMVCC_GC_CONVENTIONAL
+    g_conventional_unregistered.fetch_add(1);
+    g_conventional_active.fetch_sub(1);
+    g_conventional_min_active_ts.store(oldest, std::memory_order_release);
+    g_conventional_min_queries.fetch_add(1);
+    g_conventional_min_query_ns.fetch_add(get_sys_clock() - start);
+#endif
 }
 
 uint64_t Row_sdmvcc::oldest_pinned_snapshot() {
@@ -1136,6 +1178,7 @@ bool Row_sdmvcc::long_guard_covers(row_t *row, uint64_t current_sid,
 
 void Row_sdmvcc::print_stats(FILE *outf) {
     update_peak(g_peak_active_read_intents, g_active_read_intents.load());
+    update_peak(g_conventional_peak_active, g_conventional_active.load());
     fprintf(outf, ",sdmvcc_gc_local_checks=%lu,sdmvcc_gc_candidates_processed=%lu",
         g_gc_local_checks.load(), g_gc_candidates_processed.load());
     fprintf(outf,
@@ -1144,15 +1187,38 @@ void Row_sdmvcc::print_stats(FILE *outf) {
             ",sdmvcc_versions_created=%lu,sdmvcc_versions_reclaimed=%lu"
             ",sdmvcc_early_publish_enabled=%d"
             ",sdmvcc_early_versions_published=%lu"
-            ",sdmvcc_version_bytes=%lu,sdmvcc_intent_gc=%d"
+            ",sdmvcc_version_bytes=%lu,sdmvcc_gc_mode=%d,sdmvcc_intent_gc=%d"
             ",sdmvcc_gc_calls=%lu,sdmvcc_gc_disabled_calls=%lu",
             g_intents_registered.load(), g_intents_released.load(),
             g_intent_waits.load(), g_intent_notifications.load(),
             g_versions_created.load(), g_versions_reclaimed.load(),
             SDMVCC_EARLY_VERSION_PUBLISH ? 1 : 0,
             SDMVCC_EARLY_VERSION_PUBLISH ? g_versions_created.load() : 0,
-            g_version_bytes.load(), SDMVCC_INTENT_GC ? 1 : 0,
+            g_version_bytes.load(), SDMVCC_GC_MODE,
+            SDMVCC_INTENT_GC ? 1 : 0,
             g_gc_calls.load(), g_gc_disabled_calls.load());
+    const uint64_t conventional_queries = g_conventional_min_queries.load();
+    const uint64_t conventional_min =
+        g_conventional_min_active_ts.load(std::memory_order_acquire);
+    fprintf(outf,
+            ",sdmvcc_conventional_registered=%lu"
+            ",sdmvcc_conventional_unregistered=%lu"
+            ",sdmvcc_conventional_active=%lu"
+            ",sdmvcc_conventional_peak_active=%lu"
+            ",sdmvcc_conventional_min_active_ts=%lu"
+            ",sdmvcc_conventional_min_queries=%lu"
+            ",sdmvcc_conventional_min_avg_ns=%f"
+            ",sdmvcc_conventional_versions_reclaimed=%lu",
+            g_conventional_registered.load(),
+            g_conventional_unregistered.load(),
+            g_conventional_active.load(),
+            g_conventional_peak_active.load(),
+            conventional_min == UINT64_MAX ? 0 : conventional_min,
+            conventional_queries,
+            conventional_queries == 0 ? 0.0 :
+                static_cast<double>(g_conventional_min_query_ns.load()) /
+                conventional_queries,
+            g_conventional_versions_reclaimed.load());
     fprintf(outf,
             ",sdmvcc_lazy_read_intent=%d,sdmvcc_lazy_registration_skips=%lu"
             ",sdmvcc_lazy_ready_reads=%lu,sdmvcc_lazy_waits=%lu"
@@ -1213,13 +1279,18 @@ void Row_sdmvcc::print_timeseries(FILE *outf, uint64_t elapsed_ns) {
             ",sdmvcc_live_versions=%lu"
             ",sdmvcc_tracked_rows=%lu"
             ",sdmvcc_avg_version_chain=%f"
-            ",sdmvcc_peak_version_chain=%lu\n",
+            ",sdmvcc_peak_version_chain=%lu"
+            ",sdmvcc_conventional_active=%lu"
+            ",sdmvcc_conventional_min_active_ts=%lu\n",
             elapsed_ns,
             g_active_read_intents.load(std::memory_order_relaxed),
             g_peak_active_read_intents.load(std::memory_order_relaxed),
             live, tracked,
             tracked ? static_cast<double>(live) / tracked : 0.0,
-            g_peak_version_chain.load(std::memory_order_relaxed));
+            g_peak_version_chain.load(std::memory_order_relaxed),
+            g_conventional_active.load(std::memory_order_relaxed),
+            g_conventional_min_active_ts.load(std::memory_order_relaxed) == UINT64_MAX
+                ? 0 : g_conventional_min_active_ts.load(std::memory_order_relaxed));
     fflush(outf);
 }
 
