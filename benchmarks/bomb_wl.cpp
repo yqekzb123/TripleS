@@ -216,6 +216,38 @@ RC BombWorkload::init_schema(const char *schema_file) {
 }
 
 uint64_t BombWorkload::request_to_part(const BombRequest &request) const {
+#if BOMB_SCALING_LOCALITY
+  // Weak-scaling placement: preserve a fixed participant degree while adding
+  // independent conflict domains.  IDs encode their locality group, and rows
+  // are still hash-distributed inside that group so transactions remain
+  // genuinely distributed across BOMB_SCALING_PARTICIPANTS nodes.
+  assert(g_part_cnt == g_node_cnt);
+  const uint64_t first = request.key >> 32;
+  uint64_t group = 0;
+  if (request.table == BOMB_TABLE_BOM) {
+    if (first <= BOMB_PRODUCT_TYPES) {
+      group = BombQueryGenerator::product_group(first);
+    } else {
+      assert(first >= BombQueryGenerator::item_material_start() &&
+             first < BombQueryGenerator::item_raw_start());
+      const uint64_t root =
+          (first - BombQueryGenerator::item_material_start()) /
+          BOMB_TREE_SIZE;
+      group = BombQueryGenerator::tree_group(root);
+    }
+  } else {
+    // Product, material-cost, result-cost and journal keys all carry the
+    // factory in their high 32 bits.
+    group = BombQueryGenerator::factory_group(first);
+  }
+  const uint64_t local =
+      hash64(request.key ^
+             (0x9e3779b97f4a7c15ULL * (request.table + 1))) %
+      BOMB_SCALING_PARTICIPANTS;
+  const uint64_t part = group * BOMB_SCALING_PARTICIPANTS + local;
+  assert(part < g_part_cnt);
+  return part;
+#else
   // Product rows and their product->root BoM edges share a partition. This
   // preserves the natural ownership relation and makes S3's replacement
   // atomic on one Calvin participant. Material-tree edges remain distributed
@@ -226,6 +258,7 @@ uint64_t BombWorkload::request_to_part(const BombRequest &request) const {
     return hash64(request.key >> 32) % g_part_cnt;
   return hash64(request.key ^ (0x9e3779b97f4a7c15ULL * (request.table + 1)))
       % g_part_cnt;
+#endif
 }
 
 INDEX *BombWorkload::request_index(const BombRequest &request) const {
@@ -278,8 +311,24 @@ RC BombWorkload::insert_row(BombTable table, uint64_t key,
 RC BombWorkload::init_table() {
   std::vector<uint64_t> roots, raw;
   std::vector<std::pair<uint64_t,uint64_t> > edges;
+  uint64_t first_product = 1, last_product = BOMB_PRODUCT_TYPES;
+  uint64_t first_tree = 0, last_tree = BombQueryGenerator::tree_count();
+  uint64_t first_factory = 1, last_factory = BOMB_FACTORY_COUNT;
+#if BOMB_SCALING_LOCALITY
+  const uint64_t groups = BombQueryGenerator::scaling_group_count();
+  const uint64_t group = g_node_id / BOMB_SCALING_PARTICIPANTS;
+  const uint64_t products_per_group = BOMB_PRODUCT_TYPES / groups;
+  const uint64_t trees_per_group = BombQueryGenerator::tree_count() / groups;
+  const uint64_t factories_per_group = BOMB_FACTORY_COUNT / groups;
+  first_product = group * products_per_group + 1;
+  last_product = (group + 1) * products_per_group;
+  first_tree = group * trees_per_group;
+  last_tree = (group + 1) * trees_per_group;
+  first_factory = group * factories_per_group + 1;
+  last_factory = (group + 1) * factories_per_group;
+#endif
   // Shared BoM topology: product -> root material and material -> child.
-  for (uint64_t p = 1; p <= BOMB_PRODUCT_TYPES; ++p) {
+  for (uint64_t p = first_product; p <= last_product; ++p) {
     BombQueryGenerator::product_roots(p, roots);
     for (uint64_t root : roots) {
       uint64_t child = BombQueryGenerator::item_material_start() + root * BOMB_TREE_SIZE;
@@ -287,15 +336,18 @@ RC BombWorkload::init_table() {
                  {p, child, 1, 0}, {1.0});
     }
   }
-  for (uint64_t tree = 0; tree < BombQueryGenerator::tree_count(); ++tree) {
+  for (uint64_t tree = first_tree; tree < last_tree; ++tree) {
     BombQueryGenerator::tree_edges(tree, edges, raw);
     for (const auto &edge : edges)
       insert_row(BOMB_TABLE_BOM,
                  BombQueryGenerator::composite_key(edge.first, edge.second),
                  {edge.first, edge.second, 1, 0}, {1.0});
   }
-  for (uint64_t f = 1; f <= BOMB_FACTORY_COUNT; ++f) {
-    for (uint64_t p = 1; p <= BOMB_TARGET_PRODUCTS; ++p) {
+  for (uint64_t f = first_factory; f <= last_factory; ++f) {
+    const uint64_t group = BombQueryGenerator::factory_group(f);
+    for (uint64_t local_p = 1; local_p <= BOMB_TARGET_PRODUCTS; ++local_p) {
+      const uint64_t p =
+          BombQueryGenerator::product_in_group(group, local_p);
       uint64_t key = BombQueryGenerator::composite_key(f, p);
       insert_row(BOMB_TABLE_PRODUCT, key, {f, p, 1, 0}, {1.0});
       insert_row(BOMB_TABLE_RESULT_COST, key, {f, p}, {0.0});

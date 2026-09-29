@@ -13,7 +13,7 @@
 /***********************************************/
 // Simulation + Hardware
 /***********************************************/
-#define NODE_CNT 2
+#define NODE_CNT 12
 #define THREAD_CNT 15
 #define REM_THREAD_CNT 2
 #define SEND_THREAD_CNT 2
@@ -21,7 +21,7 @@
 #define CORE_CNT 2
 // PART_CNT should be at least NODE_CNT
 #define PART_CNT NODE_CNT
-#define CLIENT_NODE_CNT 2
+#define CLIENT_NODE_CNT 12
 #define CLIENT_THREAD_CNT 4
 #define CLIENT_REM_THREAD_CNT 2
 #define CLIENT_SEND_THREAD_CNT 2
@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB, TPCC, CHBENCHMARK, PPS, or BOMB
-#define WORKLOAD YCSB
+#define WORKLOAD TPCC
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -173,7 +173,7 @@
 // #define NO_BLIND_WRITE true
 // [SDPCC]
 // true即关闭SDPCC的本地水印优化
-#define OPEN_DISTRIBUTED_WATERMARK true
+#define OPEN_DISTRIBUTED_WATERMARK false
 
 // SDPCC long-transaction watermark-hole optimization (YCSB prototype).
 // 0: disabled, 1: exact read/write sets, 2: Bloom-filter read/write sets.
@@ -193,13 +193,13 @@
 #define SDMVCC_GC_DISABLED 0
 #define SDMVCC_GC_CONVENTIONAL 1
 #define SDMVCC_GC_READ_INTENT 2
-#define SDMVCC_GC_MODE SDMVCC_GC_CONVENTIONAL
+#define SDMVCC_GC_MODE SDMVCC_GC_READ_INTENT
 // Compatibility predicate for existing implementation guards and metrics.
 #define SDMVCC_INTENT_GC (SDMVCC_GC_MODE == SDMVCC_GC_READ_INTENT)
 // Experimental execution-time intent mode. When enabled, scheduling only
 // reserves write versions. Reads that encounter an unfinished predecessor
 // attach a temporary intent/waiter and resume after its publish notification.
-#define SDMVCC_LAZY_READ_INTENT true
+#define SDMVCC_LAZY_READ_INTENT false
 // Publish a write version as soon as the workload has produced its final
 // value for that row.  Readers still wait for every predecessor in their
 // declared read set, while cleanup remains the transaction commit point.
@@ -278,7 +278,7 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 8388608
+#define SYNTH_TABLE_SIZE 1048576*8
 #define ZIPF_THETA 0.7
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
@@ -318,11 +318,11 @@
 // are not modeled.
 #define TPCC_ACCESS_ALL       false
 #define WH_UPDATE         false
-#define NUM_WH 32
+#define NUM_WH 192
 // % of transactions that access multiple partitions
-#define MPR 0.2
+#define MPR 0.15
 #define MPIR 0.01
-#define MPR_NEWORDER MPR
+#define MPR_NEWORDER 0.1
 #if NODE_CNT == 1
 #define NO_REMOTE
 #endif
@@ -532,6 +532,13 @@ enum PPSTxnType {
 #define BOMB_TARGET_PRODUCTS 100
 #define BOMB_TARGET_MATERIALS 1
 
+// Locality-controlled weak scaling for the BoMB scalability experiment.
+// When enabled, the cluster is split into fixed-size participant groups.
+// Each group owns an independent factory/product/material conflict domain;
+// every L1 remains distributed across exactly this many server nodes.
+#define BOMB_SCALING_LOCALITY false
+#define BOMB_SCALING_PARTICIPANTS 2
+
 // Static short mix: S1/S2 = 50/50. Dynamic: S1..S5 = 45/45/1/1/8.
 #define BOMB_S1_PCT (BOMB_DYNAMIC_MODE ? 45 : 50)
 #define BOMB_S2_PCT (BOMB_DYNAMIC_MODE ? 45 : 50)
@@ -602,7 +609,7 @@ enum PPSTxnType {
 #define BATCH_TIMER 0
 #define SEQ_BATCH_TIMER 5 * 1 * MILLION // ~5ms -- same as CALVIN paper
 #define DONE_TIMER 30*BILLION
-#define WARMUP_TIMER 60*BILLION
+#define WARMUP_TIMER 30*BILLION
 #define STATS_EVERY_INTERVAL true
 #define ONE_SECOND 1 * BILLION
 #define ONE_MILLISECOND 1 * MILLION

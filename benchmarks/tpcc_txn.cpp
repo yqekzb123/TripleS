@@ -318,7 +318,14 @@ RC TPCCTxnManager::acquire_locks() {
 			index = _wl->i_order_cust;
 			item = index_read(index, key, wh_to_part(w_id));
 			row = (row_t *) item->location;
-#if CALVIN_FAMILY
+#if CC_ALG == SDMVCC
+			while (item->next != nullptr &&
+			       !row->manager->visible(sdmvcc_snapshot())) {
+				item = item->next;
+				row = (row_t *)item->location;
+			}
+			assert(row->manager->visible(sdmvcc_snapshot()));
+#elif CALVIN_FAMILY
 			while (item->next != nullptr && row->manager->has_write_lock()) {
 				item = item->next;
 				row = (row_t *)item->location;
@@ -342,7 +349,8 @@ RC TPCCTxnManager::acquire_locks() {
 		case TPCC_DELIVERY:
 #if TXN_TYPE == TPCC_ALL
 			bt_node * leaf;
-			_wl->i_neworder->leaf_row_access(0, LF_FIRST, wd_to_part(w_id, d_id), this, leaf, row);
+			_wl->i_neworder->leaf_row_access(
+				0, LF_FIRST, wd_to_part(w_id, d_id), this, leaf, row);
 			rc2 = get_lock(row, WR);
 			if (rc2 != RCOK) rc = rc2;
 			row = NULL;
@@ -352,9 +360,14 @@ RC TPCCTxnManager::acquire_locks() {
 					item = (itemid_t *)leaf->pointers[i];
 					if (!item->valid) continue;
 				#if CC_ALG == SDMVCC
-					// Claim the queue entry at scheduling time. This both keeps
-					// concurrent Delivery transactions distinct and lets execution
-					// avoid mutating the B-tree while schedulers traverse it.
+					temp = (row_t *)item->location;
+					if (!temp->manager->visible(sdmvcc_snapshot())) continue;
+					// A Delivery removes exactly one oldest NewOrder.  SDPCC/Calvin
+					// obtain exclusivity from the row write lock, but an SDMVCC
+					// reserved version does not make the base row invisible to a
+					// later scheduler.  Claim the index item before publishing its
+					// write set so concurrent Delivery transactions advance to the
+					// next queue entry instead of all reserving the same order.
 					if (!__sync_bool_compare_and_swap(&item->valid, true, false))
 						continue;
 				#endif
@@ -819,8 +832,12 @@ RC TPCCTxnManager::run_txn_state() {
 					continue;
 				}
 				item = (itemid_t *)leaf->pointers[--leaf_traversal_cnt];
-				while (item != NULL && !item->valid) item = item->next;
-				if (item != NULL && item->location == NULL) item = NULL;
+				while (item != NULL &&
+				       (!item->valid || item->location == NULL
+#if CC_ALG == SDMVCC
+				        || !((row_t *)item->location)->manager->visible(sdmvcc_snapshot())
+#endif
+				       )) item = item->next;
 			}
 			if (item != NULL) {
 				row = (row_t *)item->location;
@@ -1509,7 +1526,8 @@ inline RC TPCCTxnManager::run_delivery_0(uint64_t w_id, uint64_t d_id, uint64_t 
 	row_t * row = NULL;
 	bt_node * leaf = NULL;
 #if TXN_TYPE == TPCC_ALL
-	_wl->i_neworder->leaf_row_access(0, LF_FIRST, wd_to_part(w_id, d_id), this, leaf, row);
+	_wl->i_neworder->leaf_row_access(
+		0, LF_FIRST, wd_to_part(w_id, d_id), this, leaf, row);
 #endif
 	RC rc = get_row(row, WR, l_row);
 	if (rc != RCOK) return rc;
@@ -1860,8 +1878,13 @@ RC TPCCTxnManager::run_aria_txn() {
 					continue;
 				}
 				itemid_t * item = (itemid_t *)leaf->pointers[--leaf_traversal_cnt];
-				while (item != NULL && !item->valid) item = item->next;
-				if (item == NULL || item->location == NULL) continue;
+				while (item != NULL &&
+				       (!item->valid || item->location == NULL
+#if CC_ALG == SDMVCC
+				        || !((row_t *)item->location)->manager->visible(sdmvcc_snapshot())
+#endif
+				       )) item = item->next;
+				if (item == NULL) continue;
 				row = (row_t *)item->location;
 				rc = run_stock_level_3(w_id, d_id, tpcc_query->o_id, row);
 				uint64_t s_i_id;
@@ -2224,8 +2247,13 @@ RC TPCCTxnManager::run_tpcc_phase2() {
 					continue;
 				}
 				itemid_t * item = (itemid_t *)leaf->pointers[--leaf_traversal_cnt];
-				while (item != NULL && !item->valid) item = item->next;
-				if (item == NULL || item->location == NULL) continue;
+				while (item != NULL &&
+				       (!item->valid || item->location == NULL
+#if CC_ALG == SDMVCC
+				        || !((row_t *)item->location)->manager->visible(sdmvcc_snapshot())
+#endif
+				       )) item = item->next;
+				if (item == NULL) continue;
 				row = (row_t *)item->location;
 				rc = run_stock_level_3(w_id, d_id, tpcc_query->o_id, row);
 				if (rc != RCOK) return rc;
@@ -2338,36 +2366,74 @@ RC TPCCTxnManager::run_tpcc_phase5() {
 #if TXN_TYPE == TPCC_ALL
 RC TPCCTxnManager::do_insert() {
 	RC rc = RCOK;
+	row_t *new_order_row = NULL;
+	index_btree *new_order_index = NULL;
+	itemid_t *order_customer_item = NULL;
+	uint64_t order_customer_key = 0;
 	for (uint64_t i = 0; i < txn->insert_rows.size(); i++) {
 		row_t * row = txn->insert_rows[i].first;
 #if CC_ALG == SDMVCC
 		row->manager->set_creation_sid(sdmvcc_snapshot());
 #endif
+		index_btree * index = txn->insert_rows[i].second;
+		// NewOrder is the publication marker consumed by Delivery.  Publish it
+		// only after both Order and OrderLine are present, otherwise SDMVCC's
+		// non-blocking scheduler can observe a partially published order.
+		if (index == _wl->i_neworder) {
+			new_order_row = row;
+			new_order_index = index;
+			continue;
+		}
 		itemid_t * m_item = (itemid_t *) mem_allocator.alloc(sizeof(itemid_t));
 		m_item->init();
 		m_item->type = DT_row;
 		m_item->location = row;
 		m_item->valid = true;
-		index_btree * index = txn->insert_rows[i].second;
 		rc = index->index_insert(row->get_primary_key(), m_item, row->get_part_id(), this);
 		if (rc == Abort) {
 			return Abort;
 		}
 		if (index == _wl->i_order) {
 			TPCCQuery * tpcc_query = (TPCCQuery*) query;
-			_wl->i_order_cust->index_insert(custKey(tpcc_query->c_id, tpcc_query->d_id, tpcc_query->w_id), m_item);
+			order_customer_item = m_item;
+			order_customer_key = custKey(
+				tpcc_query->c_id, tpcc_query->d_id, tpcc_query->w_id);
 		}
 	}
 	if (txn->insert_items != NULL) {
 		itemid_t * m_item = txn->insert_items;
-		row_t * row = (row_t *)m_item->location;
 #if CC_ALG == SDMVCC
-		row->manager->set_creation_sid(sdmvcc_snapshot());
+		// A NewOrder inserts all OrderLine rows as one duplicate-key item
+		// chain.  Every row needs the creation SID; tagging only the head
+		// makes the remaining rows visible to older snapshots.
+		for (itemid_t *item = m_item; item != NULL; item = item->next) {
+			row_t *item_row = (row_t *)item->location;
+			item_row->manager->set_creation_sid(sdmvcc_snapshot());
+		}
 #endif
+		row_t * row = (row_t *)m_item->location;
 		rc = _wl->i_orderline->index_insert(row->get_primary_key(), m_item, row->get_part_id(), this);
 		if (rc == Abort) {
 			return Abort;
 		}
+	}
+	// OrderStatus uses this secondary index as a publication point.  Keep it
+	// hidden until every OrderLine belonging to the order is searchable.
+	if (order_customer_item != NULL) {
+		rc = _wl->i_order_cust->index_insert(
+			order_customer_key, order_customer_item);
+		if (rc == Abort) return Abort;
+	}
+	if (new_order_row != NULL) {
+		itemid_t *m_item = (itemid_t *)mem_allocator.alloc(sizeof(itemid_t));
+		m_item->init();
+		m_item->type = DT_row;
+		m_item->location = new_order_row;
+		m_item->valid = true;
+		rc = new_order_index->index_insert(
+			new_order_row->get_primary_key(), m_item,
+			new_order_row->get_part_id(), this);
+		if (rc == Abort) return Abort;
 	}
 	return rc;
 }

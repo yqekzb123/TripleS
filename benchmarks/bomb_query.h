@@ -100,6 +100,12 @@ public:
   static uint64_t item_material_start();
   static uint64_t item_raw_start();
   static uint64_t tree_count();
+  static uint64_t scaling_group_count();
+  static uint64_t factory_group(uint64_t factory_id);
+  static uint64_t product_group(uint64_t product_id);
+  static uint64_t tree_group(uint64_t root_index);
+  static uint64_t product_in_group(uint64_t group, uint64_t local_product);
+  static uint64_t tree_in_group(uint64_t group, uint64_t local_tree);
   static void product_roots(uint64_t product_id,
                             std::vector<uint64_t> &roots);
   static void tree_edges(uint64_t root_index,
@@ -116,6 +122,7 @@ private:
   static uint64_t mix_hash(uint64_t value);
   static BombTxnType choose_short(uint64_t ordinal);
   static BombTxnType pick_txn_type(uint64_t client_thread, uint64_t ordinal);
+  static uint64_t query_group(const BombQuery *query);
   static void add_request(BombQuery *query, BombTable table, access_t access,
                           BombRequestRole role, uint64_t key,
                           uint64_t arg0 = 0, uint64_t arg1 = 0,

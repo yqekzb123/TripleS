@@ -9,10 +9,11 @@ import itertools
 
 
 PAPER_ALGOS = ("CALVIN", "ARIA", "SDMVCC")
-WARMUP = "60*BILLION"
+WARMUP = "30*BILLION"
 MEASURE = "30*BILLION"
 BASE_NODES = 2
 BASE_TABLE_PER_NODE = 8 * 1024 * 1024
+BASE_TPCC_WAREHOUSES_PER_NODE = 16
 BASE_THD_CNT = 15  # THD_CNT + 1 is the fixed scheduler + executor budget (16)
 
 
@@ -30,8 +31,9 @@ def _ycsb(algo="SDMVCC", nodes=BASE_NODES):
         "NODE_CNT": nodes, "CLIENT_NODE_CNT": nodes,
         "THREAD_CNT": _workers(algo), "CLIENT_THREAD_CNT": 4,
         "SCHEDULER_CNT": 7, "MAX_TXN_IN_FLIGHT": 10000,
+        # Repository semantics: this is the cluster-wide key space.  Paper
+        # scaling experiments override it to keep the per-node data set fixed.
         "SYNTH_TABLE_SIZE": BASE_TABLE_PER_NODE,
-        #  * nodes,
         "REQ_PER_QUERY": 10, "REQ_PER_SHORT_QUERY": 10,
         "MAX_ROW_PER_TXN": 2048,
         "ZIPF_THETA": 0.7, "TUP_WRITE_PERC": 0.2,
@@ -74,13 +76,16 @@ def _bomb(algo="SDMVCC", nodes=BASE_NODES):
         "ARIA_BATCH_SIZE": 3000, "BOMB_DYNAMIC_MODE": "false",
         "BOMB_L1_PERIODIC_MIX": "false", "BOMB_L1_MIX_PERIOD": 2048,
         "BOMB_L1_RANDOM_MIX": "false", "BOMB_L1_RANDOM_PCT": 0.1,
-        "BOMB_LONG_TX_MODE": "BOMB_LONG_TX_PER_CLIENT",
+        # BOMB_LONG_TX_GLOBAL BOMB_LONG_TX_PER_CLIENT
+        "BOMB_LONG_TX_MODE": "BOMB_LONG_TX_GLOBAL",
         "BOMB_LONG_TX_SOURCES": 1, "BOMB_SHORT_WORKERS": 3,
         "BOMB_FACTORY_COUNT": 8, "BOMB_PRODUCT_TYPES": 72000,
         "BOMB_MATERIAL_TYPES": 198000, "BOMB_RAW_MATERIAL_TYPES": 75000,
         "BOMB_TREES_PER_PRODUCT": 5, "BOMB_TREE_SIZE": 10,
         "BOMB_RAW_MATERIALS_PER_LEAF": 3,
         "BOMB_TARGET_PRODUCTS": 100, "BOMB_TARGET_MATERIALS": 1,
+        "BOMB_SCALING_LOCALITY": "false",
+        "BOMB_SCALING_PARTICIPANTS": 2,
         "BOMB_QUERY_CACHE_SIZE": 2048, "BOMB_FORCE_SHORT_TYPE": -1,
         "BOMB_INJECT_STALE_PRESET": "false", "MSG_SIZE_MAX": 4194304,
         "OPEN_DISTRIBUTED_WATERMARK": "false",
@@ -302,14 +307,54 @@ def paper_a4_coalescing_bomb():
 
 def paper_s1_scaling_ycsb():
     records = []
-    for nodes in (2, 4, 6, 8): records.append(_ycsb(nodes=nodes))
+    for nodes in (2, 4, 6, 8, 10, 12):
+        row = _ycsb(nodes=nodes)
+        row["SYNTH_TABLE_SIZE"] = BASE_TABLE_PER_NODE * nodes
+        records.append(row)
     return _rows(YCSB_FMT, records)
+
+def paper_s1_scaling_tpcc():
+    records = []
+    for nodes in (2, 4, 6, 8, 10, 12):
+        row = _tpcc(nodes=nodes)
+        # Weak scaling: keep warehouse count, and therefore the TPCC data and
+        # contention domain, constant per server.
+        row["NUM_WH"] = BASE_TPCC_WAREHOUSES_PER_NODE * nodes
+        records.append(row)
+    return _rows(TPCC_FMT, records)
 
 
 def paper_s1_scaling_bomb():
     records = []
-    for nodes in (2, 4, 6, 8): records.append(_bomb(nodes=nodes))
+    participants = 2
+    for dynamic, nodes in itertools.product(
+            ("false", "true"), (2, 4, 6, 8, 10, 12)):
+        row = _bomb(nodes=nodes)
+        # Weak scaling: preserve the 2-node workload and data footprint per
+        # node.  Raw-material types stay fixed because the material-cost table
+        # contains factory_count * raw_material_types rows; scaling both would
+        # grow that table quadratically.
+        if nodes % participants:
+            raise ValueError("BoMB scaling participant count must divide nodes")
+        scale = nodes // participants
+        row["BOMB_SCALING_LOCALITY"] = "true"
+        row["BOMB_SCALING_PARTICIPANTS"] = participants
+        row["BOMB_FACTORY_COUNT"] = 8 * scale
+        row["BOMB_PRODUCT_TYPES"] = 72000 * scale
+        row["BOMB_MATERIAL_TYPES"] = 198000 * scale
+        row["BOMB_RAW_MATERIAL_TYPES"] = 75000
+        row["BOMB_LONG_TX_SOURCES"] = scale
+        row["BOMB_DYNAMIC_MODE"] = dynamic
+        records.append(row)
     return _rows(BOMB_FMT, records)
+
+
+def debug_tpcc_delivery():
+    row = _tpcc(nodes=2)
+    row["TXN_TYPE"] = "TPCC_ALL"
+    row["WARMUP_TIMER"] = "5*BILLION"
+    row["DONE_TIMER"] = "70*BILLION"
+    return _rows(TPCC_FMT, [row])
 
 
 experiment_map = {
@@ -331,7 +376,9 @@ experiment_map = {
     "paper_a4_coalescing_ycsb": paper_a4_coalescing_ycsb,
     "paper_a4_coalescing_bomb": paper_a4_coalescing_bomb,
     "paper_s1_scaling_ycsb": paper_s1_scaling_ycsb,
+    "paper_s1_scaling_tpcc": paper_s1_scaling_tpcc,
     "paper_s1_scaling_bomb": paper_s1_scaling_bomb,
+    "debug_tpcc_delivery": debug_tpcc_delivery,
 }
 
 
@@ -342,6 +389,8 @@ SHORTNAMES = {'ABORT_PENALTY': 'PENALTY',
  'BOMB_L1_RANDOM_PCT': 'BLRP',
  'BOMB_LONG_TX_MODE': 'BLM',
  'BOMB_LONG_TX_SOURCES': 'BLS',
+ 'BOMB_SCALING_LOCALITY': 'BSL',
+ 'BOMB_SCALING_PARTICIPANTS': 'BSP',
  'BOMB_SHORT_WORKERS': 'BSW',
  'BOMB_TARGET_PRODUCTS': 'BTP',
  'CC_ALG': '',
@@ -415,6 +464,8 @@ configs = {'ABORT_PENALTY': '10 * 1000000UL   // in ns.',
  'BOMB_PRODUCT_TYPES': 72000,
  'BOMB_RAW_MATERIALS_PER_LEAF': 3,
  'BOMB_RAW_MATERIAL_TYPES': 75000,
+ 'BOMB_SCALING_LOCALITY': 'false',
+ 'BOMB_SCALING_PARTICIPANTS': 2,
  'BOMB_SHORT_WORKERS': 4,
  'BOMB_TARGET_MATERIALS': 1,
  'BOMB_TARGET_PRODUCTS': 100,

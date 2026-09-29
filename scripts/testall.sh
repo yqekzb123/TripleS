@@ -1,11 +1,11 @@
 # python3 run_experiments.py paper_t1_ycsb_skew
 # python3 run_experiments.py paper_t2_ycsb_write
 # python3 run_experiments.py paper_t3_ycsb_dist
-python3 run_experiments.py paper_t4_tpcc_warehouses
+# python3 run_experiments.py paper_t4_tpcc_warehouses
 
-# python3 run_experiments.py paper_h0_motivation
-python3 run_experiments.py paper_h3_bomb_long_ratio
-python3 run_experiments.py paper_h4_bomb_long_size
+# # python3 run_experiments.py paper_h0_motivation
+# python3 run_experiments.py paper_h3_bomb_long_ratio
+# python3 run_experiments.py paper_h4_bomb_long_size
 
 # python3 run_experiments.py paper_a1_scheduler_ycsb
 # python3 run_experiments.py paper_a1_scheduler_bomb
@@ -15,5 +15,6 @@ python3 run_experiments.py paper_h4_bomb_long_size
 # python3 run_experiments.py paper_a4_coalescing_ycsb
 # python3 run_experiments.py paper_a4_coalescing_bomb
 
-# python3 run_experiments.py paper_s1_scaling_ycsb
-# python3 run_experiments.py paper_s1_scaling_bomb
+python3 run_experiments.py paper_s1_scaling_ycsb
+# python3 run_experiments.py paper_s1_scaling_tpcc
+python3 run_experiments.py paper_s1_scaling_bomb

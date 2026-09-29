@@ -98,13 +98,72 @@ uint64_t BombQueryGenerator::tree_count() {
   return std::max<uint64_t>(1, BOMB_MATERIAL_TYPES / BOMB_TREE_SIZE);
 }
 
+uint64_t BombQueryGenerator::scaling_group_count() {
+#if BOMB_SCALING_LOCALITY
+  assert(BOMB_SCALING_PARTICIPANTS > 0);
+  assert(g_node_cnt % BOMB_SCALING_PARTICIPANTS == 0);
+  return g_node_cnt / BOMB_SCALING_PARTICIPANTS;
+#else
+  return 1;
+#endif
+}
+
+uint64_t BombQueryGenerator::factory_group(uint64_t factory_id) {
+  const uint64_t groups = scaling_group_count();
+  assert(BOMB_FACTORY_COUNT % groups == 0);
+  const uint64_t per_group = BOMB_FACTORY_COUNT / groups;
+  assert(factory_id >= 1 && factory_id <= BOMB_FACTORY_COUNT);
+  return (factory_id - 1) / per_group;
+}
+
+uint64_t BombQueryGenerator::product_group(uint64_t product_id) {
+  const uint64_t groups = scaling_group_count();
+  assert(BOMB_PRODUCT_TYPES % groups == 0);
+  const uint64_t per_group = BOMB_PRODUCT_TYPES / groups;
+  assert(product_id >= 1 && product_id <= BOMB_PRODUCT_TYPES);
+  return (product_id - 1) / per_group;
+}
+
+uint64_t BombQueryGenerator::tree_group(uint64_t root_index) {
+  const uint64_t groups = scaling_group_count();
+  assert(tree_count() % groups == 0);
+  assert(root_index < tree_count());
+  return root_index / (tree_count() / groups);
+}
+
+uint64_t BombQueryGenerator::product_in_group(uint64_t group,
+                                              uint64_t local_product) {
+  const uint64_t groups = scaling_group_count();
+  assert(group < groups && BOMB_PRODUCT_TYPES % groups == 0);
+  const uint64_t per_group = BOMB_PRODUCT_TYPES / groups;
+  assert(local_product >= 1 && local_product <= per_group);
+  return group * per_group + local_product;
+}
+
+uint64_t BombQueryGenerator::tree_in_group(uint64_t group,
+                                           uint64_t local_tree) {
+  const uint64_t groups = scaling_group_count();
+  assert(group < groups && tree_count() % groups == 0);
+  const uint64_t per_group = tree_count() / groups;
+  assert(local_tree < per_group);
+  return group * per_group + local_tree;
+}
+
 void BombQueryGenerator::product_roots(uint64_t product_id,
                                        std::vector<uint64_t> &roots) {
   roots.clear();
   std::set<uint64_t> unique;
+  const uint64_t group = product_group(product_id);
+  const uint64_t groups = scaling_group_count();
+  const uint64_t products_per_group = BOMB_PRODUCT_TYPES / groups;
+  const uint64_t trees_per_group = tree_count() / groups;
+  const uint64_t local_product =
+      product_id - group * products_per_group;
   uint64_t salt = 0;
   while (unique.size() < BOMB_TREES_PER_PRODUCT) {
-    unique.insert(mix_hash(product_id * 1315423911ULL + salt++) % tree_count());
+    const uint64_t local_root =
+        mix_hash(local_product * 1315423911ULL + salt++) % trees_per_group;
+    unique.insert(tree_in_group(group, local_root));
   }
   roots.assign(unique.begin(), unique.end());
 }
@@ -113,10 +172,13 @@ void BombQueryGenerator::tree_edges(
     uint64_t root_index, std::vector<std::pair<uint64_t,uint64_t> > &edges,
     std::vector<uint64_t> &raw_leaves) {
   edges.clear(); raw_leaves.clear();
+  const uint64_t group = tree_group(root_index);
+  const uint64_t roots_per_group = tree_count() / scaling_group_count();
+  const uint64_t local_root = root_index - group * roots_per_group;
   const uint64_t base = item_material_start() + root_index * BOMB_TREE_SIZE;
   std::vector<uint64_t> child_count(BOMB_TREE_SIZE, 0);
   for (uint64_t i = 1; i < BOMB_TREE_SIZE; ++i) {
-    uint64_t parent = mix_hash(root_index * 65537ULL + i) % i;
+    uint64_t parent = mix_hash(local_root * 65537ULL + i) % i;
     edges.push_back(std::make_pair(base + parent, base + i));
     child_count[parent]++;
   }
@@ -124,7 +186,7 @@ void BombQueryGenerator::tree_edges(
     if (child_count[i] != 0) continue;
     for (uint64_t r = 0; r < BOMB_RAW_MATERIALS_PER_LEAF; ++r) {
       uint64_t raw = item_raw_start() +
-          (mix_hash(root_index * 104729ULL + i * 17 + r) % BOMB_RAW_MATERIAL_TYPES);
+          (mix_hash(local_root * 104729ULL + i * 17 + r) % BOMB_RAW_MATERIAL_TYPES);
       edges.push_back(std::make_pair(base + i, raw));
       raw_leaves.push_back(raw);
     }
@@ -159,7 +221,24 @@ void BombQueryGenerator::prepare_next(BombQuery *query, uint64_t home,
                                       uint64_t client_thread) {
   release_plan(query);
   query->ordinal = next_ordinal.fetch_add(1);
-  query->factory_id = 1 + (mix_hash(query->ordinal ^ home) % BOMB_FACTORY_COUNT);
+#if BOMB_SCALING_LOCALITY
+  const uint64_t groups = scaling_group_count();
+  const uint64_t factories_per_group = BOMB_FACTORY_COUNT / groups;
+  uint64_t group = 0;
+  if (client_thread != UINT64_MAX) {
+    assert(g_node_id >= g_node_cnt);
+    const uint64_t client_node = g_node_id - g_node_cnt;
+    group = client_node / BOMB_SCALING_PARTICIPANTS;
+  } else {
+    group = GET_NODE_ID(home) / BOMB_SCALING_PARTICIPANTS;
+  }
+  assert(group < groups);
+  query->factory_id = group * factories_per_group + 1 +
+      (mix_hash(query->ordinal ^ home) % factories_per_group);
+#else
+  query->factory_id = 1 +
+      (mix_hash(query->ordinal ^ home) % BOMB_FACTORY_COUNT);
+#endif
   query->source_id = client_thread == UINT64_MAX ? UINT64_MAX :
       (g_node_id - g_node_cnt) * g_client_thread_cnt + client_thread;
   query->txn_type = pick_txn_type(client_thread, query->ordinal);
@@ -225,6 +304,15 @@ uint64_t BombQueryGenerator::local_long_source_count() {
   assert(BOMB_LONG_TX_SOURCES <=
          g_client_node_cnt * g_client_thread_cnt);
 
+#if BOMB_SCALING_LOCALITY
+  // Preserve the two-node baseline inside every locality group: the first
+  // client node contributes one dedicated L1 source and all remaining client
+  // threads generate short transactions.
+  assert(g_client_node_cnt == g_node_cnt);
+  assert(BOMB_LONG_TX_SOURCES == scaling_group_count());
+  return client_node % BOMB_SCALING_PARTICIPANTS == 0 ? 1 : 0;
+#endif
+
   // BOMB_LONG_TX_SOURCES is a cluster-wide count.  Split it evenly among
   // client nodes; the first remainder clients receive one extra long source.
   const uint64_t base = BOMB_LONG_TX_SOURCES / g_client_node_cnt;
@@ -272,10 +360,16 @@ void BombQueryGenerator::add_request(BombQuery *query, BombTable table,
   query->request_index[index_key] = request;
 }
 
+uint64_t BombQueryGenerator::query_group(const BombQuery *query) {
+  return factory_group(query->factory_id);
+}
+
 void BombQueryGenerator::plan_l1(BombQuery *query) {
   std::vector<uint64_t> roots, raw;
   std::vector<std::pair<uint64_t,uint64_t> > edges;
-  for (uint64_t p = 1; p <= BOMB_TARGET_PRODUCTS; ++p) {
+  const uint64_t group = query_group(query);
+  for (uint64_t local_p = 1; local_p <= BOMB_TARGET_PRODUCTS; ++local_p) {
+    const uint64_t p = product_in_group(group, local_p);
     add_request(query, BOMB_TABLE_PRODUCT, RD, BOMB_ROLE_READ,
                 composite_key(query->factory_id, p));
     product_roots(p, roots);
@@ -309,19 +403,25 @@ void BombQueryGenerator::plan_s1(BombQuery *query) {
 
 void BombQueryGenerator::plan_s2(BombQuery *query) {
   const uint64_t batch = query->ordinal % 1024;
-  for (uint64_t p = 1; p <= BOMB_TARGET_PRODUCTS; ++p) {
+  const uint64_t group = query_group(query);
+  for (uint64_t local_p = 1; local_p <= BOMB_TARGET_PRODUCTS; ++local_p) {
+    const uint64_t p = product_in_group(group, local_p);
     add_request(query, BOMB_TABLE_RESULT_COST, RD, BOMB_ROLE_READ,
                 composite_key(query->factory_id, p));
     add_request(query, BOMB_TABLE_JOURNAL_VOUCHER, WR,
                 BOMB_ROLE_VOUCHER_WRITE,
                 composite_key(query->factory_id,
-                              batch * BOMB_TARGET_PRODUCTS + p), p);
+                              batch * BOMB_TARGET_PRODUCTS + local_p), p);
   }
 }
 
 void BombQueryGenerator::plan_s3(BombQuery *query) {
-  const uint64_t product = 1 + mix_hash(query->ordinal) % BOMB_TARGET_PRODUCTS;
+  const uint64_t group = query_group(query);
+  const uint64_t local_product =
+      1 + mix_hash(query->ordinal) % BOMB_TARGET_PRODUCTS;
+  const uint64_t product = product_in_group(group, local_product);
   const uint64_t replacement = BOMB_PRODUCT_TYPES + 1 +
+      group * BOMB_TARGET_PRODUCTS +
       (mix_hash(query->ordinal ^ 0x5333ULL) % BOMB_TARGET_PRODUCTS);
   const uint64_t expected = BOMB_INJECT_STALE_PRESET
       ? UINT64_MAX : query->plan_epoch;
@@ -339,7 +439,10 @@ void BombQueryGenerator::plan_s3(BombQuery *query) {
 }
 
 void BombQueryGenerator::plan_s4(BombQuery *query) {
-  const uint64_t tree = mix_hash(query->ordinal) % tree_count();
+  const uint64_t group = query_group(query);
+  const uint64_t trees_per_group = tree_count() / scaling_group_count();
+  const uint64_t tree = tree_in_group(
+      group, mix_hash(query->ordinal) % trees_per_group);
   std::vector<std::pair<uint64_t,uint64_t> > edges;
   std::vector<uint64_t> raw;
   tree_edges(tree, edges, raw);
@@ -355,7 +458,9 @@ void BombQueryGenerator::plan_s4(BombQuery *query) {
 }
 
 void BombQueryGenerator::plan_s5(BombQuery *query) {
-  const uint64_t product = 1 + mix_hash(query->ordinal) % BOMB_TARGET_PRODUCTS;
+  const uint64_t group = query_group(query);
+  const uint64_t product = product_in_group(
+      group, 1 + mix_hash(query->ordinal) % BOMB_TARGET_PRODUCTS);
   add_request(query, BOMB_TABLE_PRODUCT, WR, BOMB_ROLE_QUANTITY_WRITE,
               composite_key(query->factory_id, product), product, 0,
               10.0, query->plan_epoch);

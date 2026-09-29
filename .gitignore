@@ -10,3 +10,4 @@ obj/*
 gnuplot-5.2.8/
 input.txt
 .bypass_stage/
+paper_results*/

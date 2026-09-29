@@ -39,29 +39,24 @@ GROUP_PATTERNS = [
 
 CORE_COLUMNS = [
     "group", "experiment", "round", "repository", "run_id", "protocol",
-    "workload", "tpcc_txn_type", "bomb_dynamic_mode", "node_count", "worker_count", "scheduler_count",
+    "workload", "node_count", "worker_count", "scheduler_count",
     "batch_size", "x_name", "x_value", "variant", "measurement_s",
     "throughput_txn_s", "p50_s", "p99_s", "rollback_count",
-    "end_to_end_p50_s", "end_to_end_p99_s", "end_to_end_samples",
-    "end_to_end_p99_quality",
-    "long_end_to_end_p50_s", "long_end_to_end_p99_s",
-    "long_end_to_end_max_s", "long_end_to_end_samples",
-    "long_end_to_end_p99_quality",
     "short_throughput_txn_s", "short_p50_s", "short_p99_s",
     "short_samples", "long_throughput_txn_s", "long_p50_s", "long_p99_s",
     "long_samples", "short_p99_quality", "long_p99_quality",
+    "bomb_long_mode", "bomb_long_sources", "bomb_peak_active_l1",
+    "bomb_l1_avg_nodes", "bomb_l1_avg_reads", "bomb_l1_avg_writes",
+    "bomb_l1_remote_read_ratio", "bomb_l1_remote_write_ratio",
+    "bomb_short_avg_nodes", "bomb_short_remote_op_ratio",
+    "bomb_short_submitted_txn_s", "bomb_l1_submitted_txn_s",
+    "bomb_short_completion_ratio", "bomb_l1_completion_ratio",
     "watermark_wait_avg_ns", "watermark_wait_count",
-    "barrier_stall_per_worker_batch_s", "barrier_batch_count",
-    "barrier_phase_sample_count", "sync_stall_avg_s",
-    "sync_stall_ratio", "sync_stall_source",
+    "sync_stall_avg_s", "sync_stall_ratio", "sync_stall_source",
     "version_chain_avg", "version_chain_peak", "read_intents_active",
     "read_intents_peak", "gc_calls", "versions_reclaimed",
-    "conventional_active", "conventional_peak_active",
-    "conventional_min_active_ts", "conventional_min_avg_ns",
-    "conventional_versions_reclaimed",
-    "p99_quality", "missing_node_count", "missing_client_node_count",
-    "source_cfg", "config_json", "raw_metrics_json",
-    "raw_client_metrics_json",
+    "p99_quality", "missing_node_count", "source_cfg", "config_json",
+    "raw_metrics_json",
 ]
 
 # Keep full provenance in CSV.  The workbook stays reviewable and avoids
@@ -73,14 +68,6 @@ METRIC_DICTIONARY = [
     ("throughput_txn_s", "txn/s", "sum of server-node tput", "All committed transactions"),
     ("p50_s", "s", "mean of node P50", "Node fscl50; raw per-node distributions are unavailable"),
     ("p99_s", "s", "mean of node P99", "Node fscl99; raw per-node distributions are unavailable"),
-    ("end_to_end_p50_s", "s", "mean of client-node P50", "Client ccl50 from request submission through response receipt"),
-    ("end_to_end_p99_s", "s", "mean of client-node P99", "Client ccl99; overall short and long transactions"),
-    ("end_to_end_samples", "completed responses/window", "sum across client nodes", "Client txn_cnt used for P99 quality checks"),
-    ("long_end_to_end_p50_s", "s", "mean of client-node long P50", "Long transaction request submission through response receipt"),
-    ("long_end_to_end_p99_s", "s", "mean of client-node long P99; global max below 100 total samples", "Uses the maximum observed latency when fewer than 100 long transactions complete"),
-    ("long_end_to_end_max_s", "s", "maximum across client nodes", "Maximum observed long-transaction end-to-end latency"),
-    ("long_end_to_end_samples", "completed responses/window", "sum across client nodes", "Client long-transaction sample count"),
-    ("long_end_to_end_p99_quality", "label", "sample-count rule", "MAX_FALLBACK below 100 samples, OK otherwise"),
     ("rollback_count", "count/window", "sum across nodes", "SDMVCC is protocol-defined zero"),
     ("short_throughput_txn_s", "txn/s", "completed short transactions / measured seconds", "Never inferred from configured ratio"),
     ("short_p50_s", "s", "YCSB class P50 or BoMB merged short distribution", "BoMB requires the new bomb_short_p50_ns field"),
@@ -90,12 +77,17 @@ METRIC_DICTIONARY = [
     ("long_p99_s", "s", "mean of node long-transaction P99", "Flagged when samples < 100"),
     ("short_p99_quality", "label", "sample-count check", "INSUFFICIENT below 100 short samples"),
     ("long_p99_quality", "label", "sample-count check", "INSUFFICIENT below 100 long samples"),
-    ("watermark_wait_avg_ns", "ns/transaction", "count-weighted mean across nodes", "SDMVCC transaction admission wait until the metadata watermark permits scheduling"),
-    ("watermark_wait_count", "transactions/window", "sum across nodes", "Number of scheduler transactions with a recorded watermark admission interval"),
-    ("barrier_stall_per_worker_batch_s", "s/worker-batch", "sum phase-tail idle / (node-batches * workers per node)", "Aria/Caracal only; cumulative wait across every logical phase in one batch"),
-    ("barrier_batch_count", "node-batches/window", "sum seq_batch_cnt across nodes", "Denominator is multiplied by workers per node"),
-    ("barrier_phase_sample_count", "worker-phase samples/window", "sum phase sample counts", "Diagnostic count; includes zero-tail-wait phase observations"),
-    ("sync_stall_avg_s", "s/worker-phase", "sum phase-tail idle / phase samples", "Legacy Aria/Caracal per-phase metric; do not compare with SDMVCC watermark wait"),
+    ("bomb_l1_avg_nodes", "nodes/txn", "submitted-count weighted mean", "Participants touched by each BoMB L1"),
+    ("bomb_l1_remote_read_ratio", "ratio", "remote reads / all reads", "BoMB L1 request fan-out"),
+    ("bomb_l1_remote_write_ratio", "ratio", "remote writes / all writes", "BoMB L1 request fan-out"),
+    ("bomb_short_avg_nodes", "nodes/txn", "submitted-count weighted mean across S1-S5", "Participants touched by short BoMB transactions"),
+    ("bomb_short_remote_op_ratio", "ratio", "remote operations / all operations", "Submitted-count weighted across S1-S5"),
+    ("bomb_short_submitted_txn_s", "txn/s", "submitted short transactions / measured seconds", "Checks whether client issue rate scales"),
+    ("bomb_l1_submitted_txn_s", "txn/s", "submitted L1 transactions / measured seconds", "Checks long-source pressure"),
+    ("bomb_short_completion_ratio", "ratio", "committed / submitted", "Backlog or abort indicator"),
+    ("bomb_l1_completion_ratio", "ratio", "committed / submitted", "Backlog or abort indicator"),
+    ("watermark_wait_avg_ns", "ns/wait", "count-weighted mean across nodes", "sdpcc_watermark_avg_wait_ns"),
+    ("sync_stall_avg_s", "s/event", "phase-idle/count or watermark wait", "Source named in sync_stall_source"),
     ("sync_stall_ratio", "ratio", "idle seconds / thread capacity seconds", "Aria/Caracal barrier or SDMVCC scheduler idle"),
     ("version_chain_avg", "versions/row", "mean across nodes", "sdmvcc_avg_version_chain at run end"),
     ("version_chain_peak", "versions", "max across nodes", "sdmvcc_peak_version_chain"),
@@ -201,42 +193,22 @@ def x_axis(group, cfg, workload):
     if group == "H1": return "Long transaction ratio", cfg.get("LONG_QUERY_PERC")
     if group == "H2": return "Long transaction requests", cfg.get("REQ_PER_QUERY")
     if group == "H3": return "Long transaction request percent", cfg.get("BOMB_L1_RANDOM_PCT")
-    if group == "H4": return "BoMB target products", cfg.get("BOMB_TARGET_PRODUCTS")
+    if group in ("H4", "A3"): return "BoMB target products", cfg.get("BOMB_TARGET_PRODUCTS")
     if group == "A1": return "Scheduler count", cfg.get("SCHEDULER_CNT")
     if group == "A2": return "Read intent mode", bool_label(cfg.get("SDMVCC_LAZY_READ_INTENT"), "Lazy", "Eager")
-    if group == "A3":
-        if workload == "YCSB": return "Workload case", "YCSB default"
-        case = bool_label(cfg.get("BOMB_DYNAMIC_MODE"),
-                          "BoMB dynamic", "BoMB static")
-        return "Workload case", case
     if group == "A4": return "Distributed watermark", bool_label(cfg.get("OPEN_DISTRIBUTED_WATERMARK"), "On", "Off")
     if group == "S1": return "Node count", cfg.get("NODE_CNT")
     return "Parameter", None
 
 
-def variant(group, cfg, workload):
-    CONVENTIONAL = ("1", "SDMVCC_GC_CONVENTIONAL")
-    RI_GC = ("2", "SDMVCC_GC_READ_INTENT")
+def variant(group, cfg):
     if group == "A2":
         return bool_label(cfg.get("SDMVCC_LAZY_READ_INTENT"), "Lazy read intent", "Eager read intent")
     if group == "A3":
-        lazy = str(cfg.get("SDMVCC_LAZY_READ_INTENT", "")).lower() == "true"
-        mode = str(cfg.get("SDMVCC_GC_MODE", "")).upper()
-        watermark = str(cfg.get("OPEN_DISTRIBUTED_WATERMARK", "")).lower() == "true"
-        if lazy and mode in CONVENTIONAL:
-            return "Baseline: Delay RI + conventional GC" if watermark else "+ Coalesced watermark"
-        if not lazy and mode in CONVENTIONAL:
-            return "+ Early read intent"
-        if not lazy and mode in RI_GC:
-            return "+ Read-intent GC"
-        return "Unrecognized A3 configuration"
+        return bool_label(cfg.get("SDMVCC_INTENT_GC"), "Read-intent GC", "GC disabled")
     if group == "A4":
         return bool_label(cfg.get("OPEN_DISTRIBUTED_WATERMARK"), "Distributed watermark (unoptimized)", "Coalesced watermark")
-    protocol = str(cfg.get("CC_ALG", "UNKNOWN"))
-    if workload == "BOMB" and group in ("H0", "H3", "H4"):
-        mode = bool_label(cfg.get("BOMB_DYNAMIC_MODE"), "Dynamic", "Static")
-        return "%s / %s" % (protocol, mode)
-    return protocol
+    return str(cfg.get("CC_ALG", "UNKNOWN"))
 
 
 def merged_short_latency(nodes, percentile):
@@ -261,7 +233,7 @@ def aggregate_run(cfg_path, repository):
     experiment = cfg_path.parent.name
     group = classify(experiment)
     node_count = int(cfg.get("NODE_CNT", 0) or 0)
-    nodes, clients, node_rows, series_rows = [], [], [], []
+    nodes, node_rows, series_rows = [], [], []
     for node_id in range(node_count):
         path = cfg_path.parent / (str(node_id) + "_" + cfg_path.stem + ".out")
         if not path.exists():
@@ -269,24 +241,11 @@ def aggregate_run(cfg_path, repository):
         metrics, timeseries = parse_output(path)
         nodes.append(metrics)
         node_rows.append({"run_id": cfg_path.stem, "node": node_id,
-                          "role": "server",
                           "source": str(path), "metrics_json": json.dumps(metrics, sort_keys=True)})
         for point in timeseries:
             point.update({"run_id": cfg_path.stem, "node": node_id,
                           "group": group, "protocol": cfg.get("CC_ALG", repository.upper())})
             series_rows.append(point)
-
-    client_node_count = int(cfg.get("CLIENT_NODE_CNT", 0) or 0)
-    for node_id in range(node_count, node_count + client_node_count):
-        path = cfg_path.parent / (str(node_id) + "_" + cfg_path.stem + ".out")
-        if not path.exists():
-            continue
-        metrics, _ = parse_output(path)
-        clients.append(metrics)
-        node_rows.append({"run_id": cfg_path.stem, "node": node_id,
-                          "role": "client",
-                          "source": str(path),
-                          "metrics_json": json.dumps(metrics, sort_keys=True)})
 
     protocol = str(cfg.get("CC_ALG", "CARACAL" if repository == "Caracal" else "UNKNOWN"))
     workload = str(cfg.get("WORKLOAD", "UNKNOWN"))
@@ -300,20 +259,6 @@ def aggregate_run(cfg_path, repository):
     throughput = sum_metric(nodes, "tput")
     p50 = mean_metric(nodes, "fscl50")
     p99 = mean_metric(nodes, "fscl99")
-    end_to_end_samples = sum_metric(clients, "txn_cnt")
-    latency_clients = [client for client in clients
-                       if client.get("txn_cnt", 0) > 0]
-    end_to_end_p50 = mean_metric(latency_clients, "ccl50")
-    end_to_end_p99 = mean_metric(latency_clients, "ccl99")
-    long_end_to_end_samples = sum_metric(clients, "long_ccl_cnt")
-    long_latency_clients = [client for client in clients
-                            if client.get("long_ccl_cnt", 0) > 0]
-    long_end_to_end_p50 = mean_metric(long_latency_clients, "long_ccl50")
-    long_end_to_end_max = max_metric(long_latency_clients, "long_ccl100")
-    if long_end_to_end_samples is not None and long_end_to_end_samples < MIN_P99_SAMPLES:
-        long_end_to_end_p99 = long_end_to_end_max
-    else:
-        long_end_to_end_p99 = mean_metric(long_latency_clients, "long_ccl99_raw")
     rollback = sum_metric(nodes, "total_txn_abort_cnt")
     if rollback is None:
         rollback = sum_metric(nodes, "unique_txn_abort_cnt")
@@ -337,10 +282,7 @@ def aggregate_run(cfg_path, repository):
         short_tput = short_count / runtime if short_count is not None and runtime else (throughput if cfg.get("LONG_QUERY_PERC", 0) in (0, 0.0) else None)
         long_tput = long_count / runtime if long_count is not None and runtime else None
         short_p50, short_p99 = mean_metric(nodes, "ycsb_short_p50"), mean_metric(nodes, "ycsb_short_p99")
-        long_nodes = [node for node in nodes
-                      if node.get("ycsb_long_samples", 0) > 0]
-        long_p50 = mean_metric(long_nodes, "ycsb_long_p50")
-        long_p99 = mean_metric(long_nodes, "ycsb_long_p99")
+        long_p50, long_p99 = mean_metric(nodes, "ycsb_long_p50"), mean_metric(nodes, "ycsb_long_p99")
         if short_p50 is None and cfg.get("LONG_QUERY_PERC", 0) in (0, 0.0): short_p50, short_p99 = p50, p99
     elif workload == "BOMB":
         short_count = sum_metric(nodes, "bomb_short_committed")
@@ -352,55 +294,102 @@ def aggregate_run(cfg_path, repository):
         short_tput = short_count / runtime if short_count is not None and runtime else sum_metric(nodes, "bomb_short_tput")
         long_tput = long_count / runtime if long_count is not None and runtime else sum_metric(nodes, "bomb_long_tput")
         short_p50, short_p99 = merged_short_latency(nodes, "p50"), merged_short_latency(nodes, "p99")
-        long_nodes = [node for node in nodes
-                      if node.get("bomb_l1_committed", 0) > 0]
-        long_p50 = mean_metric(long_nodes, "bomb_l1_p50_ns")
-        long_p99 = mean_metric(long_nodes, "bomb_l1_p99_ns")
+        long_p50 = mean_metric(nodes, "bomb_l1_p50_ns")
+        long_p99 = mean_metric(nodes, "bomb_l1_p99_ns")
         long_p50 = long_p50 / 1e9 if long_p50 is not None else None
         long_p99 = long_p99 / 1e9 if long_p99 is not None else None
+
+    # BoMB scalability diagnostics.  The executable already reports these per
+    # transaction class; retain them in the flat table so a scaling failure can
+    # be separated into fan-out, remote-access, and source-pressure effects.
+    bomb_diag = {
+        "bomb_long_mode": cfg.get("BOMB_LONG_TX_MODE"),
+        "bomb_long_sources": cfg.get("BOMB_LONG_TX_SOURCES"),
+        "bomb_peak_active_l1": None,
+        "bomb_l1_avg_nodes": None,
+        "bomb_l1_avg_reads": None,
+        "bomb_l1_avg_writes": None,
+        "bomb_l1_remote_read_ratio": None,
+        "bomb_l1_remote_write_ratio": None,
+        "bomb_short_avg_nodes": None,
+        "bomb_short_remote_op_ratio": None,
+        "bomb_short_submitted_txn_s": None,
+        "bomb_l1_submitted_txn_s": None,
+        "bomb_short_completion_ratio": None,
+        "bomb_l1_completion_ratio": None,
+    }
+    if workload == "BOMB" and nodes:
+        def class_totals(txn_types):
+            totals = {name: 0.0 for name in
+                      ("submitted", "nodes", "reads", "writes",
+                       "remote_reads", "remote_writes")}
+            seen = False
+            for node in nodes:
+                for txn_type in txn_types:
+                    submitted = node.get("bomb_%s_submitted" % txn_type)
+                    if submitted is None:
+                        continue
+                    seen = True
+                    totals["submitted"] += submitted
+                    for name in ("nodes", "reads", "writes",
+                                 "remote_reads", "remote_writes"):
+                        value = node.get("bomb_%s_avg_%s" % (txn_type, name))
+                        if value is not None:
+                            totals[name] += value * submitted
+            return totals if seen and totals["submitted"] else None
+
+        l1 = class_totals(("l1",))
+        short = class_totals(("s1", "s2", "s3", "s4", "s5"))
+        bomb_diag["bomb_peak_active_l1"] = max_metric(nodes, "bomb_peak_l1")
+        if l1:
+            n = l1["submitted"]
+            bomb_diag["bomb_l1_submitted_txn_s"] = n / runtime if runtime else None
+            bomb_diag["bomb_l1_completion_ratio"] = (
+                long_count / n if long_count is not None else None)
+            bomb_diag["bomb_l1_avg_nodes"] = l1["nodes"] / n
+            bomb_diag["bomb_l1_avg_reads"] = l1["reads"] / n
+            bomb_diag["bomb_l1_avg_writes"] = l1["writes"] / n
+            bomb_diag["bomb_l1_remote_read_ratio"] = (
+                l1["remote_reads"] / l1["reads"] if l1["reads"] else 0)
+            bomb_diag["bomb_l1_remote_write_ratio"] = (
+                l1["remote_writes"] / l1["writes"] if l1["writes"] else 0)
+        if short:
+            n = short["submitted"]
+            bomb_diag["bomb_short_submitted_txn_s"] = n / runtime if runtime else None
+            bomb_diag["bomb_short_completion_ratio"] = (
+                short_count / n if short_count is not None else None)
+            all_ops = short["reads"] + short["writes"]
+            remote_ops = short["remote_reads"] + short["remote_writes"]
+            bomb_diag["bomb_short_avg_nodes"] = short["nodes"] / n
+            bomb_diag["bomb_short_remote_op_ratio"] = (
+                remote_ops / all_ops if all_ops else 0)
 
     wait_count = sum_metric(nodes, "sdpcc_watermark_wait_count")
     wait_ns = weighted_metric(nodes, "sdpcc_watermark_avg_wait_ns", "sdpcc_watermark_wait_count")
     sync_avg = sync_ratio = sync_source = None
-    barrier_stall_per_worker_batch = None
-    barrier_batch_count = None
-    barrier_phase_sample_count = None
     if protocol == "ARIA":
         times = ("aria_read_phase_idle_time", "aria_reservation_phase_idle_time",
                  "aria_check_phase_idle_time", "aria_commit_phase_idle_time")
         counts = tuple(k.replace("_time", "_cnt") for k in times)
         total_time, total_count = sum((sum_metric(nodes, k) or 0) for k in times), sum((sum_metric(nodes, k) or 0) for k in counts)
         sync_avg = total_time / total_count if total_count else None
-        barrier_batch_count = sum_metric(nodes, "seq_batch_cnt")
-        barrier_phase_sample_count = total_count
-        worker_count = cfg.get("THREAD_CNT", 0) or 0
-        if barrier_batch_count and worker_count:
-            barrier_stall_per_worker_batch = total_time / (barrier_batch_count * worker_count)
-        elif total_count:
-            barrier_stall_per_worker_batch = total_time / (total_count / 4.0)
         capacity = (runtime or 0) * (cfg.get("THREAD_CNT", 0) or 0) * node_count
         sync_ratio = total_time / capacity if capacity else None
-        sync_source = "Aria cumulative phase-barrier tail idle per worker-batch"
+        sync_source = "Aria phase barriers"
     elif protocol == "CARACAL":
         times = ("caracal_init_phase_idle_time", "caracal_append_phase_idle_time", "caracal_execution_phase_idle_time")
         counts = tuple(k.replace("_time", "_cnt") for k in times)
         total_time, total_count = sum((sum_metric(nodes, k) or 0) for k in times), sum((sum_metric(nodes, k) or 0) for k in counts)
         sync_avg = total_time / total_count if total_count else None
-        barrier_batch_count = sum_metric(nodes, "seq_batch_cnt")
-        barrier_phase_sample_count = total_count
-        worker_count = cfg.get("THREAD_CNT", 0) or 0
-        if barrier_batch_count and worker_count:
-            barrier_stall_per_worker_batch = total_time / (barrier_batch_count * worker_count)
-        elif total_count:
-            barrier_stall_per_worker_batch = total_time / (total_count / 3.0)
         capacity = (runtime or 0) * (cfg.get("THREAD_CNT", 0) or 0) * node_count
         sync_ratio = total_time / capacity if capacity else None
-        sync_source = "Caracal cumulative logical-phase barrier tail idle per worker-batch"
+        sync_source = "Caracal phase barriers"
     elif protocol in ("SDMVCC", "SDPCC"):
+        sync_avg = wait_ns / 1e9 if wait_ns is not None else None
         idle = sum_metric(nodes, "sched_idle_time")
         capacity = (runtime or 0) * (cfg.get("SCHEDULER_CNT", 0) or 0) * node_count
         sync_ratio = idle / capacity if idle is not None and capacity else None
-        sync_source = "Watermark admission wait is reported separately; ratio uses scheduler idle"
+        sync_source = "Watermark wait; ratio uses scheduler idle"
     elif protocol == "CALVIN":
         sync_avg = mean_metric(nodes, "sched_idle_avg_time")
         idle = sum_metric(nodes, "sched_idle_time")
@@ -412,22 +401,13 @@ def aggregate_run(cfg_path, repository):
         if sample_count is None:
             return MISSING
         return "INSUFFICIENT" if sample_count < MIN_P99_SAMPLES else "OK"
-    def long_client_p99_quality(sample_count):
-        if sample_count is None:
-            return MISSING
-        return "MAX_FALLBACK" if sample_count < MIN_P99_SAMPLES else "OK"
     samples = long_samples if long_tput not in (None, 0) else short_samples
     quality = sample_quality(samples)
     row = {
         "group": group, "experiment": experiment,
         "round": next((part for part in cfg_path.parts if re.fullmatch(r"20\d{6}-\d{6}", part)), "UNKNOWN"),
         "repository": repository, "run_id": cfg_path.stem, "protocol": protocol,
-        "workload": workload,
-        "tpcc_txn_type": (str(cfg.get("TXN_TYPE", "TPCC_UNKNOWN"))
-                          if workload == "TPCC" else None),
-        "bomb_dynamic_mode": (str(cfg.get("BOMB_DYNAMIC_MODE")).lower()
-                              if workload == "BOMB" else None),
-        "node_count": node_count,
+        "workload": workload, "node_count": node_count,
         # For Calvin-family protocols, THD_CNT + 1 is the fixed total of
         # scheduler and executor threads.  Expose the actual executor count.
         "worker_count": ((cfg.get("THREAD_CNT", 0) + 1 - cfg.get("SCHEDULER_CNT", 0))
@@ -435,28 +415,17 @@ def aggregate_run(cfg_path, repository):
                          else cfg.get("THREAD_CNT")),
         "scheduler_count": cfg.get("SCHEDULER_CNT"),
         "batch_size": cfg.get("ARIA_BATCH_SIZE"), "x_name": x_name, "x_value": x_value,
-        "variant": variant(group, cfg, workload), "measurement_s": runtime,
+        "variant": variant(group, cfg), "measurement_s": runtime,
         "throughput_txn_s": throughput, "p50_s": p50, "p99_s": p99,
         "rollback_count": rollback,
-        "end_to_end_p50_s": end_to_end_p50,
-        "end_to_end_p99_s": end_to_end_p99,
-        "end_to_end_samples": end_to_end_samples,
-        "end_to_end_p99_quality": sample_quality(end_to_end_samples),
-        "long_end_to_end_p50_s": long_end_to_end_p50,
-        "long_end_to_end_p99_s": long_end_to_end_p99,
-        "long_end_to_end_max_s": long_end_to_end_max,
-        "long_end_to_end_samples": long_end_to_end_samples,
-        "long_end_to_end_p99_quality": long_client_p99_quality(long_end_to_end_samples),
         "short_throughput_txn_s": short_tput, "short_p50_s": short_p50,
         "short_p99_s": short_p99, "short_samples": short_samples,
         "long_throughput_txn_s": long_tput, "long_p50_s": long_p50,
         "long_p99_s": long_p99, "long_samples": long_samples,
         "short_p99_quality": sample_quality(short_samples),
         "long_p99_quality": sample_quality(long_samples),
+        **bomb_diag,
         "watermark_wait_avg_ns": wait_ns, "watermark_wait_count": wait_count,
-        "barrier_stall_per_worker_batch_s": barrier_stall_per_worker_batch,
-        "barrier_batch_count": barrier_batch_count,
-        "barrier_phase_sample_count": barrier_phase_sample_count,
         "sync_stall_avg_s": sync_avg, "sync_stall_ratio": sync_ratio,
         "sync_stall_source": sync_source,
         "version_chain_avg": mean_metric(nodes, "sdmvcc_avg_version_chain"),
@@ -465,21 +434,9 @@ def aggregate_run(cfg_path, repository):
         "read_intents_peak": sum_metric(nodes, "sdmvcc_peak_active_intents"),
         "gc_calls": sum_metric(nodes, "sdmvcc_gc_calls"),
         "versions_reclaimed": sum_metric(nodes, "sdmvcc_versions_reclaimed"),
-        "conventional_active": sum_metric(nodes, "sdmvcc_conventional_active"),
-        "conventional_peak_active": sum_metric(nodes, "sdmvcc_conventional_peak_active"),
-        "conventional_min_active_ts": min(
-            (n["sdmvcc_conventional_min_active_ts"] for n in nodes
-             if n.get("sdmvcc_conventional_min_active_ts", 0) > 0),
-            default=None),
-        "conventional_min_avg_ns": mean_metric(
-            nodes, "sdmvcc_conventional_min_avg_ns"),
-        "conventional_versions_reclaimed": sum_metric(
-            nodes, "sdmvcc_conventional_versions_reclaimed"),
         "p99_quality": quality, "missing_node_count": node_count - len(nodes),
-        "missing_client_node_count": client_node_count - len(clients),
         "source_cfg": str(cfg_path), "config_json": json.dumps(cfg, sort_keys=True),
         "raw_metrics_json": json.dumps(nodes, sort_keys=True),
-        "raw_client_metrics_json": json.dumps(clients, sort_keys=True),
     }
     return row, node_rows, series_rows
 
@@ -589,28 +546,15 @@ def expected_points():
                 else: result.append((group, workload, proto, x, proto))
     add("T1", "YCSB", (0.1,0.3,0.5,0.7,0.9,1.1,1.3,1.5)); add("T2", "YCSB", (0.0,0.2,0.4,0.6,0.8,1.0)); add("T3", "YCSB", (0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0)); add("T4", "TPCC", (8,16,32,64,128))
     for proto in protocols:
-        result.append(("H0", "YCSB", proto, "Pure TP", proto))
-        result.append(("H0", "BOMB", proto, "HTAP", "%s / Static" % proto))
-    add("H1", "YCSB", (0.01,0.05,0.10,0.20)); add("H2", "YCSB", (100,500,1000,5000))
-    for group, xs in (("H3", (0.1,0.5,1.0,5.0,10.0)),
-                      ("H4", (50,75,100,150,200))):
-        for proto in protocols:
-            for mode in ("Static", "Dynamic"):
-                for x in xs:
-                    result.append((group, "BOMB", proto, x,
-                                   "%s / %s" % (proto, mode)))
+        for case in ("Pure TP", "HTAP"): result.append(("H0", "YCSB" if case == "Pure TP" else "BOMB", proto, case, proto))
+    add("H1", "YCSB", (0.01,0.05,0.10,0.20)); add("H2", "YCSB", (100,500,1000,5000)); add("H3", "BOMB", (0.1,0.5,1.0,5.0,10.0)); add("H4", "BOMB", (10,25,50,100,200))
     for workload in ("YCSB", "BOMB"):
         for proto in ("CALVIN", "SDMVCC"):
             for x in range(1,16): result.append(("A1", workload, proto, x, proto))
         for var in ("Eager read intent", "Lazy read intent"): result.append(("A2", workload, "SDMVCC", "Lazy" if var.startswith("Lazy") else "Eager", var))
         for var in ("Coalesced watermark", "Distributed watermark (unoptimized)"): result.append(("A4", workload, "SDMVCC", "Off" if var.startswith("Coalesced") else "On", var))
-    a3_variants = ("Baseline: Delay RI + conventional GC",
-                   "+ Early read intent", "+ Read-intent GC")
-    for x in ("BoMB static", "BoMB dynamic"):
-        for var in a3_variants:
-            result.append(("A3", "BOMB", "SDMVCC", x, var))
-    for var in a3_variants:
-        result.append(("A3", "YCSB", "SDMVCC", "YCSB default", var))
+    for x in (10,25,50,100,200):
+        for var in ("GC disabled", "Read-intent GC"): result.append(("A3", "BOMB", "SDMVCC", x, var))
     for workload in ("YCSB", "BOMB"):
         for x in (2,4,6,8): result.append(("S1", workload, "SDMVCC", x, "SDMVCC"))
     return result
@@ -631,10 +575,10 @@ def missing_rows(rows):
     required = {
         "T1": ("throughput_txn_s","p50_s","p99_s","rollback_count"), "T2": ("throughput_txn_s","p50_s","p99_s","rollback_count"),
         "T3": ("throughput_txn_s","p50_s","p99_s","rollback_count"), "T4": ("throughput_txn_s","p50_s","p99_s","rollback_count"),
-        "H0": ("short_throughput_txn_s","short_p99_s"),
+        "H0": ("short_throughput_txn_s","short_p99_s","sync_stall_avg_s","sync_stall_ratio"),
         "H1": ("short_throughput_txn_s","short_p99_s","long_throughput_txn_s","long_p99_s"), "H2": ("short_throughput_txn_s","short_p99_s","long_throughput_txn_s","long_p99_s"),
-        "H3": ("short_throughput_txn_s","long_throughput_txn_s","long_end_to_end_p50_s","long_end_to_end_p99_s"), "H4": ("short_throughput_txn_s","long_throughput_txn_s","long_end_to_end_p50_s","long_end_to_end_p99_s"),
-        "A3": ("short_throughput_txn_s","end_to_end_p99_s","long_throughput_txn_s","version_chain_avg","read_intents_peak"),
+        "H3": ("short_throughput_txn_s","short_p99_s","long_throughput_txn_s","long_p99_s"), "H4": ("short_throughput_txn_s","short_p99_s","long_throughput_txn_s","long_p99_s"),
+        "A3": ("short_throughput_txn_s","short_p99_s","long_throughput_txn_s","long_p99_s","version_chain_avg","read_intents_peak"),
     }
     for row in rows:
         metrics = required.get(row["group"], ())
@@ -662,14 +606,14 @@ PLOT_SPECS = {
  "T2":[("Throughput","throughput_txn_s"),("P50","p50_s"),("P99","p99_s"),("Rollbacks","rollback_count")],
  "T3":[("Throughput","throughput_txn_s"),("P50","p50_s"),("P99","p99_s"),("Rollbacks","rollback_count")],
  "T4":[("Throughput","throughput_txn_s"),("P50","p50_s"),("P99","p99_s"),("Rollbacks","rollback_count")],
- "H0":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Barrier stall per worker-batch","barrier_stall_per_worker_batch_s"),("SDMVCC watermark wait per transaction","watermark_wait_avg_ns")],
+ "H0":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Synchronization stall","sync_stall_avg_s"),("Synchronization stall ratio","sync_stall_ratio")],
  "H1":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Long throughput","long_throughput_txn_s"),("Long P99","long_p99_s")],
  "H2":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Long throughput","long_throughput_txn_s"),("Long P99","long_p99_s")],
- "H3":[("Short TP throughput","short_throughput_txn_s"),("Long throughput","long_throughput_txn_s"),("Long end-to-end P50","long_end_to_end_p50_s"),("Long end-to-end P99","long_end_to_end_p99_s"),("Aria/Caracal barrier stall per worker-batch","barrier_stall_per_worker_batch_s"),("SDMVCC watermark wait per transaction","watermark_wait_avg_ns")],
- "H4":[("Short TP throughput","short_throughput_txn_s"),("Long throughput","long_throughput_txn_s"),("Long end-to-end P50","long_end_to_end_p50_s"),("Long end-to-end P99","long_end_to_end_p99_s"),("Aria/Caracal barrier stall per worker-batch","barrier_stall_per_worker_batch_s"),("SDMVCC watermark wait per transaction","watermark_wait_avg_ns")],
+ "H3":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Long throughput","long_throughput_txn_s"),("Long P99","long_p99_s")],
+ "H4":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Long throughput","long_throughput_txn_s"),("Long P99","long_p99_s")],
  "A1":[("YCSB throughput","throughput_txn_s","YCSB"),("YCSB P99","p99_s","YCSB"),("BoMB short throughput","short_throughput_txn_s","BOMB"),("BoMB short P99","short_p99_s","BOMB")],
  "A2":[("YCSB throughput","throughput_txn_s","YCSB"),("YCSB P99","p99_s","YCSB"),("BoMB short throughput","short_throughput_txn_s","BOMB"),("BoMB short P99","short_p99_s","BOMB")],
- "A3":[("Short TP throughput","short_throughput_txn_s"),("Overall end-to-end P99","end_to_end_p99_s"),("Long throughput","long_throughput_txn_s"),("Overall end-to-end P50","end_to_end_p50_s"),("Version chain","version_chain_avg"),("Read intents","read_intents_peak")],
+ "A3":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Long throughput","long_throughput_txn_s"),("Long P99","long_p99_s"),("Version chain","version_chain_avg"),("Read intents","read_intents_peak")],
  "A4":[("YCSB throughput","throughput_txn_s","YCSB"),("YCSB watermark wait","watermark_wait_avg_ns","YCSB"),("BoMB short throughput","short_throughput_txn_s","BOMB"),("BoMB watermark wait","watermark_wait_avg_ns","BOMB")],
  "S1":[("YCSB throughput","throughput_txn_s","YCSB"),("YCSB P99","p99_s","YCSB"),("BoMB short throughput","short_throughput_txn_s","BOMB"),("BoMB short P99","short_p99_s","BOMB"),("BoMB long throughput","long_throughput_txn_s","BOMB"),("BoMB long P99","long_p99_s","BOMB")],
 }
@@ -690,7 +634,7 @@ def svg_figure(path, group, rows):
             out.append('<text x="%d" y="%d" class="missing">MISSING</text>'%(x0+pw//3,y0+ph//2)); continue
         series=defaultdict(lambda:defaultdict(list)); xvalues=[]
         for r in selected:
-            key=r["variant"] if group in ("H3","H4","A2","A3","A4") else (r["workload"] if group=="H0" else r["protocol"])
+            key=r["variant"] if group in ("A2","A3","A4") else (r["workload"] if group=="H0" else r["protocol"])
             xv=r["x_value"]; series[key][str(xv)].append(float(r[metric])); xvalues.append(xv)
         numeric=all(isinstance(x,(int,float)) for x in xvalues)
         xs=sorted(set(xvalues),key=float) if numeric else sorted(set(str(x) for x in xvalues))
@@ -775,7 +719,7 @@ def main():
     rows,nodes,series=discover(roots); rows.sort(key=lambda r:(r["group"],r["experiment"],r["round"],r["protocol"],str(r["x_value"])))
     output=Path(args.output); output.mkdir(parents=True,exist_ok=True); (output/"figures").mkdir(exist_ok=True); (output/"tables").mkdir(exist_ok=True)
     write_csv(output/"all_runs.csv",rows,CORE_COLUMNS)
-    write_csv(output/"all_nodes.csv",nodes,["run_id","node","role","source","metrics_json"])
+    write_csv(output/"all_nodes.csv",nodes,["run_id","node","source","metrics_json"])
     series_cols=sorted({k for r in series for k in r}) if series else ["run_id","node","group","protocol","elapsed_ns"]
     write_csv(output/"time_series.csv",series,series_cols)
     missing=missing_rows(rows); missing_cols=["kind","group","workload","protocol","x_value","variant","metric","run_id"]

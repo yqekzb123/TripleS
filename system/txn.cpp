@@ -1193,13 +1193,13 @@ void TxnManager::insert_row(row_t * row, table_t * table) {
 #endif
 
 RC TxnManager::delete_row(row_t * row, index_btree * index) {
-#if CC_ALG == SDMVCC
-	// TPC-C Delivery atomically invalidates its NewOrder item while the
-	// deterministic scheduler chooses it. Avoid a concurrent structural
-	// B-tree mutation while scheduler threads are traversing the same leaf.
-	(void)row;
-	(void)index;
-#elif CALVIN_FAMILY
+// #if CC_ALG == SDMVCC
+// 	// TPC-C Delivery atomically invalidates its NewOrder item while the
+// 	// deterministic scheduler chooses it. Avoid a concurrent structural
+// 	// B-tree mutation while scheduler threads are traversing the same leaf.
+// 	(void)row;
+// 	(void)index;
+#if CALVIN_FAMILY
 	index->index_remove(row->get_primary_key(), row->get_part_id());
 #else
 	txn->delete_rows.add(std::pair<row_t*, index_btree*>(row, index));
