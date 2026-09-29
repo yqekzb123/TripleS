@@ -130,7 +130,7 @@ RC SDPCCLockThread::run() {
 			sdpcc_long_hole_man->clear(id, key);
 		}
 		#endif
-		#if CC_ALG == SDPCC && OPEN_DISTRIBUTED_WATERMARK
+		#if SDPCC_FAMILY && OPEN_DISTRIBUTED_WATERMARK
 		check_water_mark->mark_completed(key, get_thd_id());
 		DEBUG_SCH("[SDPCCThread] %ld mark %ld,%ld key %ld complete\n", _thd_id, txn_man->get_batch_id(),txn_man->get_txn_id(), key);
 		uint64_t current_minSid = check_water_mark->get_global_watermark();

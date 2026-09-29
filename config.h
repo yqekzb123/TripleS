@@ -48,7 +48,7 @@
 // # of transactions to run for warmup
 #define WARMUP            0
 // YCSB, TPCC, CHBENCHMARK, PPS, or BOMB
-#define WORKLOAD BOMB
+#define WORKLOAD YCSB
 // print the transaction latency distribution
 #define PRT_LAT_DISTR       false
 #define STATS_ENABLE        true
@@ -97,7 +97,7 @@
 
 #define PRIORITY_WORK_QUEUE false
 #define PRIORITY PRIORITY_ACTIVE
-#define MSG_SIZE_MAX 4194304
+#define MSG_SIZE_MAX 4096
 #define MSG_TIME_LIMIT 0
 
 /***********************************************/
@@ -173,7 +173,7 @@
 // #define NO_BLIND_WRITE true
 // [SDPCC]
 // true即关闭SDPCC的本地水印优化
-#define OPEN_DISTRIBUTED_WATERMARK false
+#define OPEN_DISTRIBUTED_WATERMARK true
 
 // SDPCC long-transaction watermark-hole optimization (YCSB prototype).
 // 0: disabled, 1: exact read/write sets, 2: Bloom-filter read/write sets.
@@ -193,13 +193,13 @@
 #define SDMVCC_GC_DISABLED 0
 #define SDMVCC_GC_CONVENTIONAL 1
 #define SDMVCC_GC_READ_INTENT 2
-#define SDMVCC_GC_MODE SDMVCC_GC_READ_INTENT
+#define SDMVCC_GC_MODE SDMVCC_GC_CONVENTIONAL
 // Compatibility predicate for existing implementation guards and metrics.
 #define SDMVCC_INTENT_GC (SDMVCC_GC_MODE == SDMVCC_GC_READ_INTENT)
 // Experimental execution-time intent mode. When enabled, scheduling only
 // reserves write versions. Reads that encounter an unfinished predecessor
 // attach a temporary intent/waiter and resume after its publish notification.
-#define SDMVCC_LAZY_READ_INTENT false
+#define SDMVCC_LAZY_READ_INTENT true
 // Publish a write version as soon as the workload has produced its final
 // value for that row.  Readers still wait for every predecessor in their
 // declared read set, while cleanup remains the transaction commit point.
@@ -278,7 +278,7 @@
 #define DATA_PERC 100
 #define ACCESS_PERC 0.03
 #define INIT_PARALLELISM 8
-#define SYNTH_TABLE_SIZE 1048576*8
+#define SYNTH_TABLE_SIZE 8388608
 #define ZIPF_THETA 0.7
 #define TXN_WRITE_PERC 1.0
 #define TUP_WRITE_PERC 0.2
@@ -356,7 +356,7 @@ enum DATxnType {
 #define MAX_DA_TABLE_SIZE 10000
 
 
-#define TXN_TYPE TPCC_DIST
+#define TXN_TYPE TPCC_ALL
 #define PERC_PAYMENT 0.489
 #define FIRSTNAME_MINLEN      8
 #define FIRSTNAME_LEN         16
@@ -476,7 +476,7 @@ enum PPSTxnType {
 // ==== [BoMB] ====
 // 0 = static BoM (L1/S1/S2), 1 = dynamic BoM (adds S3/S4/S5 and
 // topology-plan validation).  The first Calvin milestone uses static mode.
-#define BOMB_DYNAMIC_MODE true
+#define BOMB_DYNAMIC_MODE false
 #if SDMVCC_EARLY_VERSION_PUBLISH && WORKLOAD == BOMB && BOMB_DYNAMIC_MODE
 #error "Early version publication currently supports static BoMB only"
 #endif
@@ -496,7 +496,7 @@ enum PPSTxnType {
 // this percentage.  Selection uses a reproducible per-thread pseudo-random
 // sequence.  When enabled, the source/periodic policy above is ignored.
 #define BOMB_L1_RANDOM_MIX false
-#define BOMB_L1_RANDOM_PCT 0.1
+#define BOMB_L1_RANDOM_PCT 10
 
 // L1 acquire-locks scale ablation (upper bound).  When enabled, an L1 txn
 // registers only its write set (~100 rows) in acquire_locks(); every read row
@@ -516,7 +516,7 @@ enum PPSTxnType {
 #define BOMB_LONG_TX_GLOBAL 0
 #define BOMB_LONG_TX_PER_CLIENT 1
 #define BOMB_LONG_TX_MODE BOMB_LONG_TX_PER_CLIENT
-#define BOMB_SHORT_WORKERS 3
+#define BOMB_SHORT_WORKERS 4
 #define BOMB_QUERY_CACHE_SIZE 2048
 #define BOMB_FORCE_SHORT_TYPE -1
 #define BOMB_INJECT_STALE_PRESET false

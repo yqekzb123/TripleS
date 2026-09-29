@@ -342,6 +342,7 @@ public:
 
   // Latency
   StatsArr client_client_latency;
+  StatsArr client_long_latency;
   StatsArr first_start_commit_latency;
   StatsArr last_start_commit_latency;
   StatsArr start_abort_commit_latency;

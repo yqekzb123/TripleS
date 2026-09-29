@@ -1080,6 +1080,7 @@ void ClientQueryMessage::copy_to_buf(char * buf) {
 uint64_t ClientResponseMessage::get_size() {
   uint64_t size = Message::mget_size();
   size += sizeof(uint64_t);
+  size += sizeof(bool);
 #if WORKLOAD == BOMB
   size += sizeof(uint64_t) * 2;
 #endif
@@ -1089,10 +1090,18 @@ uint64_t ClientResponseMessage::get_size() {
 void ClientResponseMessage::copy_from_txn(TxnManager * txn) {
   Message::mcopy_from_txn(txn);
   client_startts = txn->client_startts;
+#if WORKLOAD == YCSB && LONG_TXN_WORKLOAD
+  YCSBQuery *query = static_cast<YCSBQuery *>(txn->query);
+  is_long = query->requests.size() == g_req_per_query &&
+            g_req_per_query > g_req_per_short_query;
+#else
+  is_long = false;
+#endif
 #if WORKLOAD == BOMB
   BombQuery *query = static_cast<BombQuery *>(txn->query);
   source_id = query->source_id;
   txn_type = query->txn_type;
+  is_long = txn_type == BOMB_L1;
 #endif
 }
 
@@ -1105,6 +1114,7 @@ void ClientResponseMessage::copy_from_buf(char * buf) {
   Message::mcopy_from_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_VAL(client_startts,buf,ptr);
+  COPY_VAL(is_long,buf,ptr);
 #if WORKLOAD == BOMB
   COPY_VAL(source_id,buf,ptr);
   COPY_VAL(txn_type,buf,ptr);
@@ -1116,6 +1126,7 @@ void ClientResponseMessage::copy_to_buf(char * buf) {
   Message::mcopy_to_buf(buf);
   uint64_t ptr = Message::mget_size();
   COPY_BUF(buf,client_startts,ptr);
+  COPY_BUF(buf,is_long,ptr);
 #if WORKLOAD == BOMB
   COPY_BUF(buf,source_id,ptr);
   COPY_BUF(buf,txn_type,ptr);

@@ -39,16 +39,21 @@ GROUP_PATTERNS = [
 
 CORE_COLUMNS = [
     "group", "experiment", "round", "repository", "run_id", "protocol",
-    "workload", "bomb_dynamic_mode", "node_count", "worker_count", "scheduler_count",
+    "workload", "tpcc_txn_type", "bomb_dynamic_mode", "node_count", "worker_count", "scheduler_count",
     "batch_size", "x_name", "x_value", "variant", "measurement_s",
     "throughput_txn_s", "p50_s", "p99_s", "rollback_count",
     "end_to_end_p50_s", "end_to_end_p99_s", "end_to_end_samples",
     "end_to_end_p99_quality",
+    "long_end_to_end_p50_s", "long_end_to_end_p99_s",
+    "long_end_to_end_max_s", "long_end_to_end_samples",
+    "long_end_to_end_p99_quality",
     "short_throughput_txn_s", "short_p50_s", "short_p99_s",
     "short_samples", "long_throughput_txn_s", "long_p50_s", "long_p99_s",
     "long_samples", "short_p99_quality", "long_p99_quality",
     "watermark_wait_avg_ns", "watermark_wait_count",
-    "sync_stall_avg_s", "sync_stall_ratio", "sync_stall_source",
+    "barrier_stall_per_worker_batch_s", "barrier_batch_count",
+    "barrier_phase_sample_count", "sync_stall_avg_s",
+    "sync_stall_ratio", "sync_stall_source",
     "version_chain_avg", "version_chain_peak", "read_intents_active",
     "read_intents_peak", "gc_calls", "versions_reclaimed",
     "conventional_active", "conventional_peak_active",
@@ -71,6 +76,11 @@ METRIC_DICTIONARY = [
     ("end_to_end_p50_s", "s", "mean of client-node P50", "Client ccl50 from request submission through response receipt"),
     ("end_to_end_p99_s", "s", "mean of client-node P99", "Client ccl99; overall short and long transactions"),
     ("end_to_end_samples", "completed responses/window", "sum across client nodes", "Client txn_cnt used for P99 quality checks"),
+    ("long_end_to_end_p50_s", "s", "mean of client-node long P50", "Long transaction request submission through response receipt"),
+    ("long_end_to_end_p99_s", "s", "mean of client-node long P99; global max below 100 total samples", "Uses the maximum observed latency when fewer than 100 long transactions complete"),
+    ("long_end_to_end_max_s", "s", "maximum across client nodes", "Maximum observed long-transaction end-to-end latency"),
+    ("long_end_to_end_samples", "completed responses/window", "sum across client nodes", "Client long-transaction sample count"),
+    ("long_end_to_end_p99_quality", "label", "sample-count rule", "MAX_FALLBACK below 100 samples, OK otherwise"),
     ("rollback_count", "count/window", "sum across nodes", "SDMVCC is protocol-defined zero"),
     ("short_throughput_txn_s", "txn/s", "completed short transactions / measured seconds", "Never inferred from configured ratio"),
     ("short_p50_s", "s", "YCSB class P50 or BoMB merged short distribution", "BoMB requires the new bomb_short_p50_ns field"),
@@ -80,8 +90,12 @@ METRIC_DICTIONARY = [
     ("long_p99_s", "s", "mean of node long-transaction P99", "Flagged when samples < 100"),
     ("short_p99_quality", "label", "sample-count check", "INSUFFICIENT below 100 short samples"),
     ("long_p99_quality", "label", "sample-count check", "INSUFFICIENT below 100 long samples"),
-    ("watermark_wait_avg_ns", "ns/wait", "count-weighted mean across nodes", "sdpcc_watermark_avg_wait_ns"),
-    ("sync_stall_avg_s", "s/event", "phase-idle/count or watermark wait", "Source named in sync_stall_source"),
+    ("watermark_wait_avg_ns", "ns/transaction", "count-weighted mean across nodes", "SDMVCC transaction admission wait until the metadata watermark permits scheduling"),
+    ("watermark_wait_count", "transactions/window", "sum across nodes", "Number of scheduler transactions with a recorded watermark admission interval"),
+    ("barrier_stall_per_worker_batch_s", "s/worker-batch", "sum phase-tail idle / (node-batches * workers per node)", "Aria/Caracal only; cumulative wait across every logical phase in one batch"),
+    ("barrier_batch_count", "node-batches/window", "sum seq_batch_cnt across nodes", "Denominator is multiplied by workers per node"),
+    ("barrier_phase_sample_count", "worker-phase samples/window", "sum phase sample counts", "Diagnostic count; includes zero-tail-wait phase observations"),
+    ("sync_stall_avg_s", "s/worker-phase", "sum phase-tail idle / phase samples", "Legacy Aria/Caracal per-phase metric; do not compare with SDMVCC watermark wait"),
     ("sync_stall_ratio", "ratio", "idle seconds / thread capacity seconds", "Aria/Caracal barrier or SDMVCC scheduler idle"),
     ("version_chain_avg", "versions/row", "mean across nodes", "sdmvcc_avg_version_chain at run end"),
     ("version_chain_peak", "versions", "max across nodes", "sdmvcc_peak_version_chain"),
@@ -201,16 +215,19 @@ def x_axis(group, cfg, workload):
 
 
 def variant(group, cfg, workload):
+    CONVENTIONAL = ("1", "SDMVCC_GC_CONVENTIONAL")
+    RI_GC = ("2", "SDMVCC_GC_READ_INTENT")
     if group == "A2":
         return bool_label(cfg.get("SDMVCC_LAZY_READ_INTENT"), "Lazy read intent", "Eager read intent")
     if group == "A3":
         lazy = str(cfg.get("SDMVCC_LAZY_READ_INTENT", "")).lower() == "true"
         mode = str(cfg.get("SDMVCC_GC_MODE", "")).upper()
-        if lazy and mode in ("1", "SDMVCC_GC_CONVENTIONAL"):
-            return "Baseline: Delay RI + conventional GC"
-        if not lazy and mode in ("1", "SDMVCC_GC_CONVENTIONAL"):
+        watermark = str(cfg.get("OPEN_DISTRIBUTED_WATERMARK", "")).lower() == "true"
+        if lazy and mode in CONVENTIONAL:
+            return "Baseline: Delay RI + conventional GC" if watermark else "+ Coalesced watermark"
+        if not lazy and mode in CONVENTIONAL:
             return "+ Early read intent"
-        if not lazy and mode in ("2", "SDMVCC_GC_READ_INTENT"):
+        if not lazy and mode in RI_GC:
             return "+ Read-intent GC"
         return "Unrecognized A3 configuration"
     if group == "A4":
@@ -288,6 +305,15 @@ def aggregate_run(cfg_path, repository):
                        if client.get("txn_cnt", 0) > 0]
     end_to_end_p50 = mean_metric(latency_clients, "ccl50")
     end_to_end_p99 = mean_metric(latency_clients, "ccl99")
+    long_end_to_end_samples = sum_metric(clients, "long_ccl_cnt")
+    long_latency_clients = [client for client in clients
+                            if client.get("long_ccl_cnt", 0) > 0]
+    long_end_to_end_p50 = mean_metric(long_latency_clients, "long_ccl50")
+    long_end_to_end_max = max_metric(long_latency_clients, "long_ccl100")
+    if long_end_to_end_samples is not None and long_end_to_end_samples < MIN_P99_SAMPLES:
+        long_end_to_end_p99 = long_end_to_end_max
+    else:
+        long_end_to_end_p99 = mean_metric(long_latency_clients, "long_ccl99_raw")
     rollback = sum_metric(nodes, "total_txn_abort_cnt")
     if rollback is None:
         rollback = sum_metric(nodes, "unique_txn_abort_cnt")
@@ -336,29 +362,45 @@ def aggregate_run(cfg_path, repository):
     wait_count = sum_metric(nodes, "sdpcc_watermark_wait_count")
     wait_ns = weighted_metric(nodes, "sdpcc_watermark_avg_wait_ns", "sdpcc_watermark_wait_count")
     sync_avg = sync_ratio = sync_source = None
+    barrier_stall_per_worker_batch = None
+    barrier_batch_count = None
+    barrier_phase_sample_count = None
     if protocol == "ARIA":
         times = ("aria_read_phase_idle_time", "aria_reservation_phase_idle_time",
                  "aria_check_phase_idle_time", "aria_commit_phase_idle_time")
         counts = tuple(k.replace("_time", "_cnt") for k in times)
         total_time, total_count = sum((sum_metric(nodes, k) or 0) for k in times), sum((sum_metric(nodes, k) or 0) for k in counts)
         sync_avg = total_time / total_count if total_count else None
+        barrier_batch_count = sum_metric(nodes, "seq_batch_cnt")
+        barrier_phase_sample_count = total_count
+        worker_count = cfg.get("THREAD_CNT", 0) or 0
+        if barrier_batch_count and worker_count:
+            barrier_stall_per_worker_batch = total_time / (barrier_batch_count * worker_count)
+        elif total_count:
+            barrier_stall_per_worker_batch = total_time / (total_count / 4.0)
         capacity = (runtime or 0) * (cfg.get("THREAD_CNT", 0) or 0) * node_count
         sync_ratio = total_time / capacity if capacity else None
-        sync_source = "Aria phase barriers"
+        sync_source = "Aria cumulative phase-barrier tail idle per worker-batch"
     elif protocol == "CARACAL":
         times = ("caracal_init_phase_idle_time", "caracal_append_phase_idle_time", "caracal_execution_phase_idle_time")
         counts = tuple(k.replace("_time", "_cnt") for k in times)
         total_time, total_count = sum((sum_metric(nodes, k) or 0) for k in times), sum((sum_metric(nodes, k) or 0) for k in counts)
         sync_avg = total_time / total_count if total_count else None
+        barrier_batch_count = sum_metric(nodes, "seq_batch_cnt")
+        barrier_phase_sample_count = total_count
+        worker_count = cfg.get("THREAD_CNT", 0) or 0
+        if barrier_batch_count and worker_count:
+            barrier_stall_per_worker_batch = total_time / (barrier_batch_count * worker_count)
+        elif total_count:
+            barrier_stall_per_worker_batch = total_time / (total_count / 3.0)
         capacity = (runtime or 0) * (cfg.get("THREAD_CNT", 0) or 0) * node_count
         sync_ratio = total_time / capacity if capacity else None
-        sync_source = "Caracal phase barriers"
+        sync_source = "Caracal cumulative logical-phase barrier tail idle per worker-batch"
     elif protocol in ("SDMVCC", "SDPCC"):
-        sync_avg = wait_ns / 1e9 if wait_ns is not None else None
         idle = sum_metric(nodes, "sched_idle_time")
         capacity = (runtime or 0) * (cfg.get("SCHEDULER_CNT", 0) or 0) * node_count
         sync_ratio = idle / capacity if idle is not None and capacity else None
-        sync_source = "Watermark wait; ratio uses scheduler idle"
+        sync_source = "Watermark admission wait is reported separately; ratio uses scheduler idle"
     elif protocol == "CALVIN":
         sync_avg = mean_metric(nodes, "sched_idle_avg_time")
         idle = sum_metric(nodes, "sched_idle_time")
@@ -370,6 +412,10 @@ def aggregate_run(cfg_path, repository):
         if sample_count is None:
             return MISSING
         return "INSUFFICIENT" if sample_count < MIN_P99_SAMPLES else "OK"
+    def long_client_p99_quality(sample_count):
+        if sample_count is None:
+            return MISSING
+        return "MAX_FALLBACK" if sample_count < MIN_P99_SAMPLES else "OK"
     samples = long_samples if long_tput not in (None, 0) else short_samples
     quality = sample_quality(samples)
     row = {
@@ -377,6 +423,8 @@ def aggregate_run(cfg_path, repository):
         "round": next((part for part in cfg_path.parts if re.fullmatch(r"20\d{6}-\d{6}", part)), "UNKNOWN"),
         "repository": repository, "run_id": cfg_path.stem, "protocol": protocol,
         "workload": workload,
+        "tpcc_txn_type": (str(cfg.get("TXN_TYPE", "TPCC_UNKNOWN"))
+                          if workload == "TPCC" else None),
         "bomb_dynamic_mode": (str(cfg.get("BOMB_DYNAMIC_MODE")).lower()
                               if workload == "BOMB" else None),
         "node_count": node_count,
@@ -394,6 +442,11 @@ def aggregate_run(cfg_path, repository):
         "end_to_end_p99_s": end_to_end_p99,
         "end_to_end_samples": end_to_end_samples,
         "end_to_end_p99_quality": sample_quality(end_to_end_samples),
+        "long_end_to_end_p50_s": long_end_to_end_p50,
+        "long_end_to_end_p99_s": long_end_to_end_p99,
+        "long_end_to_end_max_s": long_end_to_end_max,
+        "long_end_to_end_samples": long_end_to_end_samples,
+        "long_end_to_end_p99_quality": long_client_p99_quality(long_end_to_end_samples),
         "short_throughput_txn_s": short_tput, "short_p50_s": short_p50,
         "short_p99_s": short_p99, "short_samples": short_samples,
         "long_throughput_txn_s": long_tput, "long_p50_s": long_p50,
@@ -401,6 +454,9 @@ def aggregate_run(cfg_path, repository):
         "short_p99_quality": sample_quality(short_samples),
         "long_p99_quality": sample_quality(long_samples),
         "watermark_wait_avg_ns": wait_ns, "watermark_wait_count": wait_count,
+        "barrier_stall_per_worker_batch_s": barrier_stall_per_worker_batch,
+        "barrier_batch_count": barrier_batch_count,
+        "barrier_phase_sample_count": barrier_phase_sample_count,
         "sync_stall_avg_s": sync_avg, "sync_stall_ratio": sync_ratio,
         "sync_stall_source": sync_source,
         "version_chain_avg": mean_metric(nodes, "sdmvcc_avg_version_chain"),
@@ -575,9 +631,9 @@ def missing_rows(rows):
     required = {
         "T1": ("throughput_txn_s","p50_s","p99_s","rollback_count"), "T2": ("throughput_txn_s","p50_s","p99_s","rollback_count"),
         "T3": ("throughput_txn_s","p50_s","p99_s","rollback_count"), "T4": ("throughput_txn_s","p50_s","p99_s","rollback_count"),
-        "H0": ("short_throughput_txn_s","short_p99_s","sync_stall_avg_s","sync_stall_ratio"),
+        "H0": ("short_throughput_txn_s","short_p99_s"),
         "H1": ("short_throughput_txn_s","short_p99_s","long_throughput_txn_s","long_p99_s"), "H2": ("short_throughput_txn_s","short_p99_s","long_throughput_txn_s","long_p99_s"),
-        "H3": ("short_throughput_txn_s","long_throughput_txn_s","end_to_end_p50_s","end_to_end_p99_s"), "H4": ("short_throughput_txn_s","long_throughput_txn_s","end_to_end_p50_s","end_to_end_p99_s"),
+        "H3": ("short_throughput_txn_s","long_throughput_txn_s","long_end_to_end_p50_s","long_end_to_end_p99_s"), "H4": ("short_throughput_txn_s","long_throughput_txn_s","long_end_to_end_p50_s","long_end_to_end_p99_s"),
         "A3": ("short_throughput_txn_s","end_to_end_p99_s","long_throughput_txn_s","version_chain_avg","read_intents_peak"),
     }
     for row in rows:
@@ -606,11 +662,11 @@ PLOT_SPECS = {
  "T2":[("Throughput","throughput_txn_s"),("P50","p50_s"),("P99","p99_s"),("Rollbacks","rollback_count")],
  "T3":[("Throughput","throughput_txn_s"),("P50","p50_s"),("P99","p99_s"),("Rollbacks","rollback_count")],
  "T4":[("Throughput","throughput_txn_s"),("P50","p50_s"),("P99","p99_s"),("Rollbacks","rollback_count")],
- "H0":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Synchronization stall","sync_stall_avg_s"),("Synchronization stall ratio","sync_stall_ratio")],
+ "H0":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Barrier stall per worker-batch","barrier_stall_per_worker_batch_s"),("SDMVCC watermark wait per transaction","watermark_wait_avg_ns")],
  "H1":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Long throughput","long_throughput_txn_s"),("Long P99","long_p99_s")],
  "H2":[("Short TP throughput","short_throughput_txn_s"),("Short TP P99","short_p99_s"),("Long throughput","long_throughput_txn_s"),("Long P99","long_p99_s")],
- "H3":[("Short TP throughput","short_throughput_txn_s"),("Long throughput","long_throughput_txn_s"),("Overall end-to-end P50","end_to_end_p50_s"),("Overall end-to-end P99","end_to_end_p99_s")],
- "H4":[("Short TP throughput","short_throughput_txn_s"),("Long throughput","long_throughput_txn_s"),("Overall end-to-end P50","end_to_end_p50_s"),("Overall end-to-end P99","end_to_end_p99_s")],
+ "H3":[("Short TP throughput","short_throughput_txn_s"),("Long throughput","long_throughput_txn_s"),("Long end-to-end P50","long_end_to_end_p50_s"),("Long end-to-end P99","long_end_to_end_p99_s"),("Aria/Caracal barrier stall per worker-batch","barrier_stall_per_worker_batch_s"),("SDMVCC watermark wait per transaction","watermark_wait_avg_ns")],
+ "H4":[("Short TP throughput","short_throughput_txn_s"),("Long throughput","long_throughput_txn_s"),("Long end-to-end P50","long_end_to_end_p50_s"),("Long end-to-end P99","long_end_to_end_p99_s"),("Aria/Caracal barrier stall per worker-batch","barrier_stall_per_worker_batch_s"),("SDMVCC watermark wait per transaction","watermark_wait_avg_ns")],
  "A1":[("YCSB throughput","throughput_txn_s","YCSB"),("YCSB P99","p99_s","YCSB"),("BoMB short throughput","short_throughput_txn_s","BOMB"),("BoMB short P99","short_p99_s","BOMB")],
  "A2":[("YCSB throughput","throughput_txn_s","YCSB"),("YCSB P99","p99_s","YCSB"),("BoMB short throughput","short_throughput_txn_s","BOMB"),("BoMB short P99","short_p99_s","BOMB")],
  "A3":[("Short TP throughput","short_throughput_txn_s"),("Overall end-to-end P99","end_to_end_p99_s"),("Long throughput","long_throughput_txn_s"),("Overall end-to-end P50","end_to_end_p50_s"),("Version chain","version_chain_avg"),("Read intents","read_intents_peak")],

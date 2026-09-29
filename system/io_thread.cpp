@@ -64,7 +64,7 @@ void InputThread::setup() {
 				continue;
 			}		
 #endif
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY && OPEN_DISTRIBUTED_WATERMARK
 			if (msg->rtype == WATERMARK) {
 				DEBUG_SCH("OutputThread %ld receive watermark %ld from node %ld\n", get_thd_id(), ((WaterMarkMessage*)msg)->get_watermark(), msg->get_return_id());
 				check_water_mark->receive_watermark(msg->get_return_id(), ((WaterMarkMessage*)msg)->get_watermark(), get_thd_id());
@@ -144,6 +144,9 @@ RC InputThread::client_recv_loop() {
 			INC_STATS(get_thd_id(),txn_run_time, timespan);
 			if (warmup_done) {
 				INC_STATS_ARR(get_thd_id(),client_client_latency, timespan);
+				if (((ClientResponseMessage*)msg)->is_long) {
+					INC_STATS_ARR(get_thd_id(),client_long_latency, timespan);
+				}
 			}
 			//INC_STATS_ARR(get_thd_id(),all_lat,timespan);
 			inf = client_man.dec_inflight(return_node_offset);
@@ -206,7 +209,7 @@ RC InputThread::server_recv_loop() {
 				continue;
 			}
 #endif
-#if CC_ALG == SDPCC
+#if SDPCC_FAMILY && OPEN_DISTRIBUTED_WATERMARK
 			if (msg->rtype == WATERMARK) {
 				DEBUG_SCH("OutputThread %ld receive watermark %ld from node %ld\n", get_thd_id(), ((WaterMarkMessage*)msg)->get_watermark(), msg->get_return_id());
 				check_water_mark->receive_watermark(msg->get_return_id(), ((WaterMarkMessage*)msg)->get_watermark(), get_thd_id());

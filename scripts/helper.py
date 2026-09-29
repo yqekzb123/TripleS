@@ -72,6 +72,7 @@ SHORTNAMES = {
     "TUP_WRITE_PERC" : "TWR",
     "TXN_READ_PERC" : "RD",
     "TXN_WRITE_PERC" : "WR",
+    "TXN_TYPE" : "TT",
     "ZIPF_THETA" : "SKEW",
     "MSG_TIME_LIMIT" : "BT",
     "MSG_SIZE_MAX" : "BS",
@@ -1074,8 +1075,16 @@ def get_outfile_name(cfgs,fmt,network_hosts=[]):
 
         output_f += "NETWORK_TEST_"
     else:
+        # Keep the TPCC transaction model visible even when the complete
+        # configuration name is shortened to satisfy the filename limit.
+        # TXN_TYPE sorts near the end of fmt and used to disappear behind the
+        # hash suffix, making TPCC_ALL and TPCC_DIST results indistinguishable.
+        if cfgs.get("WORKLOAD") == "TPCC":
+            output_f += "{}_".format(cfgs.get("TXN_TYPE", "TPCC_UNKNOWN"))
         #for key in sorted(cfgs.keys()):
         for key in sorted(set(fmt)):
+            if key == "TXN_TYPE" and cfgs.get("WORKLOAD") == "TPCC":
+                continue
             nkey = SHORTNAMES[key] if key in SHORTNAMES else key
             if nkey == "":
                 output_f += "{}_".format(cfgs[key])

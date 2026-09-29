@@ -49,7 +49,7 @@ def _ycsb(algo="SDMVCC", nodes=BASE_NODES):
 def _tpcc(algo="SDMVCC", nodes=BASE_NODES):
     return {
         "WORKLOAD": "TPCC", "CC_ALG": algo,
-        "TXN_TYPE": "TPCC_DIST",
+        "TXN_TYPE": "TPCC_ALL",
         "NODE_CNT": nodes, "CLIENT_NODE_CNT": nodes,
         "THREAD_CNT": _workers(algo), "CLIENT_THREAD_CNT": 4,
         "SCHEDULER_CNT": 7, "MAX_TXN_IN_FLIGHT": 10000,
@@ -242,21 +242,24 @@ def paper_a2_read_intent_bomb():
 
 
 _A3_STAGES = (
-    # Baseline: defer read-intent registration and use active-snapshot GC.
-    ("true", "SDMVCC_GC_CONVENTIONAL"),
-    # Add early read-intent registration while retaining the same GC.
-    ("false", "SDMVCC_GC_CONVENTIONAL"),
-    # Add read-intent-aware local GC to the early-registration design.
-    ("false", "SDMVCC_GC_READ_INTENT"),
+    # Baseline: defer read-intent registration and use active-snapshot GC, and use distributed watermark
+    ("true", "SDMVCC_GC_CONVENTIONAL","true"),
+    # Baseline with watermark optimization
+    # ("true", "SDMVCC_GC_CONVENTIONAL","false"),
+    # # Add early read-intent registration while retaining the same GC.
+    # ("false", "SDMVCC_GC_CONVENTIONAL","false"),
+    # # Add read-intent-aware local GC to the early-registration design.
+    # ("false", "SDMVCC_GC_READ_INTENT","false"),
 )
 
 
-def _set_a3_stage(row, lazy, gc_mode):
+def _set_a3_stage(row, lazy, gc_mode, watermark):
     row.update({
         "SCHEDULER_CNT": 7,
-        "OPEN_DISTRIBUTED_WATERMARK": "false",
+        # "OPEN_DISTRIBUTED_WATERMARK": "false",
         "SDMVCC_LAZY_READ_INTENT": lazy,
         "SDMVCC_GC_MODE": gc_mode,
+        "OPEN_DISTRIBUTED_WATERMARK":watermark
     })
     return row
 
@@ -264,17 +267,17 @@ def _set_a3_stage(row, lazy, gc_mode):
 def paper_a3_gc():
     """A3 BoMB: three cumulative stages at static and dynamic defaults."""
     records = []
-    for lazy, gc_mode in _A3_STAGES:
+    for lazy, gc_mode, watermark in _A3_STAGES:
         for dynamic in ("false", "true"):
-            row = _set_a3_stage(_bomb(), lazy, gc_mode)
+            row = _set_a3_stage(_bomb(), lazy, gc_mode, watermark)
             row["BOMB_DYNAMIC_MODE"] = dynamic
             records.append(row)
     return _rows(BOMB_FMT, records)
 
 def paper_a3_gc_ycsb():
     """A3 YCSB: three cumulative stages at the default workload point."""
-    records = [_set_a3_stage(_ycsb(), lazy, gc_mode)
-               for lazy, gc_mode in _A3_STAGES]
+    records = [_set_a3_stage(_ycsb(), lazy, gc_mode, watermark)
+               for lazy, gc_mode,watermark in _A3_STAGES]
     return _rows(YCSB_FMT, records)
 
 
@@ -288,8 +291,11 @@ def paper_a4_coalescing_ycsb():
 
 def paper_a4_coalescing_bomb():
     records = []
-    for distributed in ("false", "true"):
-        row = _bomb(); row["OPEN_DISTRIBUTED_WATERMARK"] = distributed
+    for dynamic, distributed in itertools.product(
+            ("false", "true"), ("false", "true")):
+        row = _bomb()
+        row["BOMB_DYNAMIC_MODE"] = dynamic
+        row["OPEN_DISTRIBUTED_WATERMARK"] = distributed
         records.append(row)
     return _rows(BOMB_FMT, records)
 
@@ -388,6 +394,7 @@ SHORTNAMES = {'ABORT_PENALTY': 'PENALTY',
  'TUP_WRITE_PERC': 'TWR',
  'TXN_READ_PERC': 'RD',
  'TXN_WRITE_PERC': 'WR',
+ 'TXN_TYPE': 'TT',
  'WORKLOAD': '',
  'YCSB_ABORT_MODE': 'ABRTMODE',
  'ZIPF_THETA': 'SKEW'}

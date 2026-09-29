@@ -155,6 +155,15 @@ uint64_t TPCCQuery::participants(bool *& pps,Workload * wl) {
         }
       }
       break;
+    case TPCC_ORDER_STATUS:
+    case TPCC_DELIVERY:
+    case TPCC_STOCK_LEVEL:
+      id = GET_NODE_ID(wh_to_part(w_id));
+      if(!pps[id]) {
+        pps[id] = true;
+        n++;
+      }
+      break;
     default:
       assert(false);
   }

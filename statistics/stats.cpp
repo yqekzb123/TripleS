@@ -124,6 +124,9 @@ void Stats_thd::init(uint64_t thd_id) {
 	//all_lat.init(g_max_txn_per_part,ArrIncr);
 
 	client_client_latency.init(g_max_txn_per_part,ArrIncr);
+	// Long transactions are sparse in HTAP runs. Start small and let StatsArr
+	// grow instead of reserving a full transaction window on every thread.
+	client_long_latency.init(1024,ArrIncr);
 	last_start_commit_latency.init(g_max_txn_per_part,ArrIncr);
 	first_start_commit_latency.init(g_max_txn_per_part,ArrIncr);
 	start_abort_commit_latency.init(g_max_txn_per_part,ArrIncr);
@@ -478,6 +481,7 @@ void Stats_thd::clear() {
   ano_unknown = 0;
 
   client_client_latency.clear();
+  client_long_latency.clear();
     last_start_commit_latency.clear();
     first_start_commit_latency.clear();
     start_abort_commit_latency.clear();
@@ -581,6 +585,28 @@ void Stats_thd::print_client(FILE * outf, bool prog) {
             (double)client_client_latency.get_percentile(98) / BILLION,
             (double)client_client_latency.get_percentile(99) / BILLION,
             (double)client_client_latency.get_idx(client_client_latency.cnt - 1) / BILLION);
+
+  const uint64_t long_cnt = client_long_latency.cnt;
+  double long_p50 = 0;
+  double long_p99_raw = 0;
+  double long_p99 = 0;
+  double long_max = 0;
+  if (long_cnt > 0) {
+    client_long_latency.quicksort(0, long_cnt - 1);
+    long_p50 = (double)client_long_latency.get_percentile(50) / BILLION;
+    long_p99_raw = (double)client_long_latency.get_percentile(99) / BILLION;
+    long_max = (double)client_long_latency.get_idx(long_cnt - 1) / BILLION;
+    long_p99 = long_cnt < 100 ? long_max : long_p99_raw;
+  }
+  fprintf(outf,
+          ",long_ccl_cnt=%lu"
+          ",long_ccl50=%f"
+          ",long_ccl99_raw=%f"
+          ",long_ccl99=%f"
+          ",long_ccl100=%f"
+          ",long_ccl_p99_fallback=%d",
+          long_cnt, long_p50, long_p99_raw, long_p99, long_max,
+          long_cnt > 0 && long_cnt < 100 ? 1 : 0);
   }
 
   //client_client_latency.print(outf);
@@ -1444,6 +1470,7 @@ void Stats_thd::combine(Stats_thd * stats) {
   first_start_commit_latency.append(stats->first_start_commit_latency);
   start_abort_commit_latency.append(stats->start_abort_commit_latency);
   client_client_latency.append(stats->client_client_latency);
+  client_long_latency.append(stats->client_long_latency);
   // Execution
   txn_cnt+=stats->txn_cnt;
   remote_txn_cnt+=stats->remote_txn_cnt;

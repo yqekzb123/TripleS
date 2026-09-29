@@ -273,6 +273,8 @@ public:
 
   RC rc;
   uint64_t client_startts;
+  // Carried back to the client so end-to-end latency can be split by class.
+  bool is_long = false;
 #if WORKLOAD == BOMB
   uint64_t source_id;
   uint64_t txn_type;

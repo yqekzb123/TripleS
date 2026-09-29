@@ -218,10 +218,17 @@ void AriaSequencer::process_ack(Message * msg, uint64_t thd_id) {
                 }
                 ClientResponseMessage * rsp_msg = (ClientResponseMessage *)Message::create_message(msg->get_txn_id(), CL_RSP);
                 rsp_msg->client_startts = aria_batch[i]->client_startts;
+#if WORKLOAD == YCSB && LONG_TXN_WORKLOAD
+                rsp_msg->is_long = cl_msg->requests.size() == g_req_per_query &&
+                                   g_req_per_query > g_req_per_short_query;
+#else
+                rsp_msg->is_long = false;
+#endif
 #if WORKLOAD == BOMB
                 BombStats::record_complete(cl_msg, long_timespan, false);
                 rsp_msg->source_id = cl_msg->source_id;
                 rsp_msg->txn_type = cl_msg->txn_type;
+                rsp_msg->is_long = cl_msg->txn_type == BOMB_L1;
 #endif
                 // F4: deferred release. The txn may have finished in an
                 // earlier batch while send_next_batch already re-sent this

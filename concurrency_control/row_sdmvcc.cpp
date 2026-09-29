@@ -402,6 +402,31 @@ SDMVCCEntry *Row_sdmvcc::insert_version_locked(SDMVCCEntry *v) {
     pos->nextAll->prevAll = v; pos->nextAll = v;
     v->prevWrite = wp; v->nextWrite = w;
     wp->nextWrite = v; w->prevWrite = v;
+
+    // A remote reservation can arrive after readers in this write gap have
+    // already finalized their predecessor.  The new version becomes the
+    // predecessor of every later reader before w.  Retarget both cached
+    // predecessor pointers and armed waiters while the row latch protects all
+    // three lists.  Without this, GC may reclaim wp while a reader still holds
+    // wp in myVersion, turning the next read into a use-after-recycle.
+    for (SDMVCCEntry *reader = v->nextAll; reader != w;
+         reader = reader->nextAll) {
+        assert(!reader->isVersion);
+        if (reader->sid > v->sid && reader->myVersion == wp)
+            reader->myVersion = v;
+    }
+    SDMVCCEntry **waiter_link = &wp->waitHead;
+    while (*waiter_link) {
+        SDMVCCEntry *reader = *waiter_link;
+        if (reader->sid > v->sid) {
+            *waiter_link = reader->waitNext;
+            reader->myVersion = v;
+            reader->waitNext = v->waitHead;
+            v->waitHead = reader;
+        } else {
+            waiter_link = &reader->waitNext;
+        }
+    }
     _version_index.insert(&v->versionIndex);
     ++_version_cnt;
     g_live_versions.fetch_add(1, std::memory_order_relaxed);
